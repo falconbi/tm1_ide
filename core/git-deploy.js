@@ -7,6 +7,7 @@
 // gate is enforced inside execute — it cannot be bypassed by any caller.
 
 const { makeClient } = require('./adapter-registry')
+const { TM1Client } = require('./tm1-client')
 const assertions = require('./assertions')
 const gitIdentity = require('./git-identity')
 const approvals = require('./git-approvals')
@@ -200,7 +201,7 @@ async function execute(target, opts = {}) {
     return out
 }
 
-async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by, session: sessionId } = {}) {
+async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by, session: sessionId, backupAt = null } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
     const lockMod = require('./git-lock')
@@ -259,6 +260,8 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
     out.approvedAt  = approval.approved_at
     out.approvalSession = approval.session ?? null
     out.approvalNote = approval.note ?? null
+    // The loss confirmation recorded at approval time (who, when, what was shown).
+    out.lossAck = approval.lossAck ?? null
 
     // The approval's linked change set is the authoritative source. If the approval
     // has no linked change set (release mode), the caller must supply the source.
@@ -411,6 +414,49 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                 out.loss = cmp.loss
             }
         } catch (e) { out.elementLossError = e.message }
+
+        // ── Protect what the deploy is about to overwrite ───────────────────
+        // Under the lock, immediately before the pull: write the target's data to
+        // disk, then either run the site's backup process or confirm — with a
+        // time — when the last backup was taken. A failure stops the deploy
+        // before anything is replaced.
+        const tm1 = new TM1Client(target, makeClient(target, ideToken))
+        const saveAt = new Date().toISOString()
+        try {
+            await tm1.saveDataAll()
+            out.saveData = { ok: true, at: saveAt }
+        } catch (e) {
+            out.executed = false
+            out.refused = true
+            out.error = `Refused: Save Data failed on ${target} (${e.message}). Nothing was sent.`
+            return out
+        }
+
+        let protection = { backupProcess: null }
+        try { protection = await require('./deploy-settings').get(target, { ideToken }) } catch { /* no setting */ }
+        if (protection.backupProcess) {
+            const at = new Date().toISOString()
+            try {
+                const r = await tm1.executeProcess(protection.backupProcess, [])
+                const status = r?.ProcessExecuteStatusCode
+                const ok = status === undefined || status === 0 || status === 'CompletedSuccessfully' || status === 'HasMinorErrors'
+                if (!ok) throw new Error(`the process returned ${status}`)
+                out.backup = { kind: 'process', process: protection.backupProcess, ok: true, at }
+            } catch (e) {
+                out.executed = false
+                out.refused = true
+                out.error = `Refused: the backup process "${protection.backupProcess}" failed on ${target} (${e.message}). Nothing was sent.`
+                return out
+            }
+        } else {
+            if (!backupAt) {
+                out.executed = false
+                out.refused = true
+                out.error = `Refused: record when ${target} was last backed up before deploying — no backup process is set for it, and this deploy overwrites the model. Nothing was sent.`
+                return out
+            }
+            out.backup = { kind: 'stated', at: String(backupAt), by: approval.approver ?? null, ok: true }
+        }
 
         try {
             await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})

@@ -123,7 +123,7 @@ test('release deploy refuses when the pull plan carries an object not in the rel
 
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('Sneaky')"] }
     acquired = 0; released = 0
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.refused, true)
     assert.equal(out.executed, false)
     assert.match(out.error, /not in this release/i)
@@ -142,7 +142,7 @@ test('release deploy proceeds when the plan contains only the release objects', 
 
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
     acquired = 0; released = 0
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, true, JSON.stringify(out))
     assert.equal(out.release, true)
     assert.equal(out.releaseCommit, r.releaseCommit)
@@ -159,7 +159,7 @@ test('a full approved ID matches a short plan ID (sameCommit) → deploys', asyn
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')   // stored full
     // The pull plan reports the SHORT id — same commit, not a move.
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, planCommit: r.releaseCommit.slice(0, 8), sessionId: s.id, ops: ["Update Cubes('A')"] }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, true, JSON.stringify(out))
     assert.ok(!out.refused)
     assert.deepEqual(out.incomplete, [], 'everything that shipped is verified on the target')
@@ -174,7 +174,7 @@ test('an included object that did not land is reported as incomplete (not a clea
     cl.setSessionCommit(s.id, r.releaseCommit)
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"], missingCube: true }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, true, JSON.stringify(out))   // still "executed"...
     assert.deepEqual(out.incomplete, ['cube A'])             // ...but never a clean success
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
@@ -187,7 +187,7 @@ test('a genuinely different plan commit is refused as moved', async () => {
     const s = cl.startSession('Rel-moved', 'DEV1', 'admin')
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, planCommit: '0000000000000000000000000000000000000000', sessionId: s.id, ops: [] }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.refused, true)
     assert.match(out.error, /commit moved/i)
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
@@ -209,7 +209,7 @@ test('Skip operations (real TM1 format) are not counted as changes', async () =>
       "Update Cubes('A')",
     ]
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, true, JSON.stringify(out))
     assert.ok(!out.refused, 'Skips must not flip the release to \'unexpected\'')
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
@@ -227,7 +227,7 @@ test('a Replace/Update of an object not in the release is still refused', async 
       "Replace Dimensions('WFP Version')",
       "Update Cubes('Sneaky')",
     ] }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.refused, true)
     assert.match(out.error, /not in this release/i)
     assert.match(out.error, /Sneaky/)
@@ -244,7 +244,7 @@ test('deploy is refused when the target has drifted (snapshot refreshed first)',
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
     driftEntries = [{ status: 'M', file: 'dimensions/WFP Version.hierarchies/WFP Version.json' }]
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.refused, true)
     assert.equal(out.executed, false)
     assert.equal(out.drift, 'drifted')
@@ -260,7 +260,7 @@ test('execute refuses any deploy that is not a built release', async () => {
     baseCommit = r.base
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, ops: [] }
     // No session → no release → rule 1 refusal.
-    const out = await execute('TG1', { source: 'DEV1', token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { source: 'DEV1', token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.refused, true)
     assert.equal(out.executed, false)
     assert.match(out.error, /Build a release first/i)
@@ -276,7 +276,7 @@ test('execute accepts a catch-up session\'s release commit (Rule 1 unchanged)', 
     cl.setSessionCommit(s.id, r.releaseCommit)
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, true, JSON.stringify(out))
     assert.equal(out.refused, undefined)
     assert.equal(out.release, true)
@@ -311,7 +311,7 @@ test('a subset apply failure drives controlOk to false', async () => {
       bare: r.bare, releaseCommit: r.releaseCommit, planCommit: r.releaseCommit, sessionId: s.id,
       ops: [`Create Subsets('Test Subset','WFP Cost Centre')`], subsetApplyFail: true,
     }
-    const out = await execute('TG1', { session: s.id, source: 'DEV1', token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, source: 'DEV1', token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, true, JSON.stringify(out))
     assert.equal(out.subsetsViews.errors.length, 1, 'the subset apply failure is surfaced')
     assert.match(out.subsetsViews.errors[0].error, /subset apply failed/)
@@ -326,9 +326,27 @@ test('an unrecognised pull-plan operation refuses the deploy', async () => {
     cl.setSessionCommit(s.id, r.releaseCommit)
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Widgets('A')"] }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.refused, true)
     assert.match(out.error, /cannot classify/i)
     assert.match(out.error, /Widgets/)
+  } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('no backup process and no stated time — the deploy is refused before anything is sent', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('RelNoBackup', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
+    assert.equal(out.executed, false)
+    assert.equal(out.refused, true)
+    assert.match(out.error, /last backed up/i)
+    // Save Data is what runs first: it is recorded even though the deploy stopped.
+    assert.equal(out.saveData?.ok, true)
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })

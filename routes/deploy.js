@@ -111,9 +111,9 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         // Not gated by read-only: a recorded approval (enforced inside execute(),
         // non-optionally) is what authorises shipping to a PROD-posture target.
         const { execute } = require('../core/git-deploy')
-        const { target, branch, source, session } = req.body
+        const { target, branch, source, session, backupAt } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
-        const result = await execute(target, { branch, token: _GITOK(), ideToken: req.ideToken, source, by: req.user, session })
+        const result = await execute(target, { branch, token: _GITOK(), ideToken: req.ideToken, source, by: req.user, session, backupAt })
         if (result?.missingSource) return res.status(400).json({ error: result.error })
         if (result?.approvalSession && result?.executed && result?.controlOk) {
             try {
@@ -125,6 +125,26 @@ app.post('/api/deploy/git/execute', async (req, res) => {
             } catch { /* the deploy itself stands; the link is best-effort */ }
         }
         res.json(result)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Per-target protection: the backup process to run before a deploy (or none, in
+// which case the deploy asks when the last backup was taken).
+app.get('/api/deploy/settings', async (req, res) => {
+    try {
+        const { server } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        res.json({ server, ...(await require('../core/deploy-settings').get(server, { ideToken: req.ideToken })) })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/settings', async (req, res) => {
+    try {
+        const { server, backupProcess } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!gateReadOnly(res, server)) return
+        const doc = await require('../core/deploy-settings').set(server, { backupProcess }, { ideToken: req.ideToken })
+        res.json({ server, ...doc })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -330,6 +350,19 @@ app.post('/api/deploy/git/approve', async (req, res) => {
                 return res.status(409).json({ error: `Refused: ${bad.map(keyOf).join(', ')} is not in this catch-up's target-only list.` })
             }
         }
+        // What the person was shown and said yes to, when the Ship dialog stopped
+        // for an element-loss confirmation. Recorded with the approval so the
+        // report can say it was named, not merely counted.
+        const lossAck = req.body.lossAck && typeof req.body.lossAck === 'object'
+            ? {
+                at: new Date().toISOString(),
+                by: req.user ?? null,
+                loss: req.body.lossAck.loss ?? null,
+                elements: Array.isArray(req.body.lossAck.elements)
+                    ? req.body.lossAck.elements.slice(0, 500).map(l => ({ dimension: l.dimension, hierarchy: l.hierarchy, count: l.count, sample: l.sample ?? [] }))
+                    : [],
+            }
+            : null
         const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
@@ -337,6 +370,7 @@ app.post('/api/deploy/git/approve', async (req, res) => {
             addedByUser: parseList(linkedSession.release_added_by_user),
             addedAsDependency: parseList(linkedSession.release_added_as_dependency),
             excludedByUser: parseList(linkedSession.release_excluded_by_user),
+            lossAck,
             deletes: requestedDeletes,
         }, { ideToken: req.ideToken })
         res.json(rec)

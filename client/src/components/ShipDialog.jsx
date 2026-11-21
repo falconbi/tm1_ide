@@ -5,6 +5,7 @@ import { useStore } from '@/store'
 import { useChangeSetSummary } from '@/hooks/useApi'
 import { useQueryClient } from '@tanstack/react-query'
 import { classifyDeployOutcome } from '@/lib/deploy/deploy-outcome'
+import { decideLossGate } from '@shared/deploy-loss-gate.js'
 
 // One action: ship this change set to a target.
 //
@@ -45,6 +46,11 @@ export default function ShipDialog() {
   // or sent. The one-button path never shows Review, so this is where that list
   // has to appear — otherwise the quick path is also the blind one.
   const [loss, setLoss] = useState(null)
+  // Protection: a backup process configured for the target, or the person's own
+  // answer to "when was the last backup?" when there is none. The server refuses
+  // a deploy to a process-less target without that time.
+  const [settings, setSettings] = useState(null)   // { backupProcess } | null (unknown)
+  const [backupAt, setBackupAt] = useState('')
   const [pending, setPending] = useState(null)   // { release, id } — resume after the confirm
 
   // Opening the dialog for a change set must always start from a clean form.
@@ -55,7 +61,7 @@ export default function ShipDialog() {
     if (!ship) return
     setPhase('idle'); setResult(null); setError(null)
     setApproved(false); setTarget(''); setReachedProd(false); setStep('')
-    setLoss(null); setPending(null)
+    setLoss(null); setPending(null); setSettings(null); setBackupAt('')
   }, [ship?.session?.id])
 
   useEffect(() => {
@@ -71,6 +77,17 @@ export default function ShipDialog() {
       .catch(() => {})
   }, [ship, server])
 
+  // A target's protection setting decides whether Ship asks for a backup time.
+  useEffect(() => {
+    if (!ship || !target) { setSettings(null); return }
+    let live = true
+    request(`/api/deploy/settings?server=${encodeURIComponent(target)}`, { headers: authHeader() })
+      .then(r => r.json())
+      .then(d => { if (live && !d.error) setSettings({ backupProcess: d.backupProcess ?? null }) })
+      .catch(() => { if (live) setSettings({ backupProcess: null }) })
+    return () => { live = false }
+  }, [ship, target])
+
   if (!ship) return null
 
   const finish = () => {
@@ -81,11 +98,15 @@ export default function ShipDialog() {
   // Approve and send — the part that runs once, after any loss confirmation.
   const deployRelease = async (rel, id) => {
     setStep('Recording your approval…')
-    await POST('/api/deploy/git/approve', { source: server, target, commit: rel.releaseCommit, note: 'Shipped from the one-step ship' })
+    await POST('/api/deploy/git/approve', {
+      source: server, target, commit: rel.releaseCommit, note: 'Shipped from the one-step ship',
+      // What the person was shown and agreed to, when Ship stopped for it.
+      lossAck: loss ? { loss: loss.loss, elements: loss.elementLoss } : undefined,
+    })
 
     setStep(`Sending to ${target}…`)
     setReachedProd(true)
-    const res = await POST('/api/deploy/git/execute', { source: server, target, session: id })
+    const res = await POST('/api/deploy/git/execute', { source: server, target, session: id, backupAt: backupAt || undefined })
     setResult({ ...res, releaseCommit: rel.releaseCommit, ships: rel.included?.length ?? 0 })
 
     if (res.executed) {
@@ -134,7 +155,7 @@ export default function ShipDialog() {
       setStep('Checking what this release would remove…')
       let lossInfo = null
       try { lossInfo = await POST('/api/deploy/git/loss', { target, commit: rel.releaseCommit }) } catch { lossInfo = null }
-      if ((lossInfo?.loss?.elements ?? 0) > 0) {
+      if (decideLossGate({ loss: lossInfo?.loss }) === 'confirm') {
         setLoss(lossInfo)
         setPending({ release: rel, id })
         setStep('')
@@ -186,10 +207,33 @@ export default function ShipDialog() {
                 <input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)} className="mt-0.5" />
                 <span>I approve sending <span className="font-semibold">{session?.name}</span> to <span className="font-semibold">{target || 'the target'}</span>.</span>
               </label>
+
+              {/* Protection before the target is overwritten: its data is written
+                  to disk, then either the site's backup process runs or the person
+                  states when the last backup was taken. */}
+              {target && settings?.backupProcess && (
+                <p className="text-[11px] text-muted-foreground">
+                  Backup process <span className="font-mono text-foreground">{settings.backupProcess}</span> runs on {target} first; if it fails, nothing is sent.
+                </p>
+              )}
+              {target && settings && !settings.backupProcess && (
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">When was <span className="text-foreground">{target}</span> last backed up? (no backup process is set)</label>
+                  <input
+                    type="datetime-local"
+                    value={backupAt}
+                    onChange={e => setBackupAt(e.target.value)}
+                    className="w-full bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Recorded with the deploy. Nothing can restore data from a later change unless a backup exists.</p>
+                </div>
+              )}
+              {target && !settings && <p className="text-[11px] text-muted-foreground">Reading {target}'s backup setting…</p>}
+
               <div className="flex items-center gap-2">
                 <button
                   onClick={shipIt}
-                  disabled={!target || !approved}
+                  disabled={!target || !approved || !settings || (!settings.backupProcess && !backupAt)}
                   className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 transition-colors disabled:opacity-40"
                 >
                   Ship to {target || 'target'}

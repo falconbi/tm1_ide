@@ -65,7 +65,7 @@ function releasedSession(server = 'DEV1') {
 test('release mode without a linked change set requires source', async () => {
     const s = releasedSession('DEV1')
     approval = { target: 'TG1', commit: 'C1', approver: 'u', session: null }
-    const out = await execute('TG1', { session: s.id, token: 'x' })
+    const out = await execute('TG1', { session: s.id, token: 'x', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, false)
     assert.equal(out.missingSource, true)
     assert.match(out.error, /source is required/i)
@@ -74,7 +74,7 @@ test('release mode without a linked change set requires source', async () => {
 test('a source that differs from the approved change set is refused', async () => {
     const s = releasedSession('DEV1')
     approval = { target: 'TG1', commit: 'C1', approver: 'u', session: s.id }
-    const out = await execute('TG1', { session: s.id, source: 'OTHER_DEV', token: 'x' })
+    const out = await execute('TG1', { session: s.id, source: 'OTHER_DEV', token: 'x', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, false)
     assert.equal(out.refused, true)
     assert.match(out.error, /source does not match/i)
@@ -85,7 +85,7 @@ test('a reconcile error makes controlOk false with a reason', async () => {
     approval = { target: 'TG1', commit: 'C1', approver: 'u', session: s.id }
     reconcileResult = { deletes: { error: 'delete api down' }, attributeValues: { errors: [] } }
     assertionsResult = { total: 1, passed: 1, failed: [], results: [{ id: 'a', pass: true }] }
-    const out = await execute('TG1', { session: s.id, token: 'x' })
+    const out = await execute('TG1', { session: s.id, token: 'x', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, true)
     assert.equal(out.controlOk, false)
     assert.ok(out.controlReasons.some(r => /delete api down/.test(r)))
@@ -96,7 +96,7 @@ test('a skipped delete makes controlOk false with a reason', async () => {
     approval = { target: 'TG1', commit: 'C1', approver: 'u', session: s.id }
     reconcileResult = { deletes: { flagged: [{ type: 'subset', name: 'Old', error: 'not auto-applied' }] }, attributeValues: { errors: [] } }
     assertionsResult = { total: 1, passed: 1, failed: [], results: [{ id: 'a', pass: true }] }
-    const out = await execute('TG1', { session: s.id, token: 'x' })
+    const out = await execute('TG1', { session: s.id, token: 'x', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.executed, true)
     assert.equal(out.controlOk, false)
     assert.ok(out.controlReasons.some(r => /subset Old/.test(r)))

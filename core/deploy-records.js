@@ -129,6 +129,13 @@ function buildRecord(out, { startedAt } = {}) {
         // measured before the pull (see compareTargetWithRepo).
         elementLoss: out.elementLoss ?? [],
         loss: out.loss ?? null,
+        // Protection: the target's data written to disk, and the backup that was
+        // required first (a process that ran, or the person's stated time).
+        saveData: out.saveData ?? null,
+        backup: out.backup ?? null,
+        // The confirmation shown when Ship stopped: who said yes, when, and what
+        // they were shown.
+        lossAck: out.lossAck ?? null,
         restoreCommit: out.restoreCommit ?? null,
         startedAt: startedAt ?? null,
         finishedAt: at,

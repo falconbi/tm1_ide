@@ -160,6 +160,8 @@
   "GET /api/git-readiness",
   "POST /api/deploy/git/prepare",
   "POST /api/deploy/git/execute",
+  "GET /api/deploy/settings",
+  "POST /api/deploy/settings",
   "POST /api/deploy/git/loss",
   "GET /api/deploy/git/return/preview",
   "POST /api/deploy/git/return",

@@ -504,6 +504,51 @@ removed, Ship stays one click: no extra step appears.
 
 ---
 
+## 18. Data lost by a deploy
+
+**What you see:** the model is right, the numbers are not. A deploy replaced a dimension and the
+elements went with their values; rules changed and stored values were recalculated; a cube's
+data no longer matches what people expect.
+
+**Why it matters that you know this first: whenever you are here, the design can be put back
+and the data cannot.**
+
+- **Return `<target>` to its last release** (§10) restores **objects** — dimensions, cubes,
+  rules, processes, views, subsets. It does not restore **values**. It cannot: values are not
+  in Git, and a pull does not write them.
+- **Data comes back one way only:** a TM1 administrator restores a backup **outside the IDE**,
+  from a server-side backup of the target's data directory. The IDE cannot do it, and nothing
+  in the deploy pipeline can undo a value.
+
+**Do this — and do it quickly, before the next load or save overwrites more:**
+
+1. Open the change set row → **Deploy report** for the deploy that lost the data (or **Deploy →
+   History** → the commit). Read three times from it:
+   - **When** it ran (the top of the report).
+   - **Save Data** — the time the target's data was written to disk immediately before the pull.
+   - **Backup** — either the backup process that ran and when it finished, or the time the
+     person recorded as the last backup.
+2. Give those three things to your TM1 administrator, with the server name. They decide which
+   backup to restore from; the **Save Data** time is useful because a backup taken after it,
+   or a copy of the data directory from that moment, is the closest possible point.
+3. **Stop saving** to that target until the restore is decided. Every `SaveDataAll` between now
+   and the restore makes the recoverable point later than the incident.
+4. After the restore, check drift (§6) before shipping anything else.
+
+**What the report will not tell you:** which individual cells changed. It records what the
+deploy replaced, not the values that were in them. That is what the backup is for.
+
+**Prevention, already in the pipeline:** every deploy saves the target's data to disk first, and
+either runs the backup process configured for that server (**Deploy → Protection**) or requires
+the person to record when the last backup was taken. If the process fails, the deploy is refused
+before anything is replaced.
+
+**On TM1 v12:** a backup process usually needs `ExecuteCommand`, which v12 does not allow. On
+v12, leave the process empty — the deploy asks for the last backup time instead, which is the
+normal answer there.
+
+---
+
 ## Things that look like failures but are not
 
 | What you see | What it is |

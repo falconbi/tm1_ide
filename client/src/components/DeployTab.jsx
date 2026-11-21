@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { History, HardDriveDownload, FileCode2, GitCompare, Activity, GitBranch, HelpCircle, Rocket } from 'lucide-react'
+import { History, HardDriveDownload, FileCode2, GitCompare, Activity, GitBranch, HelpCircle, Rocket, ShieldCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
 import { useChangeSetSummary } from '@/hooks/useApi'
 import HelpPanel from '@/components/HelpPanel'
 import DeployHistory from '@/components/DeployHistory'
+import DeployProtection from '@/components/DeployProtection'
 import LensDeploy from '@/components/LensDeploy'
 import GitDrift from '@/components/GitDrift'
 import ModelHealth from '@/components/ModelHealth'
@@ -19,6 +20,7 @@ const NAV = [
   { id: 'baselines', label: 'Baselines',    icon: HardDriveDownload, title: 'Bootstrap or recover a baseline' },
   { id: 'drift',     label: 'Drift',        icon: GitCompare, title: 'Compare a target with the version it was last given' },
   { id: 'health',    label: 'Model health', icon: Activity, title: 'Run the model tests and check readiness' },
+  { id: 'protection', label: 'Protection',   icon: ShieldCheck, title: 'Backup before every deploy' },
   { id: 'setup',     label: 'GitHub setup', icon: GitBranch, title: 'Link a server to a GitHub repository' },
 ]
 
@@ -82,6 +84,7 @@ export default function DeployTab() {
             {view === 'baselines' && <DeployBaselines key={`baselines:${server}`} defaultServer={server} />}
             {view === 'drift'     && <GitDrift key={`drift:${server}`} server={server} embedded onClose={() => {}} />}
             {view === 'health'    && <ModelHealth key={`health:${server}`} server={server} embedded onClose={() => {}} onOpenAssertions={openAssertions} />}
+            {view === 'protection' && <DeployProtection key={`protection:${server}`} />}
             {view === 'setup'     && <GitSetup key={`setup:${server}`} server={server} embedded onClose={() => {}} />}
           </div>
         </div>

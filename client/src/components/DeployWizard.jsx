@@ -128,6 +128,10 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const [busy,      setBusy]      = useState('')
   const [error,     setError]     = useState(null)
   const [confirming, setConfirming] = useState(false)
+  // Protection before the target is overwritten: a configured backup process, or
+  // the person's stated time when there is none.
+  const [protection, setProtection] = useState(null)
+  const [backupAt, setBackupAt] = useState('')
   // The change set's own log, with each entry's before/after state. Review is
   // supposed to be a review — showing the object names alone asks the approver
   // to remember what they changed.
@@ -297,6 +301,16 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     } catch (e) { setError(e.message) }
     finally { setCatchBusy(false) }
   }
+  useEffect(() => {
+    if (!target) { setProtection(null); return }
+    let live = true
+    request(`/api/deploy/settings?server=${encodeURIComponent(target)}`, { headers: authHeader() })
+      .then(r => r.json())
+      .then(d => { if (live && !d.error) setProtection({ backupProcess: d.backupProcess ?? null }) })
+      .catch(() => { if (live) setProtection({ backupProcess: null }) })
+    return () => { live = false }
+  }, [target])
+
   const doPrepare = async () => {
     setPrepAt(Date.now())
     const d = await run('prepare', { source: server, target, session: sessionId, branch: `release-${target}` }, '/api/deploy/git/prepare')
@@ -327,7 +341,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   // a native confirm() on the most consequential button in the app.
   const doDeploy = async () => {
     setConfirming(false)
-    const d = await run('deploy', { source: server, target, session: sessionId }, '/api/deploy/git/execute')
+    const d = await run('deploy', { source: server, target, session: sessionId, backupAt: backupAt || undefined }, '/api/deploy/git/execute')
     if (d) {
       setRes(d)
       if (d.executed) { setDrift(null); setStep(8) }   // Verify runs itself from here
@@ -944,6 +958,23 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
               <div className="border border-border rounded-md p-3 space-y-3">
                 {!release?.releaseCommit && <p className="text-xs text-muted-foreground">Build and approve a release first.</p>}
                 {release?.releaseCommit && !approval && <p className="text-xs text-amber-600">Not approved yet — go back to Approve (step 6) to record the decision.</p>}
+                {protection?.backupProcess && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Backup process <span className="font-mono text-foreground">{protection.backupProcess}</span> runs on {target} first; if it fails, nothing is sent.
+                  </p>
+                )}
+                {protection && !protection.backupProcess && (
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">When was <span className="text-foreground">{target}</span> last backed up? (no backup process is set)</label>
+                    <input
+                      type="datetime-local"
+                      value={backupAt}
+                      onChange={e => setBackupAt(e.target.value)}
+                      className={inputCls + ' w-full'}
+                    />
+                    <p className="text-[10px] text-muted-foreground">Recorded with the deploy — a deploy cannot be undone, and data comes back only from a backup.</p>
+                  </div>
+                )}
                 {confirming ? (
                   <div className="border border-red-600/40 rounded-md p-3 space-y-2 bg-red-500/5">
                     <p className="text-xs font-semibold">Deploy to {target}?</p>
@@ -962,7 +993,11 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setConfirming(true)} disabled={busy === 'deploy' || !release?.releaseCommit || !approval} className={primaryBtn}>Deploy to {target}</button>
+                    <button
+                      onClick={() => setConfirming(true)}
+                      disabled={busy === 'deploy' || !release?.releaseCommit || !approval || !protection || (!protection.backupProcess && !backupAt)}
+                      className={primaryBtn}
+                    >Deploy to {target}</button>
                     {busy === 'deploy' && <span className="text-xs text-muted-foreground">Applying…</span>}
                   </div>
                 )}
