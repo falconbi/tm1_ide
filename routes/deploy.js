@@ -128,6 +128,17 @@ app.post('/api/deploy/git/execute', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Is the target idle? Read-only. Three answers: running work (refuse), chores due
+// soon (warn), people signed in (confirm).
+app.get('/api/deploy/idle', async (req, res) => {
+    try {
+        const { server, window = '30' } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { idleCheck } = require('../core/idle-check')
+        res.json(await idleCheck(server, { ideToken: req.ideToken, windowMinutes: Number(window) || 30 }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Per-target protection: the backup process to run before a deploy (or none, in
 // which case the deploy asks when the last backup was taken).
 app.get('/api/deploy/settings', async (req, res) => {
