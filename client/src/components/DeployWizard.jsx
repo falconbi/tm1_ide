@@ -444,7 +444,19 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
           <span className="text-xs text-muted-foreground">from {server}</span>
           {deployCtx
             ? <span className="text-[10px] text-muted-foreground/80">· change set <span className="font-mono text-foreground/80">{deployCtx.name}</span>
-              {resume && resume.step > 1 ? <><span className="text-muted-foreground/60"> · {resume.label}</span> <button onClick={() => setStep(resume.step)} className="ml-1 underline underline-offset-2 text-foreground/80 hover:text-foreground">resume</button></> : null}</span>
+              {resume && resume.step > 1 ? (
+                <>
+                  <span className="text-muted-foreground/60"> · {resume.label}</span>
+                  {/* Only offered when it would actually move you. The bare word
+                      "resume" read as part of the sentence and did nothing when
+                      you were already on that step. */}
+                  {resume.step !== step && (
+                    <button onClick={() => setStep(resume.step)} className="ml-1 underline underline-offset-2 text-foreground/80 hover:text-foreground">
+                      go to step {resume.step}
+                    </button>
+                  )}
+                </>
+              ) : null}</span>
             : <span className="text-[10px] text-amber-600/90">· no change set — start one in the status bar (or on your first save)</span>}
           <div className="flex-1" />
           <button onClick={handleClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
