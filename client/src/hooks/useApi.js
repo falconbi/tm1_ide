@@ -4,7 +4,7 @@ import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { conflictEntry } from '@/lib/conflict'
 import { get, post, patch, del, request } from '@/lib/api'
-import { readyToRelease, inProgress } from '@/lib/deploy/change-sets'
+import { readyToRelease, inProgress, SESSIONS_LIMIT } from '@/lib/deploy/change-sets'
 
 // ── Global /api fetch wrapper ─────────────────────────────────────────────────
 // 1. Attaches the IDE token to every same-origin /api call that lacks one (some
@@ -724,7 +724,7 @@ function useServerUser(server) {
   return logins.find(l => String(l?.name ?? '').toLowerCase() === name)?.username ?? null
 }
 export const useActiveWorkSession  = (server) => { const user = useServerUser(server); return useQuery({ queryKey: ['work-session-active', server, user], queryFn: () => get(`/api/sessions/active?server=${enc(server)}`), enabled: !!server, staleTime: 0, refetchInterval: 0 }) }
-export const useWorkSessions       = (server) => { const user = useServerUser(server); return useQuery({ queryKey: ['work-sessions', server, user], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0 }) }
+export const useWorkSessions       = (server) => { const user = useServerUser(server); return useQuery({ queryKey: ['work-sessions', server, user], queryFn: () => get(`/api/sessions?server=${enc(server)}&limit=${SESSIONS_LIMIT}`), enabled: !!server, staleTime: 0 }) }
 
 // The one place screens ask "what is ready to ship?" — derived from the same
 // query, so a count shown in the header, the panel and the Release list agrees.

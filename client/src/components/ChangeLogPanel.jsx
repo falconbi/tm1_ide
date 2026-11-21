@@ -5,6 +5,7 @@ import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCh
 import HelpPanel from '@/components/HelpPanel'
 import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
 import { useStore } from '@/store'
+import { SESSIONS_LIMIT } from '@/lib/deploy/change-sets'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { rulesTabId, processTabId, dimensionTabId, viewTabId, subsetTabId } from '@/lib/tab-ids'
@@ -491,6 +492,13 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up', onNe
           >
             {showWontDeploy ? "Hide phantom" : `Show ${phantomCount} phantom`}
           </button>
+        )}
+        {/* Say so when the list is a page, not the whole history — the counts
+            above are only totals when everything came back. */}
+        {allSessions.length >= SESSIONS_LIMIT && (
+          <p className="shrink-0 px-3 py-1.5 text-[10px] text-muted-foreground/70 border-t border-border">
+            Showing the latest {SESSIONS_LIMIT} change sets.
+          </p>
         )}
       </div>
 

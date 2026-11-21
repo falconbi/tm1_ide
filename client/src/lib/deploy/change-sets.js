@@ -33,3 +33,8 @@ export function readyToRelease(sessions) {
 }
 
 export const readyCount = sessions => readyToRelease(sessions).length
+
+// How many change sets a screen asks for. The server defaults to 50, which made
+// "Show N phantom" a page count on any model with a long history; 500 keeps the
+// counts honest for realistic use while staying bounded.
+export const SESSIONS_LIMIT = 500

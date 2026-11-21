@@ -109,7 +109,11 @@ app.get('/api/sessions/active', (req, res) => {
 app.get('/api/sessions', async (req, res) => {
     try {
         const server   = req.query.server
-        const sessions = cl.getSessions(server)
+        // The list drives counts ("Show 31 phantom"), so silently returning the
+        // first 50 makes those counts a page count. Callers may ask for more;
+        // the ceiling keeps a huge history from being read on every render.
+        const limit    = Math.min(Math.max(Number(req.query.limit) || 50, 1), 1000)
+        const sessions = cl.getSessions(server, limit)
         let phantom = new Set()
         try { phantom = await require('../core/phantom-change-set').findPhantomIds(server, sessions, { ideToken: req.ideToken }) }
         catch { /* no model read → no automatic hiding */ }
