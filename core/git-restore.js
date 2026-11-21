@@ -37,9 +37,9 @@ function parseViewPlacement(p) {
     const dim = named
         ? String(subId).match(/Dimensions\('([^']+)'\)/)?.[1]
         : String(p?.Subset?.Hierarchy?.['@id'] ?? '').match(/Dimensions\('([^']+)'\)/)?.[1]
-    if (named) return { dimension: dim, subset: named }
-    const out = { dimension: dim, customExpr: p?.Subset?.Expression ?? null }
     const member = String(p?.Selected?.['@id'] ?? '').match(/Elements\('([^']+)'\)/)?.[1] ?? null
+    if (named) return { dimension: dim, subset: named, ...(member ? { member } : {}) }
+    const out = { dimension: dim, customExpr: p?.Subset?.Expression ?? null }
     if (member) out.member = member
     return out
 }
@@ -75,6 +75,7 @@ async function applyView(tm1, det, content) {
         titles: (view.Titles ?? []).map(parseViewPlacement),
         suppressEmptyRows: view.SuppressEmptyRows,
         suppressEmptyColumns: view.SuppressEmptyColumns,
+        formatString: view.FormatString,
     })
     return { type: 'view', name: `${det.name} (${det.cube})`, mode: 'native' }
 }

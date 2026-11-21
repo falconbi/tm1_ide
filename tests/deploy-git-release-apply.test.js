@@ -31,9 +31,10 @@ test('applyView keeps MDX for MDX views and rebuilds native views from placement
   await applyView(tm1, { cube: 'CubeA', name: 'MDXView', mdx: 'SELECT {[X].[X].[M]} ON COLUMNS FROM [CubeA]' }, JSON.stringify({ '@type': 'MDXView', Name: 'MDXView', 'MDX@Code.link': 'MDXView.mdx' }))
   await applyView(tm1, { cube: 'CubeA', name: 'NatView' }, JSON.stringify({
     '@type': 'NativeView',
+    FormatString: '0.00',
     Columns: [{ Subset: { '@id': "Dimensions('D1')/Hierarchies('D1')/Subsets('S1')" } }],
     Rows: [{ Subset: { Hierarchy: { '@id': "Dimensions('D2')/Hierarchies('D2')" }, Expression: '{[D2].[D2].[E1]}' } }],
-    Titles: [{ Subset: { Hierarchy: { '@id': "Dimensions('D3')/Hierarchies('D3')" }, Expression: '{[D3].[D3].[E3]}' }, Selected: { '@id': "Dimensions('D3')/Hierarchies('D3')/Elements('E3')" } }],
+    Titles: [{ Subset: { '@id': "Dimensions('D3')/Hierarchies('D3')/Subsets('All Versions')" }, Selected: { '@id': "Dimensions('D3')/Hierarchies('D3')/Elements('Forecast')" } }],
   }))
   assert.equal(calls[0][0], 'view-mdx')
   assert.equal(calls[0][3], 'SELECT {[X].[X].[M]} ON COLUMNS FROM [CubeA]')
@@ -41,11 +42,15 @@ test('applyView keeps MDX for MDX views and rebuilds native views from placement
   assert.equal(n[0], 'view-native')
   assert.deepEqual(n[3].columns, [{ dimension: 'D1', subset: 'S1' }])
   assert.deepEqual(n[3].rows, [{ dimension: 'D2', customExpr: '{[D2].[D2].[E1]}' }])
-  assert.deepEqual(n[3].titles, [{ dimension: 'D3', customExpr: '{[D3].[D3].[E3]}', member: 'E3' }])
+  assert.deepEqual(n[3].titles, [{ dimension: 'D3', subset: 'All Versions', member: 'Forecast' }])
+  assert.equal(n[3].formatString, '0.00')
 })
 
 test('parseViewPlacement handles named subsets, expressions and selected members', () => {
   assert.deepEqual(parseViewPlacement({ Subset: { '@id': "Dimensions('D1')/Hierarchies('D1')/Subsets('S1')" } }), { dimension: 'D1', subset: 'S1' })
+  assert.deepEqual(
+    parseViewPlacement({ Subset: { '@id': "Dimensions('D1')/Hierarchies('D1')/Subsets('S1')" }, Selected: { '@id': "Dimensions('D1')/Hierarchies('D1')/Elements('E1')" } }),
+    { dimension: 'D1', subset: 'S1', member: 'E1' })
   assert.deepEqual(
     parseViewPlacement({ Subset: { Hierarchy: { '@id': "Dimensions('D2')/Hierarchies('D2')" }, Expression: '{[D2].[D2].[E]}' }, Selected: { '@id': "Dimensions('D2')/Hierarchies('D2')/Elements('E')" } }),
     { dimension: 'D2', customExpr: '{[D2].[D2].[E]}', member: 'E' })

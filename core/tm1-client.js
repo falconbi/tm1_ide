@@ -1230,7 +1230,7 @@ return (d.value ?? [])
         return d?.Name
     }
 
-    async saveNativeView(cube, name, { rows, columns, titles, suppressEmptyRows, suppressEmptyColumns }) {
+    async saveNativeView(cube, name, { rows, columns, titles, suppressEmptyRows, suppressEmptyColumns, formatString }) {
         const esc = s => String(s).replace(/'/g, "''")
         const hierBind = dim => `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')`
 
@@ -1312,6 +1312,7 @@ return (d.value ?? [])
             Name: name,
             SuppressEmptyRows:    !!suppressEmptyRows,
             SuppressEmptyColumns: !!suppressEmptyColumns,
+            ...(typeof formatString === 'string' ? { FormatString: formatString } : {}),
             ...patchBody,
         }
         // Delete existing view (regardless of type) then create fresh native view

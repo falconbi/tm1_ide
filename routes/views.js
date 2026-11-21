@@ -40,12 +40,15 @@ app.post('/api/view/save', async (req, res) => {
                 ? { type: 'mdx', mdx: current.MDX ?? '' }
                 : { type: 'native', definition: current }
             : null
-        if (nativeAxes) {
-            await client.saveNativeView(cube, name, nativeAxes)
+        const axes = nativeAxes && nativeAxes.formatString === undefined && typeof current?.FormatString === 'string'
+            ? { ...nativeAxes, formatString: current.FormatString }
+            : nativeAxes
+        if (axes) {
+            await client.saveNativeView(cube, name, axes)
         } else {
             await client.saveView(cube, name, mdx)
         }
-        const afterState = nativeAxes ? { type: 'native', definition: nativeAxes } : { type: 'mdx', mdx: mdx ?? '' }
+        const afterState = axes ? { type: 'native', definition: axes } : { type: 'mdx', mdx: mdx ?? '' }
         const { hasSession } = cl.writeLog({ server, action: 'VIEW_SAVED', objectType: 'view', objectName: name, detail: cube, beforeState, afterState, user: req.user })
         res.json({ ok: true, noSession: !hasSession })
     } catch (e) { fail(res, e) }
