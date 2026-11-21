@@ -249,33 +249,122 @@ the wire:
 The second one is smaller, because it removes two of the hardest parts of this design: building a
 correct TM1 Git file by hand, and approving something that changes after approval.
 
+It is also broader than dimensions. Agreed with James on 22 Nov, as **one rule**:
+
+> Before a deploy, anything PROD changed is refreshed into DEV first.
+
+## What the refresh covers
+
+Every object type PROD is allowed to change, listed from the **drift report** — the same comparison
+that already tells you PROD moved. One screen, one tick per item, ticked by default; a **delete is
+unticked** and needs a deliberate tick.
+
+| Object | What is copied to DEV |
+|---|---|
+| Dimension | missing elements, edges (including a re-parent / archiving move), element types |
+| Hierarchy, including alternate hierarchies | new hierarchies whole; inside existing ones, added elements and edges |
+| Attribute | new attribute definitions, and the values PROD's load maintains (see the attribute section below) |
+| View, subset | PROD's version onto DEV. If DEV also changed the same one, someone chooses which wins — the choice already built at Review |
+| Chore | schedule and active flag |
+
+**Never refreshed:** rules, processes and cube structure. A direct change to one of those on PROD
+still blocks the deploy and is fixed on DEV in a change set. They are model code, not loaded state,
+and copying them back would turn a production hotfix into an unreviewed DEV edit.
+
+Everything refreshed is written under the open change set (`writeLog`), so the release carries it,
+the approval covers it, and the diff shows it. **After the refresh, drift on those objects is
+resolved by the release itself**: the release carries PROD's version, so the pull has nothing to
+overwrite and the target ends up matching what it received.
+
+## Deploy only when the target is idle
+
+Agreed with James, 22 Nov. The refresh closes most of the timing gap — if PROD is quiet, nothing
+changes between the refresh and the deploy. The IDE can check that PROD *is* quiet, rather than
+assume it.
+
+**What it reads**, on the target, at two points:
+
+| Signal | Source | Answer |
+|---|---|---|
+| Threads | `Threads?$expand=Session` (`getThreads`, already used by the admin screen and the MCP `get_active_threads` tool) | any user thread whose `State` is not `Idle` and whose object is a process or chore |
+| Chores | `Chores` + `Chores('<name>')` — `Active`, `StartTime`, `Frequency`, `ExecutionMode` | a chore that is due inside the deploy window (next run = `StartTime` + k·`Frequency`, compared with now) |
+| Sign-ins | `Sessions?$expand=…` (`getSessions`) | how many people are connected, and who |
+
+**What each answer does:**
+
+- **A process or chore is running** → **refuse**, naming it: *"WFP Load Accounts is running on
+  TM1_Test_PROD; deploy when it finishes."* Nothing is sent, no lock is taken.
+- **A chore is due within the deploy window** → **warn**, naming the chore and the time it is due.
+  Not a refusal: a chore can be due in ten minutes and the deploy takes five, and only a person can
+  judge that.
+- **Users are signed in** → show the count and the names, and require a **confirmation**. Not a
+  refusal: someone having the model open is worth telling them, not worth blocking on.
+
+**The order, and why it is this order:**
+
+```
+1  idle check                  ← nothing is written if the target is busy
+2  refresh DEV from PROD       ← the merge, recorded in the open change set
+3  build the release
+4  approve
+5  idle check again            ← the target may have moved while DEV was being prepared
+6  Save Data
+7  backup (process, or the stated time)
+8  pull
+9  verify                      ← checks + drift, as today
+```
+
+The second idle check is the one that matters; the first stops a pointless refresh. **Save Data and
+the backup sit between the second check and the pull**, which is a real hole on a large model — a
+load can start in those minutes. Two ways to close it, and the second is preferred:
+
+- move the idle check to immediately before the pull (after the backup), or
+- keep the second check where it is *and* re-check after the backup, refusing if the target became
+  busy in between.
+
+Everything else in the sequence is unchanged: the lock is taken at the start of the deploy, the
+approval is bound to the release commit, and the report records both idle checks.
+
+**Recorded in the deploy report:** each idle check — when, what it found (running objects, chores
+due, signed-in users), and what the person confirmed. A deploy that went ahead while two people were
+signed in is a fact worth having afterwards.
+
+**Chores are never switched off automatically.** If a chore must be paused for a deploy, an
+administrator pauses it and the deploy report says it was paused. A pipeline that silently disables
+production schedules is worse than a refused deploy.
+
 ## What each needs in code
 
 | Work | Design 15 | Refresh-to-DEV |
 |---|---|---|
 | Ownership registry (`ownership.json`, admin UI, suggestions from `process-scan`) | **Yes** — decisions 2 and 3. New model document, a settings screen, suggestion heuristics. ~1.5–2 days | **No** for release building. A much smaller list is still needed: *which attributes PROD's load maintains*, per dimension. ~0.25 day |
 | Merge PROD's state into a release | **Yes** — `buildRelease` gains a merge mode: dimension add-only, chore split (schedule vs steps), views/subsets conflict. Edits the JSON that `prod-live` produced. ~3–4 days | **No** |
-| Copy PROD → DEV | — | **Yes** — compare live PROD with live DEV per object, then `addElementAt` / `addEdge` / `deleteElement` / `writeElementAttribute`, `updateChore`, `saveView` / `saveSubset`. ~1.5–2 days |
+| Copy PROD → DEV | — | **Yes** — compare live PROD with live DEV per object, then `addElementAt` / `addEdge` / `deleteElement` / `writeElementAttribute`, `createHierarchy` / `hierarchyInfo`, `createElementAttribute`, `updateChore`, `saveView` / `saveSubset`. All object types PROD may change. ~2.5–3 days |
+| Refresh UI: drift-sourced list, tick per item, deletes unticked | — | **Yes** — ~1 day (see the review-UI row) |
 | Record it in the change set | — | **Yes** — the existing `writeLog` for the open session, per object, so the change set owns what was copied. ~0.25 day |
 | Snapshot + rebuild between build and deploy | **Yes** — decision 7, `prod-live` re-snapshot, rebuild, rebind. ~1–1.5 days | **No** — the release is ordinary. The timing gap is covered by the element-loss stop that is already built (with the caveat below). |
 | Delta-hash approval | **Yes** — decision 6. New hash on the release, compared at deploy. ~1–1.5 days | **No** — normal commit approval (§ "Approval" below) |
 | Review UI for merge results (moves, removals, conflicts) | **Yes** — ~1–1.5 days | **Yes**, but smaller: a refresh panel with the objects, ticked deletes, and a run button. ~1 day |
-| Drift rule: don't block when the release already carries PROD's state | **Yes**, by ownership | **Yes**, by content — needs the element-loss comparison per dimension (~0.5 day, reuses `compareTargetWithRepo`) |
+| Drift rule: don't block when the release already carries PROD's state | **Yes**, by ownership | **Yes**, by content — but per object type, not element names alone: elements, edges, types, hierarchy membership, attribute definitions/values, chore flag. One comparison shared with the refresh. ~1 day |
 | Attribute-value discipline (brief 14) | **Yes** — never wholesale on a PROD-owned dimension | **Yes**, and *more* important: the refresh writes PROD's values onto DEV, and a later deploy writes DEV's values back |
-| Tests + lab proof | ~2 days | ~1.5 days |
-| **Rough total** | **~10–12 days** | **~5–6 days** |
+| Idle check (threads, chores due, sessions) + the two call sites + report fields | **Yes** too — same value here, and it is what makes the timing gap small in either design. ~1–1.5 days | **Yes** — reads `getThreads`, `getChores` / `getChore`, `getSessions`; all exist. ~1–1.5 days |
+| Tests + lab proof | ~2 days | ~2 days |
+| **Rough total** | **~11–13 days** | **~8–9 days** |
 
 ### What it reuses
 
 Refresh-to-DEV is mostly assembly of things that exist:
 
-- `TM1Client`: `getElements`, `getEdges`, `addElementAt`, `addEdge`, `deleteElement`, `writeElementAttribute`, `getElementAttributeValues`, `getChore` / `updateChore`, `getViewWithSubsets`, `saveView`, `saveSubset`.
+- `TM1Client`: `getElements`, `getEdges`, `addElementAt`, `addEdge`, `deleteElement`, `writeElementAttribute`, `getElementAttributeValues`, `getHierarchies` / `hierarchyInfo` / `createHierarchy`, `createElementAttribute`, `getChore` / `updateChore`, `getViewWithSubsets`, `saveView`, `saveSubset`.
 - `applyView` / `applySubset` (`core/git-restore.js`) for writing a view or subset onto DEV, unchanged.
 - `writeLog` (`core/change-log.js`) so the open change set records each copied object — the same
   entries the editors write, so diffs, ownership and releases work as normal.
 - `compareTargetWithRepo` (`core/git-readiness.js`) for the drift rule — but see the caveat: it
   compares **element names only**.
-- The element-loss stop in Ship and Review, which is the timing-gap guard.
+- `getThreads`, `getChores` / `getChore` and `getSessions` for the idle check — the admin screen and
+  the MCP `get_active_threads` tool already use the first.
+- The element-loss stop in Ship and Review, which stops being the only timing-gap guard once the
+  idle check exists.
 
 What it does not need at all: `prod-live` as a base, a merge in `buildRelease`, an ownership
 registry, a delta hash.
@@ -327,7 +416,7 @@ riskiest step.
   or not at all. Element existence is what the deploy actually needs; values come from PROD's own
   load.
 
-### The drift rule as proposed has a hole: edges and types
+### The drift rule as proposed has a hole: it compares the wrong thing
 
 The proposal is: *drift on a dimension no longer blocks if the element-loss count for that dimension
 is 0, using `compareTargetWithRepo`.*
@@ -337,29 +426,64 @@ is 0, using `compareTargetWithRepo`.*
 - **consolidation edges** — a re-parent, including the archiving pattern this project uses
   (`Archive` under weight 0);
 - **element types** (Numeric vs String);
+- **hierarchy membership** — a hierarchy PROD added, or one whose contents changed;
 - **attribute definitions or values**;
 - element **order**.
 
-So a PROD dimension that was re-parented (someone archiving an element, or the load rebuilding a
-rollup) has element loss 0, would stop blocking, and the pull would silently put the old edge back.
-That is the same class of loss the whole design exists to prevent, and `elementLoss` cannot see it.
+With the refresh now covering all of those, the rule has to cover all of them too. A PROD dimension
+that was re-parented, a hierarchy the load created, or an attribute the load populated has element
+loss 0 — the deploy would stop blocking and the pull would silently undo the change. That is the
+same class of loss the whole design exists to prevent.
 
-Fix, still small: the rule must be *"the release carries everything PROD has for this dimension"*,
-not *"no element is missing"*. That means comparing edges and element types as well as names — the
-comparison is a superset of today's `compareTargetWithRepo`, and the readiness module is the right
-home for it. Budget +0.5 day over the estimate above; do not ship the rule without it.
+**The clean formulation, which also saves work:** a drift entry is non-blocking when *the release
+already carries PROD's version of that object* — which is exactly the question the refresh asks. So
+one comparison serves both:
 
-### Deletes default in the wrong direction
+1. the refresh uses it to decide what to copy;
+2. the drift gate uses it to decide whether anything is still at risk.
 
-"Deletes are shown and must be ticked" means unticked by default. But unticked means the element
-stays on DEV, and the release therefore **re-creates it on PROD** — the opposite of what a person
-reading "PROD deleted this" would expect. Either:
+If the comparison says DEV's version of the object now equals PROD's, drift for that object is
+resolved by the release and does not block. If it says anything still differs — an edge, a type, an
+attribute — the deploy blocks, naming the object, exactly as today.
 
-- tick deletes by default (refreshing DEV *is* adopting PROD's state), or
-- label the unticked state explicitly: *"kept on DEV — the next deploy will put it back on PROD"*.
+For dimensions that means comparing elements **and** edges **and** types. For hierarchies, the whole
+hierarchy. For attributes, definitions and the value set PROD actually maintains. For chores,
+schedule and flag. That is the +0.5 day already counted above, and it is the single most important
+implementation detail in this design.
 
-The second is honest and leaves the choice with the person; the first is less surprising. Either
-way it must not be a silent default.
+### Hierarchies and attributes have merge rules of their own
+
+A hierarchy is not a smaller dimension: PROD may create an alternate hierarchy that DEV also has
+with different contents, or add an element to one DEV deleted. The rule that works is the same as
+for dimensions — take PROD's version for the parts PROD owns, keep DEV's additions — but it has to
+be decided per hierarchy, not per dimension, or an alternate hierarchy rebuilt by a load will
+collide with a DEV one of the same name.
+
+Attribute definitions can collide in a worse way: the same attribute name with a different type on
+the two servers (Numeric on PROD, String on DEV). That cannot be merged, only refused, and the
+refusal has to name both sides.
+
+### The "one rule" has a hard boundary, and it will be felt
+
+Rules, processes and cube structure are not refreshed, so a change to one of them on PROD still
+blocks every deploy until someone reproduces it on DEV in a change set. That is the right default —
+they are code, not loaded state — but if the nightly load ever touches a cube's rules or a process,
+the team will hit a blocked deploy every night with no refresh path to clear it. Worth confirming
+with the load's owner before this ships, because if the load does touch code, the rule needs an
+answer for it (most likely: the load must not touch code on PROD).
+
+### Deletes are unticked by default — say what that means
+
+Agreed: a delete is unticked and needs a deliberate tick. The consequence has to be on the screen,
+because it is the opposite of what "PROD deleted this" sounds like:
+
+- **unticked** (the default) — the element stays on DEV, so the release contains it, so the next
+  deploy **puts it back on PROD**;
+- **ticked** — DEV adopts PROD's deletion and the deploy removes it.
+
+So the item must read *"PROD deleted `A-1000` — unticked: the next deploy puts it back on PROD"*,
+not merely offer a box. Otherwise the safe-looking default is the one that silently re-creates data
+someone deliberately removed.
 
 ### Chores: copying the schedule onto DEV changes DEV's behaviour
 
@@ -370,6 +494,29 @@ switch PROD's chore off, but it has a side effect on the dev server.
 Mitigation: refresh chores while DEV's chores are known-inactive, or copy the schedule but force
 `Active = false` on DEV and let the deploy bring PROD's own flag from PROD's file (which is what
 design 15 does by keeping PROD's chore file). This needs a decision; it is not obvious.
+
+### The idle check is a snapshot, not a lock
+
+It reads a moment. A load can start one second later, and Save Data plus a backup process can take
+minutes on a large model — long enough for a chore to fire between the check and the pull. So the
+check reduces the window; it does not close it. The second check belongs as late as possible (after
+the backup, immediately before the pull), and a chore due inside that window has to be treated as a
+reason to wait, not a warning to click past.
+
+Two practical points:
+
+- **Permissions.** Reading other people's sessions needs an account that can see them. If the deploy
+  login cannot, the check must say so ("sign-ins could not be read") rather than report zero — a
+  false all-clear is worse than no check.
+- **Chore timing is computed**, not read: TM1 v11 gives `StartTime` + `Frequency`, not a next-run
+  time, so DST and `ExecutionMode` need care. Being a few minutes out is acceptable for a warning;
+  it is not acceptable for a refusal, which is why only *running* refuses.
+
+### Idle check does not replace the drift gate
+
+If the target was already drifted before the deploy, idleness changes nothing — drift still blocks,
+and refresh is what resolves it. The two checks answer different questions: *did PROD change?* and
+*is PROD changing right now?*
 
 ### Refresh and the change set's own history
 
@@ -393,10 +540,10 @@ Two consequences worth stating:
 - A refresh *after* approval writes to DEV, moves DEV's commit, and therefore **voids the
   approval** — correctly. The workflow is: refresh → close → build → approve → ship. The person
   approves what will actually ship.
-- The timing gap (PROD loads between refresh and deploy) is handled by the element-loss stop, which
-  is already built and live-tested — **for elements**. It does not cover edges, types or chores, and
-  the drift rule must cover those (see the hole above). "Refresh again" is a real answer only if the
-  stop tells you to.
+- The timing gap (PROD changes between refresh and deploy) is handled by the drift comparison, which
+  must cover every refreshed type — elements, edges, types, hierarchies, attributes, chores (see the
+  hole above). The element-loss stop that is already built covers only the element case; "refresh
+  again" is a real answer only if the gate tells you which object moved and why it matters.
 
 ## What only one design can handle
 
@@ -404,7 +551,8 @@ Two consequences worth stating:
 |---|---|---|
 | DEV must stay free of production codes (training, demos, external developers) | ✅ | ❌ — the codes are copied in |
 | Two targets with different ownership of the same object | ✅ per-target registry | ⚠️ per-refresh choices only |
-| PROD moves inside owned objects between approval and deploy | ✅ rebuilt without re-approval | ⚠️ refresh again; caught by the stop only if the comparison covers the change |
+| PROD moves inside owned objects between approval and deploy | ✅ rebuilt without re-approval — much rarer with an idle check, still needed when a load starts between the check and the pull | ⚠️ refresh again; caught by the stop only if the comparison covers the change |
+| A load starting during Save Data or the backup | ⚠️ same window; decision 7 rebuilds if it can | ⚠️ same window; needs the second check late, or a re-check |
 | No hand-built TM1 Git files | ❌ — the merge edits exported JSON | ✅ — TM1 writes DEV's file itself |
 | Smallest approval model | ❌ delta hash | ✅ ordinary commit approval |
 | DEV remains an accurate mirror of the loaded dimension day to day | ❌ DEV drifts, always | ✅ after each refresh |
@@ -412,22 +560,29 @@ Two consequences worth stating:
 
 ## Recommendation
 
-**Take refresh-to-DEV as the route to the client gate.** It is roughly half the work, removes the two
-most dangerous inventions (hand-built Git files, approval that outlives a rebuild), and turns the
-problem into "make DEV match PROD, then ship normally" — which every existing safety in the pipeline
-already understands.
+**Take refresh-to-DEV as the route to the client gate.** It is roughly two-thirds of the work,
+removes the two most dangerous inventions (hand-built Git files, approval that outlives a rebuild),
+and turns the problem into "make DEV match PROD, then ship normally" — which every existing safety in
+the pipeline already understands.
 
 Conditions, without which I would not ship it:
 
-1. **The drift rule must compare edges and element types**, not merely element names. Without that,
-   a re-parent on PROD is silently reverted and the design's whole point is defeated.
+1. **One comparison serves the refresh and the drift gate, and it compares the object** — elements,
+   edges, types, hierarchy membership, attribute definitions/values, chore flag — not element names.
+   Without that, a re-parent or a hierarchy change on PROD is silently reverted and the design's
+   whole point is defeated.
 2. **Attribute rules from brief 14 stand**: no wholesale copy, and only the confirmed loaded
-   attributes are refreshed.
-3. **Deletes must not default silently** in either direction — tick-by-default or an explicit label.
+   attributes are refreshed. Definitions and aliases are safe; values are the risk.
+3. **Deletes are unticked by default (agreed)** — and each item says, on screen, that leaving it
+   unticked puts the object back on PROD.
 4. **The chore flag needs a decision** before it is copied onto DEV (active at production times on a
    dev server is a real incident).
 5. **Refresh is explicit and recorded** — an action with a list, written into the open change set,
    never a background sync.
+6. **Confirm the load does not write rules, processes or cube structure on PROD**, because nothing in
+   this design can refresh those and they would block every night.
+7. **The idle check is in place at both points**, with the second one as late as the window allows —
+   it is what makes "refresh, then deploy" a safe sentence rather than a hopeful one.
 
 If refresh-to-DEV is chosen, these parts of design 15 are **no longer needed**:
 
@@ -437,6 +592,9 @@ If refresh-to-DEV is chosen, these parts of design 15 are **no longer needed**:
 - decision 7 — snapshot rebuild without re-approval (replaced by "refresh again", bounded by the
   stop);
 - the `prod-live` snapshot as a release base.
+
+The idle check is **new work needed either way** (see the comparison above), so it is not a reason to
+choose between the two designs.
 
 These parts **stay**, because they are true regardless of which side the merge happens on:
 
@@ -449,10 +607,12 @@ These parts **stay**, because they are true regardless of which side the merge h
 
 | # | Decision | Recommendation |
 |---|---|---|
-| A1 | Merge on DEV (refresh) rather than in the release? | **Yes**, with conditions 1–5 above |
+| A1 | Merge on DEV (refresh) rather than in the release? | **Yes**, with conditions 1–7 above |
 | A2 | Do the copy as an explicit, recorded action in the open change set? | **Yes** — never automatic, never silent |
-| A3 | Copy loaded attribute *values* to DEV? | **Aliases only, plus values for a confirmed list** — element existence is what the deploy needs |
-| A4 | Deletes on refresh: ticked by default, or unticked with a warning? | Ticked by default, with the count shown before running |
-| A5 | Chore active flag: copy it, or force inactive on DEV? | Force inactive on DEV; keep PROD's own file out of the deploy's way |
+| A3 | Copy loaded attribute *values* to DEV? | **Aliases and definitions only, plus values for a confirmed list** — element existence is what the deploy needs |
+| A4 | Deletes on refresh: ticked by default, or unticked? | **Unticked (agreed)**, with the "puts it back on PROD" consequence written on each item |
+| A5 | Chore active flag: copy it, or force inactive on DEV? | Force inactive on DEV; the deploy carries PROD's own chore file decision from design 15, so PROD's flag is never switched |
+| A6 | Scope: which object types does the refresh cover? | **Dimensions, hierarchies, attributes, views, subsets, chores** (agreed). Rules, processes and cube structure stay blocking. |
+| A7 | Deploy only when the target is idle, with the refuse / warn / confirm split? | **Yes** (agreed), and put the second check as late as possible — after the backup, immediately before the pull |
 
 Nothing here is built. This appendix stops for James's decision.
