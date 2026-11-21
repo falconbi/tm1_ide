@@ -1,47 +1,19 @@
 import { request } from '@/lib/api'
 import { useState, useRef, useEffect } from 'react'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, ScrollText, Pencil, RotateCcw, HelpCircle, Plus, Rocket } from 'lucide-react'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Pencil, RotateCcw, HelpCircle, Plus, Rocket } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
-import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
+import DiffViewerModal from '@/components/DiffViewerModal'
+import { useWorkSessions, useWorkSessionLog, useWorkSessionLogVerbose, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { SESSIONS_LIMIT } from '@/lib/deploy/change-sets'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { rulesTabId, processTabId, dimensionTabId, viewTabId, subsetTabId } from '@/lib/tab-ids'
+import { buildSessionSummary } from '@/lib/deploy/session-summary'
 
 const authHeader = () => ({ 'Content-Type': 'application/json', 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
-export function autoDescription(action, objectName, detail) {
-  switch (action) {
-    case 'RULES_SAVED':        return `Rules updated for cube '${objectName}'`
-    case 'PROCESS_SAVED':      return `Process '${objectName}' modified`
-    case 'PROCESS_CREATED':    return `Process '${objectName}' created`
-    case 'PROCESS_DELETED':    return `Process '${objectName}' deleted`
-    case 'DIMENSION_CREATED':  return `Dimension '${objectName}' created`
-    case 'DIMENSION_DELETED':  return `Dimension '${objectName}' deleted`
-    case 'CUBE_CREATED':       return `Cube '${objectName}' created`
-    case 'CUBE_DELETED':       return `Cube '${objectName}' deleted`
-    case 'SUBSET_SAVED':       return `Subset '${objectName}' saved${detail ? ` in '${detail}'` : ''}`
-    case 'SUBSET_DELETED':     return `Subset '${objectName}' deleted${detail ? ` from '${detail}'` : ''}`
-    case 'VIEW_SAVED':         return `View '${objectName}' saved${detail ? ` in cube '${detail}'` : ''}`
-    case 'VIEW_DELETED':       return `View '${objectName}' deleted${detail ? ` from cube '${detail}'` : ''}`
-    case 'ELEMENT_ADDED':      return `Element '${objectName}' added${detail ? ` to '${detail}'` : ''}`
-    case 'ELEMENT_DELETED':    return `Element '${objectName}' removed${detail ? ` from '${detail}'` : ''}`
-    case 'ELEMENT_RENAMED':    return `Element renamed${detail ? ` in '${detail}'` : ''}`
-    case 'ELEMENT_LINKED':     return `Element linked${detail ? ` — ${detail}` : ''}`
-    case 'ATTRIBUTE_CREATED':  return `Attribute '${objectName}' added${detail ? ` to '${detail}'` : ''}`
-    case 'ATTRIBUTE_DELETED':  return `Attribute '${objectName}' removed${detail ? ` from '${detail}'` : ''}`
-    case 'ATTRIBUTE_VALUE_SET': return `Attribute value set — ${objectName}`
-    case 'ASSERTION_ADDED':    return `Assertion '${objectName}' added`
-    case 'ASSERTION_REMOVED':  return `Assertion '${objectName}' removed`
-    case 'HIERARCHY_CREATED':  return `Hierarchy '${objectName}' created`
-    case 'HIERARCHY_DELETED':  return `Hierarchy '${objectName}' deleted`
-    case 'EDGE_REMOVED':       return `Parent relationship removed${detail ? ` in '${detail}'` : ''}`
-    case 'PROCESS_RUN':        return `Process '${objectName}' run`
-    default:                   return `${action.replace(/_/g, ' ').toLowerCase()} — ${objectName}`
-  }
-}
 
 const ACTION_META = {
   RULES_SAVED:        { label: 'Rules saved',        icon: FileText, colour: 'text-amber-400' },
@@ -82,20 +54,14 @@ function fmtDate(ts) {
   try { return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' }) } catch { return ts }
 }
 
-function LogEntry({ entry, server, openTab }) {
+function LogEntry({ entry, server, openTab, onDiff }) {
   const meta = ACTION_META[entry.action] ?? { label: entry.action, icon: FileText, colour: 'text-muted-foreground' }
   const Icon = meta.icon
   const hasDiff = !!(entry.before_state && entry.after_state)
 
-  const openDiff = () => openTab({
-    id:         `diff:log:${entry.id}`,
-    type:       'diff',
-    label:      `Diff: ${entry.object_name}`,
-    server,
-    objectType: entry.object_type,
-    before:     entry.before_state,
-    after:      entry.after_state,
-  })
+  // The diff opens here, over the panel — not as another tab. Opening a second
+  // surface to read one change made the list hard to follow.
+  const openDiff = () => onDiff?.(entry)
 
   const handleClick = () => {
     if (!openTab) return
@@ -133,7 +99,7 @@ function LogEntry({ entry, server, openTab }) {
   )
 }
 
-function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = false }) {
+function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = false, onDiff }) {
   const { openDeployWizard } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
@@ -164,8 +130,20 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
     onError: e => toast.error(e.message ?? 'Could not retire this change set'),
   })
   const { data: entries = [], isFetching } = useWorkSessionLog(open ? session.id : null)
+  // Only while the row is open — this is the "saved Nx" detail, not something
+  // every row in the list should fetch.
+  const { data: verboseLog = [] } = useWorkSessionLogVerbose(open ? session.id : null)
   const runs = entries.filter(e => e.object_type === 'process-run')
   const changes = entries.filter(e => e.object_type !== 'process-run')
+
+  // The old "report" tab added exactly one thing the panel could not: pasteable
+  // text. Offer that here instead of opening another surface.
+  const copySummary = async () => {
+    try {
+      await navigator.clipboard.writeText(buildSessionSummary({ session, entries, verboseLog }))
+      toast.success('Summary copied')
+    } catch { toast.error('Could not copy the summary') }
+  }
   const isActive = !session.closed_at
   const owns = isAdmin || !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
 
@@ -280,13 +258,6 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
           {(session.entry_count ?? 0) > 0 && !session.phantom && !session.wont_deploy_at && !session.covered_by && (
             <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center mr-1">
               <button
-                onClick={() => openTab({ id: `session-report:${session.id}`, type: 'session-report', label: `Report: ${session.name}`, server, session })}
-                title="View change report"
-                className="p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-              >
-                <ScrollText size={11} />
-              </button>
-              <button
                 onClick={() => { openDeployWizard({ session }); onClose?.() }}
                 title={isActive ? 'Run the tests, close it, then deploy' : 'Deploy this change set'}
                 className="px-1.5 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors"
@@ -329,6 +300,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                 entry={e}
                 server={server}
                 openTab={openTab}
+                onDiff={onDiff}
               />
             ))}
             {runs.length > 0 && (
@@ -340,9 +312,21 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                     entry={e}
                     server={server}
                     openTab={openTab}
+                    onDiff={onDiff}
                   />
                 ))}
               </>
+            )}
+            {entries.length > 0 && (
+              <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-t border-border/40">
+                <button
+                  onClick={copySummary}
+                  title="Copy this change set as plain text — grouped by cube, dimension and process"
+                  className="px-1.5 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  Copy summary
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -358,6 +342,8 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up', onNe
   const [showDeployed, setShowDeployed] = useState(false)
   const [showWontDeploy, setShowWontDeploy] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  // One diff at a time, shown over this panel instead of in another tab.
+  const [diffEntry, setDiffEntry] = useState(null)
 
   // Once a change set has shipped it's not "in play" anymore -- its record
   // lives properly in Deploy History now. Keep this list to what's still
@@ -429,6 +415,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up', onNe
               onClose={onClose}
               currentUser={username}
               isAdmin={isAdmin}
+              onDiff={setDiffEntry}
             />
           ))}
         </div>
@@ -459,6 +446,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up', onNe
       </div>
 
       <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="changesets" />
+      {diffEntry && <DiffViewerModal entry={diffEntry} onClose={() => setDiffEntry(null)} />}
     </>
   )
 }

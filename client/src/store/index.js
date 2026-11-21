@@ -4,7 +4,7 @@ import { clearCubemapSession } from '../lib/cubemap-session.js'
 
 /**
  * @typedef {'rules'|'process'|'subset'|'dimension'|'view'|'cubeview'|'chore'|'cubeeditor'|'cubemap'|
- *           'guidedmdxview'|'sql'|'diff'|'lens'|'session-report'|'transactionlog'} TabType
+ *           'guidedmdxview'|'sql'|'diff'|'lens'|'transactionlog'} TabType
  *
  * @typedef {Object} Tab
  * @property {string}   id
@@ -43,7 +43,7 @@ const TAB_TYPE_LABEL = {
   rules: 'Rules', process: 'Process', dimension: 'Dimension', subset: 'Subset',
   cubeview: 'View', view: 'View', chore: 'Chore', cubeeditor: 'Cube',
   cubemap: 'Cube Map', sql: 'SQL', lens: 'Lens', guidedmdxview: 'MDX Builder',
-  'session-report': 'Session', transactionlog: 'Log', deploy: 'Deploy',
+  transactionlog: 'Log', deploy: 'Deploy',
 }
 function confirmDiscard(tabs) {
   const dirty = (tabs ?? []).filter(t => t?.dirty)

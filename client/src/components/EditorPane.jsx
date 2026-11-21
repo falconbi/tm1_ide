@@ -11,7 +11,6 @@ import GuidedMDXBuilder from '@/components/GuidedMDXBuilder'
 import CubeEditor from '@/components/CubeEditor'
 import TransactionLogPanel from '@/components/TransactionLogPanel'
 import DiffTab from '@/components/DiffTab'
-import SessionReportTab from '@/components/SessionReportTab'
 import CubeMapEditor from '@/components/cubemap-editor/CubeMapEditor'
 import LensEditor from '@/components/LensEditor'
 import RulesEditor from '@/components/rules-editor/RulesEditor'
@@ -53,7 +52,6 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'cubeeditor'      && <CubeEditor         key={tab.id} tab={tab} />}
         {tab.type === 'diff'            && <DiffTab            key={tab.id} tab={tab} />}
         {tab.type === 'cubemap'         && <CubeMapEditor      key={tab.id} tab={tab} />}
-        {tab.type === 'session-report'  && <SessionReportTab   key={tab.id} tab={tab} />}
         {tab.type === 'lens'           && <LensEditor        key={tab.id} tab={tab} />}
         {tab.type === 'deploy'         && <DeployTab          key={tab.id} />}
         {tab.type === 'transactionlog'  && (
