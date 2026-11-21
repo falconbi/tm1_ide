@@ -163,27 +163,20 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
     },
     onError: e => toast.error(e.message ?? 'Could not retire this change set'),
   })
-  const [testResult, setTestResult] = useState(null)
-  const [closing, setClosing]       = useState(false)
+  const [closing, setClosing] = useState(false)
 
-  const blockingFails = testResult?.results?.filter(x => !x.pass && (x.severity ?? 'block') === 'block') ?? []
-  const runTests = async () => {
-    setTestResult('running')
-    try {
-      const r = await request(`/api/assertions/run?server=${encodeURIComponent(server)}`, { method: 'POST', headers: authHeader(), body: '{}' }).then(r => r.json())
-      if (r.error) throw new Error(r.error)
-      setTestResult(r)
-    } catch (e) { setTestResult({ error: e.message }) }
-  }
+  // Closing runs the model's assertions on the server and refuses on a blocking
+  // failure, returning the detail — so the row needs no separate test button.
   const closeSet = async () => {
     setClosing(true)
     try {
       const r = await request('/api/sessions/close', { method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id }) })
       const d = await r.json().catch(() => ({}))
       if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      toast.success(`Closed — tests ${d.tests?.passed ?? 0}/${d.tests?.total ?? 0} passed`)
       qc.invalidateQueries({ queryKey: ['work-sessions', server] })
       qc.invalidateQueries({ queryKey: ['work-session-active', server] })
-    } catch (e) { toast.error(e.message || 'Could not close the change set') }
+    } catch (e) { toast.error(e.message || 'Could not close the change set', { duration: 8000 }) }
     finally { setClosing(false) }
   }
 
@@ -256,13 +249,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                     className="text-[10px] text-muted-foreground/30 truncate mt-0.5 italic cursor-pointer hover:text-muted-foreground"
                   >Add a note…</div>
               )}
-              {isActive && testResult && testResult !== 'running' && (
-                <div className="text-[10px] mt-0.5 text-muted-foreground/80">
-                  {testResult.error
-                    ? `tests: ${testResult.error}`
-                    : `tests ${testResult.passed}/${testResult.total}${blockingFails.length ? ` — ${blockingFails.length} blocking` : ' — no blocking failures'}`}
-                </div>
-              )}
+
             </div>
           </button>
           {!isActive && owns && session.kind !== 'catch-up' && !session.deployed && !session.covered_by && !session.wont_deploy_at && (
@@ -295,22 +282,18 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               </button>
             )
           )}
+          {/* Tests run in the wizard's Test step, and Close runs them again on
+              the server (that is the gate). A third button here was the same
+              call with less detail — it read as a second, different check. */}
           {isActive && owns && (
             <div className="flex items-center gap-0.5 mr-1 shrink-0">
               <button
-                onClick={e => { e.stopPropagation(); runTests() }}
-                title="Run the model's tests"
-                className="px-1.5 py-0.5 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-              >
-                {testResult === 'running' ? '…' : 'Test'}
-              </button>
-              <button
                 onClick={e => { e.stopPropagation(); closeSet() }}
-                disabled={closing || blockingFails.length > 0}
-                title={blockingFails.length ? `${blockingFails.length} blocking test(s) are failing` : 'Close this change set'}
+                disabled={closing}
+                title={closing ? 'Running the model tests on the server…' : 'Close this change set — the server runs the model tests first and refuses if any blocking test fails'}
                 className="px-1.5 py-0.5 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40"
               >
-                Close
+                {closing ? 'Testing…' : 'Close'}
               </button>
             </div>
           )}
