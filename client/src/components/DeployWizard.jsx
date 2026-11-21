@@ -230,10 +230,20 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     finally { setBusy('') }
   }
 
+  // Closing is one decision with one gate: the server runs the model's assertions
+  // and refuses on a blocking failure. The client-side result from step 1 is a
+  // preview, so it must not decide this — and a refusal has to be shown, not
+  // swallowed (it just looked like nothing happened).
   const closeChangeSet = async () => {
     if (!activeSession) return
-    const d = await closeSession.mutateAsync({ id: activeSession.id }).catch(() => null)
-    if (d) { setStep(3); setSessionId(activeSession.id) }
+    setError(null)
+    try {
+      await closeSession.mutateAsync({ id: activeSession.id })
+      setStep(3)
+      setSessionId(activeSession.id)
+    } catch (e) {
+      setError(e?.message ?? 'Could not close the change set')
+    }
   }
   const runTests = async () => {
     setBusy('test'); setError(null)
@@ -498,10 +508,10 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
               <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[2].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 {activeSession ? <p className="text-xs">Change set to close: <span className="font-semibold">{activeSession.name}</span></p> : deployCtx ? <p className="text-xs">Change set <span className="font-semibold">{deployCtx.name}</span> is already closed — continue to Commit.</p> : <p className="text-xs text-muted-foreground">No change set — start one in the status bar first.</p>}
-                {!tests && <p className="text-xs text-amber-600">Run the tests first (step 1) so the close records a result.</p>}
+                <p className="text-xs text-muted-foreground">Closing runs the model's tests on the server. A blocking failure refuses it — the preview below is from step 1 and is not what decides.</p>
                 {tests && blockFails.length > 0 && (
                   <div className="border border-red-600/40 rounded-md p-2 space-y-1">
-                    <p className="text-xs text-red-600">{blockFails.length} blocking test{blockFails.length !== 1 ? 's are' : ' is'} failing — fix on this server, then re-run the tests.</p>
+                    <p className="text-xs text-red-600">{blockFails.length} blocking test{blockFails.length !== 1 ? 's are' : ' is'} failing in the last preview — closing will be refused until they are fixed on this server.</p>
                     {blockFails.map(f => <p key={f.id} className="text-[11px] text-muted-foreground">· {f.description}</p>)}
                   </div>
                 )}
@@ -519,7 +529,9 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   <p className="text-xs text-amber-600">No assertions were added in this change set. If this change has logic worth testing, add coverage first (step 1, Test). You can still close.</p>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={closeChangeSet} disabled={closeSession.isPending || !activeSession || !tests || blockFails.length > 0} className={primaryBtn}>Close change set</button>
+                  <button onClick={closeChangeSet} disabled={closeSession.isPending || !activeSession} className={primaryBtn}>
+                    {closeSession.isPending ? 'Running the model tests on the server…' : 'Close change set'}
+                  </button>
                   {!activeSession && <button onClick={() => setStep(3)} className={textBtn}>Continue</button>}
                 </div>
               </div>
