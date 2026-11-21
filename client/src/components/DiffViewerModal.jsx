@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { DiffEditor } from '@monaco-editor/react'
 import { useStore } from '@/store'
@@ -46,6 +47,33 @@ export default function DiffViewerModal({ entry, onClose }) {
   const modified = stateToText(entry.after_state,  entry.object_type)
   const language = langFor(entry.object_type, entry.before_state ?? entry.after_state)
 
+  // Monaco's DiffEditor disposes its two text models during unmount, and if the
+  // whole modal is unmounted at the same moment (closing the wizard that owns it
+  // takes this with it) the widget still holds a reference: "TextModel got
+  // disposed before DiffEditorWidget model got reset". Keeping the models means
+  // the widget never disposes them out from under itself; we dispose them a tick
+  // later, after the widget is gone.
+  const models = useRef(null)
+  useEffect(() => {
+    const held = models
+    return () => {
+      const m = held.current
+      if (!m) return
+      held.current = null
+      setTimeout(() => {
+        try { m.original?.dispose() } catch { /* already gone */ }
+        try { m.modified?.dispose() } catch { /* already gone */ }
+      }, 0)
+    }
+  }, [])
+
+  // Esc closes the diff rather than the thing behind it.
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); onClose?.() } }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
     <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center" onClick={onClose}>
       <div
@@ -77,6 +105,8 @@ export default function DiffViewerModal({ entry, onClose }) {
             modified={modified}
             language={language}
             theme={dark ? 'tm1-dark' : 'tm1-light'}
+            keepCurrentOriginalModel
+            keepCurrentModifiedModel
             options={{
               readOnly:             true,
               fixedOverflowWidgets: true,
@@ -85,7 +115,13 @@ export default function DiffViewerModal({ entry, onClose }) {
               renderSideBySide:     true,
               scrollBeyondLastLine: false,
             }}
-            onMount={(_, monaco) => registerTM1Theme(monaco, dark)}
+            onMount={(editor, monaco) => {
+              models.current = {
+                original: editor.getOriginalEditor().getModel(),
+                modified: editor.getModifiedEditor().getModel(),
+              }
+              registerTM1Theme(monaco, dark)
+            }}
           />
         </div>
       </div>
