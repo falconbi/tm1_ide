@@ -49,7 +49,8 @@ export default function ShipDialog() {
       .then(list => {
         const names = (list ?? []).map(s => s?.name).filter(n => n && n !== server)
         setServers(names)
-        setTarget(t => t || names.find(n => /prod/i.test(n)) || (names.length === 1 ? names[0] : ''))
+        // No guess. Shipping to a server is the decision this dialog exists to
+        // take, so the destination starts empty and has to be chosen.
       })
       .catch(() => {})
   }, [ship, server])
@@ -124,7 +125,7 @@ export default function ShipDialog() {
               <div className="flex items-center gap-2">
                 <label className="text-xs text-muted-foreground w-16">Send to</label>
                 <select value={target} onChange={e => setTarget(e.target.value)} className="flex-1 bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
-                  {!target && <option value="">Select a server…</option>}
+                  {!target && <option value="">Select the target…</option>}
                   {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
                 </select>
               </div>
