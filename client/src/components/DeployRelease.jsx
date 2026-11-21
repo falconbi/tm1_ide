@@ -20,10 +20,10 @@ export default function DeployRelease({ server }) {
         <div>
           <h2 className="text-sm font-semibold mb-1">Ready to ship</h2>
           <p className="text-xs text-muted-foreground">
-            Change sets on {server} that can be released. Each one walks
-            Test → Close → Commit → Build release → Review → Approve → Deploy → Verify,
-            starting at the first step it still needs. Nothing reaches the target
-            until you approve and deploy.
+            Change sets on {server} that can be shipped. One action: the model's tests run
+            first, you approve it, and only this change set goes — nothing else from {server}.
+            The step-by-step view (Test → Close → Commit → Build release → Review → Approve →
+            Deploy → Verify) is still there behind <em>Step by step instead</em>.
           </p>
         </div>
 
