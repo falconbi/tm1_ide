@@ -1,7 +1,7 @@
 import { request } from '@/lib/api'
 import { useState, useRef, useEffect } from 'react'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Pencil, RotateCcw, HelpCircle, Plus, Rocket } from 'lucide-react'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Pencil, RotateCcw, HelpCircle, Plus, Rocket, MoreHorizontal } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { useWorkSessions, useWorkSessionLog, useWorkSessionLogVerbose, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
@@ -146,6 +146,20 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
   }
   const isActive = !session.closed_at
   const owns = isAdmin || !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  // Everything a reader needs about this set, on one line.
+  const closeTests = (() => {
+    try { return session.close_tests ? JSON.parse(session.close_tests) : null } catch { return null }
+  })()
+  const statusLine = [
+    `${session.entry_count ?? 0} change${(session.entry_count ?? 0) !== 1 ? 's' : ''}`,
+    session.user,
+    isActive ? 'open' : (session.closed_at ? `closed ${fmtDate(session.closed_at)}` : 'closed'),
+    closeTests ? `tests ${closeTests.passed}/${closeTests.total}${closeTests.blocking ? ` (${closeTests.blocking} blocking)` : ''}` : null,
+    session.commit_ref ? `commit ${String(session.commit_ref).slice(0, 8)}` : null,
+    session.deployed_target ? `shipped to ${session.deployed_target}` : null,
+  ].filter(Boolean).join(' · ')
 
   useEffect(() => { if (editingDesc) descRef.current?.focus() }, [editingDesc])
 
@@ -159,7 +173,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
   return (
     <>
       <div className="border-b border-border/40">
-        <div className="flex items-center group">
+        <div className="flex items-center gap-1 pr-2">
           <button
             onClick={() => setOpen(o => !o)}
             className="flex items-center gap-2 flex-1 min-w-0 px-3 py-1.5 hover:bg-muted/30 text-left"
@@ -168,102 +182,81 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               ? <ChevronDown  size={10} className="shrink-0 text-muted-foreground" />
               : <ChevronRight size={10} className="shrink-0 text-muted-foreground" />}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
+              {/* Name plus only the badges that change what you can do with it. */}
+              <div className="flex items-center gap-1.5 min-w-0">
                 {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />}
                 <span className="text-xs font-medium truncate">{session.name}</span>
-                {session.deployed && (
+                {session.wont_deploy_at ? (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0">Retired</span>
+                ) : session.covered_by ? (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="Carried by a catch-up release">Covered</span>
+                ) : session.deployed ? (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">Deployed</span>
-                )}
-                {(session.phantom || session.wont_deploy_at) && (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="No touched objects remain on this server — history only">Phantom — empty</span>
-                )}
-                {session.covered_by && (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="Carried by a catch-up release">Covered by catch-up{session.covered_at ? ` ${fmtDate(session.covered_at)}` : ''}</span>
-                )}
+                ) : null}
               </div>
-              <div className="text-[10px] text-muted-foreground/60">
-                {fmtDate(session.started_at)} · {session.entry_count} change{session.entry_count !== 1 ? 's' : ''}{session.user ? ` · ${session.user}` : ''}
-              </div>
-              {(session.commit_ref || session.deployed_target || session.close_tests) && (() => {
-                let t
-                try { t = session.close_tests ? JSON.parse(session.close_tests) : null } catch { t = null }
-                return (
-                  <div className="text-[10px] text-muted-foreground/60 mt-0.5">
-                    {session.commit_ref && <span>commit {session.commit_ref}</span>}
-                    {t && <span>{session.commit_ref ? ' · ' : ''}tests at close {t.passed}/{t.total}{t.blocking ? ` (${t.blocking} blocking)` : ''}</span>}
-                    {session.deployed_target && <span>{session.commit_ref || t ? ' · ' : ''}shipped to {session.deployed_target}</span>}
-                  </div>
-                )
-              })()}
-              {/* Clicking the note opens the editor. This sits inside the row's
-                  toggle button, so it stays a plain div (not a nested button) and
-                  stops the click; the hover pencil remains the keyboard path. */}
-              {!editingDesc && (descValue
-                ? <div
-                    onClick={e => { e.stopPropagation(); setEditingDesc(true) }}
-                    title="Edit note"
-                    className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic cursor-pointer hover:text-foreground"
-                  >{descValue}</div>
-                : <div
-                    onClick={e => { e.stopPropagation(); setEditingDesc(true) }}
-                    title="Add a note"
-                    className="text-[10px] text-muted-foreground/30 truncate mt-0.5 italic cursor-pointer hover:text-muted-foreground"
-                  >Add a note…</div>
+              {/* One status line instead of four stacked ones. */}
+              <div className="text-[10px] text-muted-foreground/60 truncate">{statusLine}</div>
+              {descValue && !editingDesc && (
+                <div
+                  onClick={e => { e.stopPropagation(); setEditingDesc(true) }}
+                  title="Edit note"
+                  className="text-[10px] text-muted-foreground/80 truncate italic cursor-pointer hover:text-foreground"
+                >{descValue}</div>
               )}
-
             </div>
           </button>
-          {!isActive && owns && session.kind !== 'catch-up' && !session.deployed && !session.covered_by && !session.wont_deploy_at && (
+
+          {/* One primary action. */}
+          {owns && (isActive || (!session.deployed && !session.covered_by && !session.wont_deploy_at)) && (
             <button
-              onClick={e => { e.stopPropagation(); resume.mutate({ id: session.id, server }) }}
-              title="Resume this change set"
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-amber-400 shrink-0"
+              onClick={() => { openDeployWizard({ session }); onClose?.() }}
+              title={isActive ? 'Run the tests, close it, then deploy' : 'Deploy this change set'}
+              className="shrink-0 px-2 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors"
             >
-              <RotateCcw size={10} />
+              {isActive ? 'Finish & deploy…' : 'Deploy'}
             </button>
           )}
-          {!isActive && owns && session.closed_at && !session.deployed && !session.covered_by && (
-            session.wont_deploy_at ? (
+
+          {/* Everything else, one menu. */}
+          {owns && (
+            <div className="relative shrink-0">
               <button
-                onClick={e => { e.stopPropagation(); retire.mutate({ id: session.id, restore: true }) }}
-                disabled={retire.isPending}
-                title="Restore this change set so it can be released again"
-                className="opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 mr-1 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-40"
+                onClick={() => setMenuOpen(v => !v)}
+                title="More actions"
+                className="px-1.5 py-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               >
-                Unretire
+                <MoreHorizontal size={13} />
               </button>
-            ) : (
-              <button
-                onClick={e => { e.stopPropagation(); retire.mutate({ id: session.id }) }}
-                disabled={retire.isPending}
-                title="Retire this change set — keep its history, stop offering it as something to ship"
-                className="opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 mr-1 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-40"
-              >
-                Retire
-              </button>
-            )
-          )}
-          {/* No Close here. Closing runs the whole model's assertions and records
-              an immutable closed record — a gated step that belongs where the
-              results are visible (the wizard's Test → Close), not on a row. The
-              deploy button below says "Finish & deploy…" while the set is open,
-              so this row still has one obvious way forward. */}
-          {owns && <button
-              onClick={e => { e.stopPropagation(); setEditingDesc(v => !v) }}
-              title="Add / edit note"
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
-            >
-              <Pencil size={10} />
-            </button>}
-          {(session.entry_count ?? 0) > 0 && !session.phantom && !session.wont_deploy_at && !session.covered_by && (
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center mr-1">
-              <button
-                onClick={() => { openDeployWizard({ session }); onClose?.() }}
-                title={isActive ? 'Run the tests, close it, then deploy' : 'Deploy this change set'}
-                className="px-1.5 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors"
-              >
-                {isActive ? 'Finish & deploy…' : 'Deploy'}
-              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1 w-48 rounded border border-border bg-card shadow-lg py-1 z-50">
+                    <button
+                      onClick={() => { setMenuOpen(false); setEditingDesc(v => !v) }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                    >
+                      <Pencil size={11} className="text-muted-foreground" /> {descValue ? 'Edit note' : 'Add a note'}
+                    </button>
+                    {!isActive && session.kind !== 'catch-up' && !session.deployed && !session.covered_by && !session.wont_deploy_at && (
+                      <button
+                        onClick={() => { setMenuOpen(false); resume.mutate({ id: session.id, server }) }}
+                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                      >
+                        <RotateCcw size={11} className="text-muted-foreground" /> Resume
+                      </button>
+                    )}
+                    {!isActive && session.closed_at && !session.deployed && !session.covered_by && (
+                      <button
+                        onClick={() => { setMenuOpen(false); retire.mutate({ id: session.id, restore: !!session.wont_deploy_at }) }}
+                        disabled={retire.isPending}
+                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted disabled:opacity-40"
+                      >
+                        <Tag size={11} className="text-muted-foreground" /> {session.wont_deploy_at ? 'Unretire' : 'Retire — never ship this'}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -275,7 +268,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               value={descValue}
               onChange={e => setDescDraft(e.target.value)}
               onBlur={saveDesc}
-              onKeyDown={e => { if (e.key === 'Escape') { setEditingDesc(false); setDescDraft(null) } }}
+              onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setEditingDesc(false); setDescDraft(null) } }}
               placeholder="Add a note about this change set…"
               rows={3}
               className="w-full text-[10px] bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary text-foreground placeholder:text-muted-foreground/40 resize-none"
@@ -339,8 +332,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up', onNe
   // SessionRow opens the wizard itself; this panel only lists and links.
   const { openTab, username } = useStore()
   const { data: allSessions = [], isFetching } = useWorkSessions(server)
-  const [showDeployed, setShowDeployed] = useState(false)
-  const [showWontDeploy, setShowWontDeploy] = useState(false)
+  const [showDone, setShowDone] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   // One diff at a time, shown over this panel instead of in another tab.
   const [diffEntry, setDiffEntry] = useState(null)
@@ -349,11 +341,11 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up', onNe
   // lives properly in Deploy History now. Keep this list to what's still
   // active or not yet deployed; deployed ones are one click away, not gone.
   // A phantom set has no surviving objects and is hidden the same way.
-  const deployedCount = allSessions.filter(s => (s.deployed || s.covered_by) && !s.phantom && !s.wont_deploy_at).length
-  const phantomCount = allSessions.filter(s => s.phantom || s.wont_deploy_at).length
-  const sessions = allSessions.filter(s =>
-    (showWontDeploy || (!s.phantom && !s.wont_deploy_at)) &&
-    (showDeployed || (!s.deployed && !s.covered_by)))
+  // Two lists, not five counters: what is still in play, and everything that is
+  // finished (deployed, covered, retired, or empty). "Done" is one toggle.
+  const isDone = s => !!(s.deployed || s.covered_by || s.phantom || s.wont_deploy_at)
+  const doneCount = allSessions.filter(isDone).length
+  const sessions = allSessions.filter(s => showDone ? isDone(s) : !isDone(s))
 
   const { data: logins = [] } = useServerLogins()
   const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase() && l?.isAdmin)
@@ -403,7 +395,9 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up', onNe
             <p className="px-4 py-8 text-xs text-muted-foreground italic text-center">
               {allSessions.length === 0
                 ? 'No change sets yet. Start a change set to begin tracking changes.'
-                : 'Nothing in play — every other change set here is deployed, retired, or empty (phantom).'}
+                : showDone
+                  ? 'Nothing finished yet.'
+                  : 'Nothing in play — the rest are finished (deployed, covered, retired, or empty).'}
             </p>
           )}
           {sessions.map(s => (
@@ -420,20 +414,12 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up', onNe
           ))}
         </div>
 
-        {deployedCount > 0 && (
+        {doneCount > 0 && (
           <button
-            onClick={() => setShowDeployed(v => !v)}
+            onClick={() => setShowDone(v => !v)}
             className="shrink-0 px-3 py-1.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-t border-border text-left"
           >
-            {showDeployed ? 'Hide deployed' : `Show ${deployedCount} deployed`}
-          </button>
-        )}
-        {phantomCount > 0 && (
-          <button
-            onClick={() => setShowWontDeploy(v => !v)}
-            className="shrink-0 px-3 py-1.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-t border-border text-left"
-          >
-            {showWontDeploy ? "Hide phantom" : `Show ${phantomCount} phantom`}
+            {showDone ? '← Back to in play' : `Show ${doneCount} finished`}
           </button>
         )}
         {/* Say so when the list is a page, not the whole history — the counts
