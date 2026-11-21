@@ -7,6 +7,24 @@ Date: 21 Nov 2026.
 
 ---
 
+## Answers, 21 Nov 2026 — tested on the lab
+
+The three questions below are resolved, and two of the answers change the design.
+
+| Question | Answer |
+|---|---|
+| Does a pull leave a dimension alone when the release omits it? | **No.** The plan changes from `Skip` to `Replace` as soon as the target's live copy differs. The pull makes the target match every object in the commit. |
+| Does a target-only element show as drift? | **Yes.** Adding one element on PROD produced exactly one drift entry. |
+| Does TM1 support a per-deployment ignore? | **It accepts one, and never reads it.** `Deployment` (singular) is stored and returned by `GET !tm1project`, but the pull plan still says `Replace`. (`Deployments`, plural, is rejected as an unrecognized property.) |
+| Does a global `Ignore` keep the dimension out of the pull? | **Yes** — the plan drops it entirely (102 → 101 operations). |
+| Can the global ignore be used? | **No.** It removes the dimension's hierarchy file but keeps the parent file, so the parent links to a file that no longer exists and the release builder's link closure refuses. No release can be built while it is on, on any server. A cube using the dimension compounds it. |
+
+**Consequence:** the "leave it out, add over REST afterwards" design (D3/D4) is dead, and so is the
+Git-ignore route. The only route left is **merge at build** (D10 below), which keeps the dimension in
+Git and therefore keeps its history — the trade-off discussed for D5 is no longer needed.
+
+---
+
 ## Verify first — the answer that gates the design
 
 ### Q1. When a release leaves a dimension's file unchanged, does TM1's pull skip that dimension?
@@ -210,3 +228,21 @@ not have.
 
 *Open:* who may run a sync — any user with DEV write access (my preference: it is needed to do the
 work) or admin only.
+
+### D10. Merge at build (the only route left, to be designed)
+
+A release for a target that owns a dimension is built from the target's live copy plus this change
+set's additions, so the pull replaces the file with one that already contains everything.
+
+Consequences to work out when this is scoped:
+
+- the target can load again between build and deploy, so re-snapshot before executing and refuse if
+  the merged file is stale (the element-loss check catches it)
+- drift becomes self-healing rather than blocking, so the drift gate needs to allow a deploy whose
+  release absorbed the drift it replaced
+- the file format has to be built by hand (elements, edges, attribute definitions, order), which is
+  fragile and needs tests per TM1 version
+- the element-loss check ships with it
+
+**Status: parked.** Not to be built until it is a scoped job, and before any client model that loads
+on PROD uses the deploy path.

@@ -356,6 +356,34 @@ A deploy is `execute()` on the target, and it runs, in order:
 
 Auto-deploy doesn't keep DEV and PROD converged over months — a **recurring drift check + reconcile cadence** does. The drift diff surfaces DEV-ahead (pending deploy) and out-of-band PROD edits. **Drift pauses deploys**; the fix is to re-apply the change on DEV in a change set and release it (there is no automated Revert/Promote anymore). Each drift is a deliberate decision; the pair converges over time.
 
+## Known limitation — dimensions loaded on PROD (21 Nov 2026)
+
+**Not supported yet.** Most real models load something on the target: GL account codes, employees,
+products. A nightly process (or an admin) adds elements to a dimension there, which makes the target
+differ from the commit it last received — that is drift, so **every deploy to that server stays
+paused**. Until this is built, the deploy pipeline cannot be used on a model that maintains its own
+dimensions, except by not running the load.
+
+Tested on 21 Nov 2026, and two obvious routes do not work:
+
+| Attempt | Result |
+|---|---|
+| Leave the dimension out of the release | TM1's pull plan says `Replace`, not `Skip` — a pull makes the target match every object in the commit, mentioned or not. PROD's elements and their data would be deleted before anything else could run. |
+| TM1 Git `Ignore` (global) | The dimension's hierarchy file is dropped but its parent file stays, so the release's link closure refuses — no release can be built at all while it is on |
+| `Deployment` (singular) per-server ignore | Accepted and stored, but the pull plan never reads it; the same dimension is still `Replace`d |
+
+**Planned: merge at build.** A release for a target that owns a dimension is built from *the target's
+live copy* plus the additions this change set made, so the pull replaces the file with one that already
+contains everything. That keeps the dimension in Git (so it keeps its history), and makes drift
+self-healing instead of blocking.
+
+Open questions for that work are in
+[../ide/review/14_LOADED_DIMENSIONS_QUESTIONS.md](../ide/review/14_LOADED_DIMENSIONS_QUESTIONS.md).
+
+The **element-loss check** (refuse a release that would remove elements the target has) is deferred
+with this. It is not urgent: today the drift block already prevents a wipe, by refusing the deploy
+rather than by removing what it would have lost.
+
 ## The three gaps (what the IDE keeps)
 
 | Gap | Evidence | How it's handled |
