@@ -16,18 +16,34 @@ const { odataKey } = require('./odata-key')
 // needing cube/dim context is flagged, never guessed.
 async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {}) {
     const tc = makeClient(target, ideToken)
-    const out = { deleted: [], flagged: [] }
+    // `alreadyGone` is a success, not a failure: a change set may delete something
+    // the target never had (e.g. an object added and removed since the last
+    // deploy). Flagging it made a clean deploy look unclean — controlOk false, so
+    // the change set was never marked deployed and stayed "ready to ship".
+    const out = { deleted: [], flagged: [], alreadyGone: [] }
     if (!deletes?.length) return out
     try {
-        const tgtProcs = new Set(await tc.getProcesses())
+        const [tgtProcs, tgtDims, tgtCubes, tgtChores] = await Promise.all([
+            tc.getProcesses().catch(() => []),
+            tc.getDimensions().then(list => list.map(d => d?.Name ?? d)).catch(() => []),
+            tc.getCubes().then(list => list.map(c => c?.Name ?? c)).catch(() => []),
+            tc.getChores ? tc.getChores().then(list => (list ?? []).map(c => c?.Name ?? c)).catch(() => []) : Promise.resolve([]),
+        ])
+        const present = {
+            process: new Set(tgtProcs ?? []),
+            dimension: new Set((tgtDims ?? []).filter(Boolean)),
+            cube: new Set((tgtCubes ?? []).filter(Boolean)),
+            chore: new Set((tgtChores ?? []).filter(Boolean)),
+        }
         const order = { view: 0, subset: 1, process: 2, chore: 3, cube: 4, dimension: 5 }
         for (const d of [...deletes].sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9))) {
             try {
+                // Already absent on the target: nothing to do, and nothing wrong.
+                if (present[d.type] && !present[d.type].has(d.name)) {
+                    out.alreadyGone.push({ type: d.type, name: d.name })
+                    continue
+                }
                 if (d.type === 'process') {
-                    if (!tgtProcs.has(d.name)) {
-                        out.flagged.push({ type: d.type, name: d.name, error: 'not present on target (already gone)' })
-                        continue
-                    }
                     await tc.deleteProcess(d.name)
                 } else if (d.type === 'subset') {
                     const dim = d.parent ?? d.detail
