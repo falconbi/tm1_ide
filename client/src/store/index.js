@@ -43,7 +43,7 @@ const TAB_TYPE_LABEL = {
   rules: 'Rules', process: 'Process', dimension: 'Dimension', subset: 'Subset',
   cubeview: 'View', view: 'View', chore: 'Chore', cubeeditor: 'Cube',
   cubemap: 'Cube Map', sql: 'SQL', lens: 'Lens', guidedmdxview: 'MDX Builder',
-  'session-report': 'Session', transactionlog: 'Log',
+  'session-report': 'Session', transactionlog: 'Log', deploy: 'Deploy',
 }
 function confirmDiscard(tabs) {
   const dirty = (tabs ?? []).filter(t => t?.dirty)
@@ -498,10 +498,6 @@ export const useStore = create((set, get) => ({
   // A full-screen takeover, not a tab — the entire normal IDE (sidebar, tab
   // bar, every open editor) is hidden while this is set. Closing it restores
   // the IDE exactly as it was; tab/group state is untouched by this.
-  // Shape: { server, view? } — the deploy itself is the separate deployWizard surface.
-  deployCenter: null,
-  openDeployCenter:  (config) => set({ deployCenter: config }),
-  closeDeployCenter: () => set({ deployCenter: null }),
 
   // The one deploy surface. `{ release: true }` opens the latest closed change
   // set; `{ session }` opens a specific change set.

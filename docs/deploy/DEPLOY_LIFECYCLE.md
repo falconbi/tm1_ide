@@ -15,7 +15,7 @@ This is the behaviour the code has now; earlier sections below are the design re
 - **Catch-up build:** every file that differs between the target's recorded base and the source commit, with no change-set ownership filter. Link closure still applies. Git renames remove the old base path before adding the new one; non-ASCII filenames are passed unquoted.
 - **Catch-up approval:** the release link closure is checked, but `CheckRules`/TI lint are **not** run against the old target — the catch-up creates those cubes and elements. Normal releases still run both.
 - **Catch-up deletes are reviewed and recorded.** The review lists target-only cubes, dimensions, processes, chores, views and subsets. Tick any that should be removed. Approval records that exact list; after the pull the IDE deletes those objects through the same reconcile path (views/subsets first, then processes/chores, then cubes/dimensions) and records the result. Nothing is selected by default, and a delete not in the release's target-only list is refused.
-- **After a catch-up, drift may still be non-empty.** Ticked deletes remove the objects you chose; unticked old base objects, TM1's view/hierarchy write-back, and subsets applied over REST can still differ from the release commit. Drift means PROD differs from what it last received; it pauses further deploys. Either clean the rest or reseed the PROD baseline to accept the current state.
+- **After a catch-up, drift may still be non-empty.** Ticked deletes remove the objects you chose; unticked old base objects, TM1's view/hierarchy write-back, and subsets applied over REST can still differ from the release commit. Drift means PROD differs from what it last received; it pauses further deploys. Either clean the rest so PROD matches its last received commit, or adopt the difference on DEV and release it. Reseeding the local baseline does not change the Git drift reference; it does not clear Git drift by itself.
 - **Covered sets:** only after a clean catch-up deploy, and only closed sets whose objects the catch-up carried. Open sets stay open and are listed as partly shipped.
 - **Deletes:** a normal change set records its deletes and reconcile removes exactly those on the target. A catch-up uses its approved target-only list; no other target object is deleted.
 
@@ -73,11 +73,14 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 4. **Drift** is measured against what the target last received (the IDE-recorded
    commit), never TM1's own `DeployedCommit`. The first pull records that anchor so
    the first release and the first drift check have a base.
-5. **Drift pauses deploys** — the fix is to **re-apply the change on DEV in a change
-   set and release it**. There is **no automated Revert or Promote** anymore (both
-   were retired 10 Oct 2026): the wizard no longer offers them, the routes and
-   `git-drift.revert` / `git-drift.promote` are gone, and the drift **check** + the
-   deploy pause stay.
+5. **Drift pauses deploys.** It is measured against the commit the target last
+   received. The normal fix is to **re-apply the change on DEV in a change set and
+   release it**; the target must also be put back to its last received commit first
+   (you cannot deploy over the drifted state). If the direct edit should not be kept,
+   just restore the target. **Reseeding the local baseline does not clear Git drift.**
+   There is **no automated Revert or Promote** anymore (both were retired 10 Oct
+   2026): the wizard no longer offers them, the routes and `git-drift.revert` /
+   `git-drift.promote` are gone, and the drift **check** + the deploy pause stay.
 
 ### One change set per release, in order
 
@@ -121,6 +124,8 @@ commit, regardless of which change set touched it.
 ### Rehearse a catch-up on a TEST copy
 
 For a risky catch-up, rehearse it against a copy of PROD before touching PROD.
+The general pattern — a nightly PROD clone used as a rehearsal target before
+promoting to PROD — is in [DEPLOY_QA_STRATEGY.md](DEPLOY_QA_STRATEGY.md).
 
 1. Stop PROD and copy its **data folder**.
 2. Start the copy as a separate server: unique name and port.
@@ -380,24 +385,39 @@ into a `governance/` folder in the same repo (git history and review for tests, 
 and Lenses). On deploy, the IDE writes them to the target with a **per-target rule** (e.g. PROD gets health checks
 only, never test payloads). **The server stays the runtime truth**; the repo is the history/review layer.
 
-## First-time setup (once per model) — GAP, to build
+## First-time setup (once per model)
 
-Before any of this can run, a model has to be linked to GitHub. **Today nothing detects that or explains it** — the
-wizard assumes the repo is already set up, so a new user is stuck with no clue, and it's not obvious who should do it.
+Before any of this can run, a model has to be linked to GitHub. The IDE has a
+**Deploy → GitHub setup** screen for this; it is a one-time admin job per model,
+not part of a release.
 
-**Who:** an admin / lead, once per model. They need a GitHub account (a token) and TM1 admin rights.
+**Who:** an admin / lead. They need TM1 admin rights and a GitHub token that can
+read and write the repository.
 
-**What's needed:** when you open a server that isn't linked to a repo, the tool should say so and walk through it:
+**What it does:**
 
-1. **Choose the GitHub repo** — create one, or paste its address.
-2. **Link this server** — say whether it is DEV or PROD (its deployment).
-3. **Add a GitHub token** — so the server can read and write the repo.
-4. **Defer read-only** — link and run the first pull while the server is still writable, then mark PROD read-only (`init` and `first-pull` refuse on read-only servers).
+1. **Pick the server** — select it in the IDE first. The setup screen applies to
+   the server currently selected.
+2. **Link the repo** — paste the address of an existing GitHub repository.
+3. **Set the role** — DEV or PROD (its deployment).
+4. **Add the token** — the token is stored server-side and never shown again.
+5. **Check readiness** — the setup screen runs the Git-readiness scan and blocks
+   Link/Commit while there are blockers.
+6. **Seed the history** — first push from DEV; first pull into PROD. PROD's first
+   pull is analysed and confirmed before it runs.
 
-Link **both** servers to the **same** repo — one as DEV, one as PROD. After that, the normal process works.
+Link **both** servers to the **same** repo, one as DEV and one as PROD. Linking
+DEV does not link PROD automatically; each server has its own Git configuration
+and role.
 
-**Where it shows:** on opening an unlinked server ("this model isn't backed by GitHub yet — set it up"), and in Model
-Health as a readiness flag. Plus a short one-page setup guide.
+**Defer read-only:** link and first-pull PROD while it is still writable. Mark it
+read-only only afterwards (`init` and `first-pull` refuse on read-only servers).
+If it is already read-only, remove it from `readOnlyServers` temporarily for setup,
+then put it back.
+
+**Where it shows:** on Deploy → GitHub setup for the selected server. An unlinked
+server has no repo, role or deployed commit; Model Health also shows the Git
+readiness result.
 
 ## Planned — direct PAW edits need a reconcile workflow
 

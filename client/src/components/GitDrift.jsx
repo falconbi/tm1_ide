@@ -11,7 +11,7 @@ import { humanizeFile } from '@/lib/tm1-terms'
 // the fix is to re-apply the change on DEV in a change set and release it.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
-export default function GitDrift({ server, onClose }) {
+export default function GitDrift({ server, onClose, embedded = false }) {
   const [servers, setServers] = useState([])
   const [target,  setTarget]  = useState('')
   const [drift,   setDrift]   = useState(null)
@@ -42,18 +42,24 @@ export default function GitDrift({ server, onClose }) {
   const btn = 'flex items-center gap-1.5 px-3 py-1 text-xs rounded border border-border text-foreground hover:bg-muted disabled:opacity-40 transition-colors'
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="w-[680px] max-h-[85vh] flex flex-col bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+    <div
+      className={embedded ? 'flex-1 min-h-0 overflow-y-auto p-6' : 'fixed inset-0 bg-black/50 flex items-center justify-center z-50'}
+      onClick={embedded ? undefined : onClose}
+    >
+      <div
+        className={embedded ? 'w-full max-w-3xl mx-auto flex flex-col bg-background' : 'w-[680px] max-h-[85vh] flex flex-col bg-background border border-border rounded-lg shadow-xl'}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
           <GitCompare size={14} className="text-muted-foreground" />
           <span className="text-sm font-semibold">Drift — PROD now vs DEV at the last deploy</span>
           <div className="flex-1" />
           <button onClick={() => setShowHelp(true)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Help — Git drift"><HelpCircle size={14} /></button>
-          <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Close"><X size={14} /></button>
+          {!embedded && <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Close"><X size={14} /></button>}
         </div>
         <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="gitdrift" />
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className={embedded ? 'p-4 space-y-4' : 'flex-1 overflow-y-auto p-4 space-y-4'}>
           <p className="text-xs text-muted-foreground leading-relaxed">
             Has PROD changed since we last deployed to it? PROD saves a copy of itself; we compare it to the last deploy.
             Same = clean. Different = drift.

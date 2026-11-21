@@ -205,9 +205,15 @@ function getSessionManifest(sessionId) {
     return { deletes, dims, attrElements, wholesaleDims }
 }
 
+// A change set's size is the number of OBJECTS it touched, not the number of
+// log rows: saving the same rule twice leaves two rows but is one change, and
+// that is what getSessionLog (and therefore every release) sees. Counting raw
+// rows made the Change Sets list disagree with the header and the deploy.
+const COUNT_CHANGES = `COUNT(DISTINCT l.object_type || '|' || l.object_name || '|' || l.action || '|' || IFNULL(l.detail, ''))`
+
 function getSessions(server, limit = 50) {
     return db.prepare(`
-        SELECT s.*, COUNT(l.id) as entry_count, MAX(l.id) as max_entry_id
+        SELECT s.*, ${COUNT_CHANGES} as entry_count, MAX(l.id) as max_entry_id
         FROM sessions s
         LEFT JOIN log_entries l ON l.session_id = s.id
         WHERE s.server = ?
@@ -219,7 +225,7 @@ function getSessions(server, limit = 50) {
 
 function getAllSessions(limit = 200) {
     return db.prepare(`
-        SELECT s.*, COUNT(l.id) as entry_count
+        SELECT s.*, ${COUNT_CHANGES} as entry_count
         FROM sessions s
         LEFT JOIN log_entries l ON l.session_id = s.id
         GROUP BY s.id

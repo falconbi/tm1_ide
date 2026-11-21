@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 // failure stops the flow at that step with a plain message.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '', 'Content-Type': 'application/json' })
 
-export default function GitSetup({ server, onClose }) {
+export default function GitSetup({ server, onClose, embedded = false }) {
   const [status, setStatus] = useState(null)
   const [repo, setRepo] = useState('')
   const [deployment, setDeployment] = useState(server.includes('PROD') ? 'PROD' : server.includes('TEST') ? 'TEST' : 'DEV')
@@ -95,13 +95,16 @@ export default function GitSetup({ server, onClose }) {
   const text = 'px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40'
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="w-[600px] max-h-[90vh] flex flex-col bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className={embedded ? 'flex-1 min-h-0 overflow-y-auto p-6' : 'fixed inset-0 bg-black/50 flex items-center justify-center z-50'}>
+      <div
+        className={embedded ? 'w-full max-w-3xl mx-auto flex flex-col bg-background' : 'w-[600px] max-h-[90vh] flex flex-col bg-background border border-border rounded-lg shadow-xl'}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <span className="text-sm font-semibold">Link {server} to GitHub</span>
-          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+          {!embedded && <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>}
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className={embedded ? 'p-4 space-y-4' : 'flex-1 overflow-y-auto p-4 space-y-4'}>
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
           {statusError && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{statusError}</p>}
 

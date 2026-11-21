@@ -5,7 +5,7 @@ import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Toaster } from '@/components/ui/sonner'
-import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Rocket, Settings, ExternalLink, Activity, ListChecks, GitBranch, GitCompare, History, FileCode2 } from 'lucide-react'
+import { Search, PanelLeftClose, PanelLeftOpen, Keyboard, SlidersHorizontal, Users, BookOpen, Settings, ExternalLink } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels' // used for inner editor split groups only
 import ServerSelector from '@/components/ServerSelector'
 import Explorer from '@/components/Explorer'
@@ -23,12 +23,8 @@ import LoginPage from '@/components/LoginPage'
 import UserManagement from '@/components/UserManagement'
 import ServerLoginDialog from '@/components/ServerLoginDialog'
 import CatalogAdmin from '@/components/CatalogAdmin'
-import ModelHealth from '@/components/ModelHealth'
 import AssertionsManager from '@/components/AssertionsManager'
 import DeployWizard from '@/components/DeployWizard'
-import GitSetup from '@/components/GitSetup'
-import GitDrift from '@/components/GitDrift'
-import DeployCenter from '@/components/DeployCenter'
 import { useIsSimple, useServerLogins } from '@/hooks/useApi'
 
 const queryClient = new QueryClient({
@@ -51,7 +47,7 @@ function AdminOnly({ server, children }) {
 }
 
 export default function App() {
-  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, openDeployCenter, openDeployWizard, deployWizard, closeDeployWizard, server, token, clearAuth } = useStore()
+  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, deployWizard, closeDeployWizard, server, token, clearAuth } = useStore()
   const layout         = useStore(s => s.layout)
   const revealTarget   = useStore(s => s.revealTarget)
 
@@ -104,17 +100,12 @@ export default function App() {
   const [showPeriodBuilder, setShowPeriodBuilder] = useState(false)
   const [showUserMgmt, setShowUserMgmt]           = useState(false)
 const [showCatalog, setShowCatalog]           = useState(false)
-  const [showModelHealth, setShowModelHealth]   = useState(false)
   const [showAssertions, setShowAssertions]     = useState(false)
-  const [showGitSetup, setShowGitSetup]         = useState(false)
-  const [showGitDrift, setShowGitDrift]         = useState(false)
   const [showToolsMenu, setShowToolsMenu]         = useState(false)
-  const [showDeployMenu, setShowDeployMenu]       = useState(false)
   const [sidebarWidth, setSidebarWidth]           = useState(280)
   const [findWidth, setFindWidth]                 = useState(320)
   const dragRef = useRef(null)
   const toolsMenuRef = useRef(null)
-  const deployMenuRef = useRef(null)
 
   useEffect(() => {
     if (!showToolsMenu) return
@@ -128,17 +119,6 @@ const [showCatalog, setShowCatalog]           = useState(false)
   }, [showToolsMenu])
 
   useEffect(() => {
-    if (!showDeployMenu) return
-    const handler = (e) => {
-      if (deployMenuRef.current && !deployMenuRef.current.contains(e.target)) setShowDeployMenu(false)
-    }
-    const onEsc = (e) => { if (e.key === 'Escape') setShowDeployMenu(false) }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('keydown', onEsc)
-    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', onEsc) }
-  }, [showDeployMenu])
-
-  useEffect(() => {
     const onMove = (e) => {
       if (!dragRef.current) return
       const { target, startX, startW } = dragRef.current
@@ -150,6 +130,12 @@ const [showCatalog, setShowCatalog]           = useState(false)
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
+
+  useEffect(() => {
+    const openAssertions = () => setShowAssertions(true)
+    window.addEventListener('tm1-open-assertions', openAssertions)
+    return () => window.removeEventListener('tm1-open-assertions', openAssertions)
   }, [])
 
   useEffect(() => {
@@ -264,7 +250,14 @@ const [showCatalog, setShowCatalog]           = useState(false)
               <ExternalLink size={11} />
               Falcon BI Articles
             </a>
-            <div className="ml-auto flex items-center gap-1">
+            <div className="flex-1 flex justify-center min-w-0 px-2">
+              <FullModeOnly server={server}>
+                <SessionControl deploy={{
+                  center: () => openTab({ id: 'deploy', type: 'deploy', label: 'Deploy', server }),
+                }} />
+              </FullModeOnly>
+            </div>
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => setShowFind(f => !f)}
                 className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showFind && 'bg-muted text-foreground')}
@@ -319,93 +312,22 @@ const [showCatalog, setShowCatalog]           = useState(false)
                       <BookOpen size={13} className="shrink-0 text-muted-foreground" />
                       Function Catalog
                     </button>
+                    <AdminOnly server={server}>
+                      <button
+                        onClick={() => { setShowUserMgmt(v => !v); setShowToolsMenu(false) }}
+                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                      >
+                        <Users size={13} className="shrink-0 text-muted-foreground" />
+                        User Management
+                      </button>
+                    </AdminOnly>
                   </div>
                 )}
               </div>
-              <AdminOnly server={server}>
-                <button
-                  onClick={() => setShowUserMgmt(v => !v)}
-                  className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', showUserMgmt && 'bg-muted text-foreground')}
-                  title="User Management"
-                >
-                  <Users size={15} />
-                </button>
-              </AdminOnly>
 
-              {/* Deploy — one contextual icon; opens the deploy components */}
-              <FullModeOnly server={server}><div className="relative" ref={deployMenuRef}>
-                <button
-                  onClick={() => setShowDeployMenu(v => !v)}
-                  className={cn('p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors', (showDeployMenu || deployWizard || showGitDrift || showModelHealth || showAssertions) && 'bg-muted text-foreground')}
-                  title="Deploy"
-                >
-                  <Rocket size={15} />
-                </button>
-                {showDeployMenu && (
-                  <div className="absolute right-0 top-full mt-1 w-52 rounded border border-border bg-card shadow-lg py-1 z-50">
-                    <button
-                      onClick={() => { openDeployWizard({}); setShowDeployMenu(false) }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
-                    >
-                      <GitBranch size={13} className="shrink-0 text-muted-foreground" />
-                      Deploy step by step
-                    </button>
-                    <button
-                      onClick={() => { openDeployWizard({ catchUp: true }); setShowDeployMenu(false) }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
-                    >
-                      <GitBranch size={13} className="shrink-0 text-muted-foreground" />
-                      Catch up a server…
-                    </button>
-                    <button
-                      onClick={() => { openDeployCenter({ server, view: 'lenses' }); setShowDeployMenu(false) }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
-                    >
-                      <FileCode2 size={13} className="shrink-0 text-muted-foreground" />
-                      Deploy Lenses…
-                    </button>
-                    <button
-                      onClick={() => { setShowGitDrift(true); setShowDeployMenu(false) }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
-                    >
-                      <GitCompare size={13} className="shrink-0 text-muted-foreground" />
-                      Drift
-                    </button>
-                    <button
-                      onClick={() => { openDeployCenter({ server, view: 'history' }); setShowDeployMenu(false) }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
-                    >
-                      <History size={13} className="shrink-0 text-muted-foreground" />
-                      Deploy Center
-                    </button>
-                    <button
-                      onClick={() => { setShowModelHealth(true); setShowDeployMenu(false) }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
-                    >
-                      <Activity size={13} className="shrink-0 text-muted-foreground" />
-                      Model health
-                    </button>
-                    <button
-                      onClick={() => { setShowAssertions(true); setShowDeployMenu(false) }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
-                    >
-                      <ListChecks size={13} className="shrink-0 text-muted-foreground" />
-                      Tests (assertions)
-                    </button>
-                    <button
-                      onClick={() => { setShowGitSetup(true); setShowDeployMenu(false) }}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
-                    >
-                      <GitBranch size={13} className="shrink-0 text-muted-foreground" />
-                      GitHub setup
-                    </button>
-                  </div>
-                )}
-              </div></FullModeOnly>
 
               <div className="w-px h-4 bg-border mx-1" />
               <SaveDataButton />
-              <FullModeOnly server={server}><SessionControl /></FullModeOnly>
 
             </div>
           </div>
@@ -462,13 +384,9 @@ const [showCatalog, setShowCatalog]           = useState(false)
         {formatSettingsOpen && <FormatSettings onClose={() => setFormatSettingsOpen(false)} />}
         <AdminOnly server={server}>{showUserMgmt && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}</AdminOnly>
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
-        {showModelHealth && <ModelHealth server={server} onClose={() => setShowModelHealth(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
         {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} catchUp={!!deployWizard.catchUp} catchUpTarget={deployWizard.catchUpTarget ?? null} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
-        {showGitSetup && <GitSetup server={server} onClose={() => setShowGitSetup(false)} />}
-        {showGitDrift && <GitDrift server={server} onClose={() => setShowGitDrift(false)} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
-        <DeployCenter onOpenWizard={(cfg = {}) => openDeployWizard(cfg)} />
         <ServerLoginDialog />
         <Toaster position="bottom-right" duration={3000} />
       </TooltipProvider>

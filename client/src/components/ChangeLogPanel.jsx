@@ -1,7 +1,7 @@
 import { request } from '@/lib/api'
 import { useState, useRef, useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Rocket, ScrollText, Pencil, RotateCcw, HelpCircle } from 'lucide-react'
+import { useQueryClient, useMutation } from '@tanstack/react-query'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, ScrollText, Pencil, RotateCcw, HelpCircle, Plus, Rocket } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import { useWorkSessions, useWorkSessionLog, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
 import { useStore } from '@/store'
@@ -136,11 +136,32 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
   const { openDeployWizard } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
-  const [descValue, setDescValue]     = useState(session.description ?? '')
+  // A draft only exists while the user is editing; otherwise the text follows the
+  // session. Keeping it derived means a saved description (or one changed by
+  // someone else) shows up without an effect copying props into state.
+  const [descDraft, setDescDraft]     = useState(null)
+  const descValue = descDraft ?? session.description ?? ''
   const descRef = useRef(null)
   const updateDesc = useUpdateSessionDescription()
   const resume     = useResumeWorkSession()
   const qc         = useQueryClient()
+  // Retire keeps the history and stops the set being offered as shippable.
+  // Automatic phantom detection only covers sets whose objects disappeared.
+  const retire = useMutation({
+    mutationFn: async ({ id, restore }) => {
+      const r = await request(`/api/sessions/${id}/${restore ? 'unretire' : 'retire'}`, {
+        method: 'POST', headers: authHeader(), body: JSON.stringify({}),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      return d
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['work-sessions', server] })
+      qc.invalidateQueries({ queryKey: ['work-session-active', server] })
+    },
+    onError: e => toast.error(e.message ?? 'Could not retire this change set'),
+  })
   const [testResult, setTestResult] = useState(null)
   const [closing, setClosing]       = useState(false)
 
@@ -165,10 +186,6 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
     finally { setClosing(false) }
   }
 
-  useEffect(() => {
-    if (!editingDesc) setDescValue(session.description ?? '')
-  }, [session.description])
-
   const { data: entries = [], isFetching } = useWorkSessionLog(open ? session.id : null)
   const runs = entries.filter(e => e.object_type === 'process-run')
   const changes = entries.filter(e => e.object_type !== 'process-run')
@@ -179,7 +196,9 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
 
   const saveDesc = () => {
     setEditingDesc(false)
-    updateDesc.mutate({ id: session.id, description: descValue.trim() || null, server })
+    const next = descValue.trim() || null
+    setDescDraft(null)   // follow the session (and the refetch) again
+    updateDesc.mutate({ id: session.id, description: next, server })
   }
 
   return (
@@ -221,9 +240,20 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                   </div>
                 )
               })()}
+              {/* Clicking the note opens the editor. This sits inside the row's
+                  toggle button, so it stays a plain div (not a nested button) and
+                  stops the click; the hover pencil remains the keyboard path. */}
               {!editingDesc && (descValue
-                ? <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">{descValue}</div>
-                : <div className="text-[10px] text-muted-foreground/30 truncate mt-0.5 italic">Add a note…</div>
+                ? <div
+                    onClick={e => { e.stopPropagation(); setEditingDesc(true) }}
+                    title="Edit note"
+                    className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic cursor-pointer hover:text-foreground"
+                  >{descValue}</div>
+                : <div
+                    onClick={e => { e.stopPropagation(); setEditingDesc(true) }}
+                    title="Add a note"
+                    className="text-[10px] text-muted-foreground/30 truncate mt-0.5 italic cursor-pointer hover:text-muted-foreground"
+                  >Add a note…</div>
               )}
               {isActive && testResult && testResult !== 'running' && (
                 <div className="text-[10px] mt-0.5 text-muted-foreground/80">
@@ -234,7 +264,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               )}
             </div>
           </button>
-          {!isActive && owns && (
+          {!isActive && owns && session.kind !== 'catch-up' && !session.deployed && !session.covered_by && !session.wont_deploy_at && (
             <button
               onClick={e => { e.stopPropagation(); resume.mutate({ id: session.id, server }) }}
               title="Resume this change set"
@@ -242,6 +272,27 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
             >
               <RotateCcw size={10} />
             </button>
+          )}
+          {!isActive && owns && session.closed_at && !session.deployed && !session.covered_by && (
+            session.wont_deploy_at ? (
+              <button
+                onClick={e => { e.stopPropagation(); retire.mutate({ id: session.id, restore: true }) }}
+                disabled={retire.isPending}
+                title="Restore this change set so it can be released again"
+                className="opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 mr-1 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-40"
+              >
+                Unretire
+              </button>
+            ) : (
+              <button
+                onClick={e => { e.stopPropagation(); retire.mutate({ id: session.id }) }}
+                disabled={retire.isPending}
+                title="Retire this change set — keep its history, stop offering it as something to ship"
+                className="opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 mr-1 text-[10px] rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-40"
+              >
+                Retire
+              </button>
+            )
           )}
           {isActive && owns && (
             <div className="flex items-center gap-0.5 mr-1 shrink-0">
@@ -281,9 +332,9 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               <button
                 onClick={() => { openDeployWizard({ session }); onClose?.() }}
                 title="Deploy this session"
-                className="p-2 rounded hover:bg-muted text-emerald-500 hover:text-emerald-400"
+                className="px-1.5 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors"
               >
-                <Rocket size={11} />
+                Deploy
               </button>
             </div>
           )}
@@ -294,9 +345,9 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
             <textarea
               ref={descRef}
               value={descValue}
-              onChange={e => setDescValue(e.target.value)}
+              onChange={e => setDescDraft(e.target.value)}
               onBlur={saveDesc}
-              onKeyDown={e => { if (e.key === 'Escape') { setEditingDesc(false); setDescValue(session.description ?? '') } }}
+              onKeyDown={e => { if (e.key === 'Escape') { setEditingDesc(false); setDescDraft(null) } }}
               placeholder="Add a note about this change set…"
               rows={3}
               className="w-full text-[10px] bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary text-foreground placeholder:text-muted-foreground/40 resize-none"
@@ -339,13 +390,13 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
           </div>
         )}
       </div>
-
     </>
   )
 }
 
-export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
-  const { openTab, openDeployWizard, username } = useStore()
+export default function ChangeLogPanel({ server, onClose, direction = 'up', onNew, deploy = null }) {
+  // SessionRow opens the wizard itself; this panel only lists and links.
+  const { openTab, username } = useStore()
   const { data: allSessions = [], isFetching } = useWorkSessions(server)
   const [showDeployed, setShowDeployed] = useState(false)
   const [showWontDeploy, setShowWontDeploy] = useState(false)
@@ -363,15 +414,14 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
 
   const { data: logins = [] } = useServerLogins()
   const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase() && l?.isAdmin)
-  const openReleaseAndClose = () => { openDeployWizard({ release: true }); onClose?.() }
 
   const posClass = direction === 'down'
-    ? 'absolute top-full right-0 mt-1'
-    : 'absolute bottom-6 right-0'
+    ? 'absolute top-full left-1/2 -translate-x-1/2 mt-1'
+    : 'absolute bottom-6 left-1/2 -translate-x-1/2'
 
   return (
     <>
-      <div className={cn(posClass, 'w-[420px] bg-popover border border-border rounded-lg shadow-xl z-50 flex flex-col overflow-hidden')} style={{ maxHeight: 520 }}>
+      <div className={cn(posClass, 'w-[960px] max-w-[calc(100vw-24px)] bg-popover border border-border rounded-lg shadow-xl z-50 flex flex-col overflow-hidden')} style={{ maxHeight: '70vh' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 shrink-0">
           <div className="flex items-center gap-2">
@@ -379,29 +429,38 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
             <span className="text-xs font-semibold">Change Sets</span>
             {isFetching && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
           </div>
-          <button
-            onClick={openReleaseAndClose}
-            title="Open the release wizard for the latest closed change set"
-            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors mr-1"
-          >
-            <Rocket size={10} /> Release
-          </button>
+          {deploy?.center && (
+            <button
+              onClick={() => { onClose?.(); deploy.center() }}
+              title="Open Deploy Center"
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <Rocket size={10} /> Deploy
+            </button>
+          )}
+          {onNew && (
+            <button
+              onClick={onNew}
+              title="Start a new change set"
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors"
+            >
+              <Plus size={11} /> New
+            </button>
+          )}
           <button onClick={() => setShowHelp(true)} title="Help — Change Sets" className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
             <HelpCircle size={12} />
           </button>
-          <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={onClose} title="Close" aria-label="Close change sets" className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
             <X size={12} />
           </button>
         </div>
-        <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="changesets" />
-
         {/* Sessions list */}
         <div className="overflow-auto flex-1">
           {sessions.length === 0 && !isFetching && (
             <p className="px-4 py-8 text-xs text-muted-foreground italic text-center">
               {allSessions.length === 0
                 ? 'No change sets yet. Start a change set to begin tracking changes.'
-                : 'Nothing in play — every other change set here is deployed or empty (phantom).'}
+                : 'Nothing in play — every other change set here is deployed, retired, or empty (phantom).'}
             </p>
           )}
           {sessions.map(s => (
@@ -435,6 +494,7 @@ export default function ChangeLogPanel({ server, onClose, direction = 'up' }) {
         )}
       </div>
 
+      <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} area="changesets" />
     </>
   )
 }

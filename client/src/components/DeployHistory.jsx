@@ -286,8 +286,22 @@ function GitHistoryPanel() {
   const [state, setState] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [authTick, setAuthTick] = useState(0)
 
   useEffect(() => { if (server) setTarget(server) }, [server])
+
+  // Signing in to the target from inside Deploy Center does not remount this
+  // panel, and its fetch is not a TanStack query, so invalidateQueries() cannot
+  // refresh it. Retry the current target when its server signs in.
+  useEffect(() => {
+    const onSignedIn = (e) => {
+      const signed = String(e.detail?.server ?? '').toLowerCase()
+      if (!signed || signed === String(target).toLowerCase()) setAuthTick(n => n + 1)
+    }
+    window.addEventListener('tm1-server-signed-in', onSignedIn)
+    return () => window.removeEventListener('tm1-server-signed-in', onSignedIn)
+  }, [target])
+
   useEffect(() => {
     if (!target) return
     let live = true
@@ -302,7 +316,7 @@ function GitHistoryPanel() {
       .catch(e => { if (live) setError(e.message) })
       .finally(() => { if (live) setBusy(false) })
     return () => { live = false }
-  }, [target])
+  }, [target, authTick])
 
   return (
     <div className="m-4 border border-border rounded overflow-hidden">

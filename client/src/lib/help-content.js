@@ -195,39 +195,64 @@ export const HELP_CONTENT = {
     title: 'Change Sets',
     sections: [
       {
-        heading: 'What it tracks',
-        body: 'A Change Set is a named session that logs every save you make — rules, TI processes, dimensions, views, subsets — with your user attribution. Saves made without an active Change Set are still applied to TM1 but aren\'t included in a deploy package.',
+        heading: 'One place',
+        body: '**Change sets** in the header is the single entry point. It shows the current set and previous/deployed sets, and **New** starts another.',
       },
       {
-        heading: 'Start / Close',
-        body: 'Click **Change set** in the status bar to start one and give it a name. Click the check mark next to an active set to close it — closing stops tracking new changes but the set stays available to deploy.',
+        heading: 'Personal, one at a time',
+        body: 'A change set is personal while open: one open set per person, per server. Every save must belong to an open set; if none is open, the IDE asks you to name one. Releases carry one closed set at a time. **Catch-up** is the admin-only exception that can carry several.',
       },
       {
-        heading: 'Release',
-        body: 'The **Release** button opens the Deploy pipeline pre-scoped to everything changed since the current baseline was seeded — not just one Change Set.',
+        heading: 'Review and note',
+        body: 'Open a set to see its report grouped by cube, dimension and process, with **Diff** on each entry. The note field records why the work exists. Closing records the test result and the exact entries that will ship.',
       },
+      {
+        heading: 'Two people, same object',
+        body: 'There is no merge inside one object. If two people edit the same TI process, DEV keeps the last save. You cannot remove one object from a change set. Stop before building or deploying anything, compare both intentions, have one person save the agreed final process, then ship one set that carries it. Other work in the second set can ship afterwards, once the process no longer differs from the target.',
+      },
+      {
+        heading: 'Deploy',
+        body: 'Click **Deploy** on the set row — that is the only way to start the wizard. An open set starts at Test/Close; a closed set starts at Commit. The rest is Commit → Build → Review → Approve → Deploy → Verify.',
+      },
+      {
+        heading: 'Statuses',
+        body: 'Open, closed, deployed, covered by a catch-up, or phantom (empty, history only). **Resume** is only for a closed, undeployed, non-catch-up set.',
+      },
+    ],
+    docs: [
+      { label: 'Shipping a TM1 change', href: 'https://falconbi.github.io/articles/shipping-tm1-changes/' },
+      { label: 'Governed TM1 deploys', href: 'https://falconbi.github.io/articles/governed-tm1-deploys/' },
     ],
   },
 
   deploy: {
-    title: 'Deploy Pipeline',
+    title: 'Deploy',
     sections: [
       {
-        heading: 'New Deploy',
-        body: 'Pick a closed Change Set as the source and a target server. The pipeline runs **Diff** (what changed vs. target) → **Package** (fetch live objects, write a package) → **Risk** (blockers: rule syntax errors, missing dependencies, chore conflicts) → **Deploy** (push in dependency order — attributes → dimensions → cubes → rules → subsets → views → processes). Run as a Dry Run first.',
+        heading: 'Start here',
+        body: 'Click **Deploy** on a change-set row. There is no separate New Deploy — the row supplies the set and target context.',
       },
       {
-        heading: 'History',
-        body: 'An archive of past deployments — what was deployed, when, and the diff at the time.',
+        heading: 'The wizard',
+        body: '**Test** runs the model assertions. **Close** records the tests and entries. **Commit** sends DEV to GitHub. **Build release** creates a commit from the target\'s last received state plus this set. **Review** shows the pull plan and drift. **Approve** signs the exact commit. **Deploy** applies it. **Verify** re-checks drift.',
       },
       {
-        heading: 'Import',
-        body: 'Import a package built outside this session (e.g. from the CLI) to review or deploy it here.',
+        heading: 'Drift',
+        body: 'Drift means the target was edited outside the pipeline. Deploys pause until the target matches the commit it last received. Restore the target, or port the intended change to DEV and release it. **Reseed does not clear Git drift** — it only replaces the local baseline snapshot.',
       },
       {
-        heading: 'Baselines',
-        body: 'A baseline is the structural snapshot a diff compares against. Deploys keep it current automatically — this view is for bootstrapping a new one or recovering from a stale/incorrect baseline, not a normal step in every deploy.',
+        heading: 'Catch-up',
+        body: 'Admin-only exception for bringing a target level when DEV is far ahead. It can ship several change sets at once, but it is not the normal path. It does not cover open sets and can leave drift behind.',
       },
+      {
+        heading: 'Deploy Center',
+        body: '**History** shows releases, approvals and snapshots. **Baselines** bootstraps or force-reseeds a local baseline; it is not a Git drift fix. **Lenses** is the separate Lens deploy flow.',
+      },
+    ],
+    docs: [
+      { label: 'Shipping a TM1 change', href: 'https://falconbi.github.io/articles/shipping-tm1-changes/' },
+      { label: 'When PROD drifts', href: 'https://falconbi.github.io/articles/deploy-drift-recovery/' },
+      { label: 'Deploying Lenses', href: 'https://falconbi.github.io/articles/deploying-lenses/' },
     ],
   },
 
@@ -258,16 +283,20 @@ export const HELP_CONTENT = {
     sections: [
       {
         heading: 'What this is',
-        body: 'Has PROD changed since we last deployed to it? PROD saves a copy of itself, and we compare that to the last deploy. Same = clean, different = drift.',
+        body: 'Has the target changed since we last deployed to it? The target saves a copy of itself, and we compare that to the commit it last received. Same = clean, different = drift.',
       },
       {
         heading: 'What you see',
-        body: '**Deployed** is the copy PROD was given at the last deploy. **prod-live** is the copy PROD just saved of itself. Any object that differs between them is drift.',
+        body: '**Deployed** is the commit the target was given. **prod-live** is the target\'s current live state. Any object that differs is drift.',
       },
       {
-        heading: 'When PROD has drifted',
-        body: 'Deploys to the target are **paused** while it has drift. There is no automated revert or promote (retired) — re-apply the change on DEV in a change set, then release it.',
+        heading: 'When the target has drifted',
+        body: 'Deploys are **paused**. Restore the target to its last received commit, or make the intended change on DEV in a change set and release it — the target must match again before Review passes. **Reseed does not clear Git drift.** There is no automated revert.',
       },
+    ],
+    docs: [
+      { label: 'When PROD drifts', href: 'https://falconbi.github.io/articles/deploy-drift-recovery/' },
+      { label: 'Shipping a TM1 change', href: 'https://falconbi.github.io/articles/shipping-tm1-changes/' },
     ],
   },
 }

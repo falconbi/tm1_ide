@@ -1,5 +1,5 @@
 import { request } from '@/lib/api'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useActiveWorkSession, useCloseWorkSession, useWorkSessions } from '@/hooks/useApi'
 import { humanizeFile } from '@/lib/tm1-terms'
 
@@ -16,6 +16,23 @@ function groupByType(items) {
   return groups
 }
 
+// A release lists one entry per CHANGED FILE, and an object can own more than
+// one: a cube has its .json plus a rules file, a process its .json plus a .ti.
+// Those rows carry the same type/name, so a summary that simply maps the list
+// reads as duplicates ("SYS Settings (cube), SYS Settings (cube)") and disagrees
+// with the Review plan, which counts objects. Collapse to one row per object and
+// keep its files, so a count means what a reader expects it to mean.
+function uniqueIncluded(included) {
+  const byObject = new Map()
+  for (const o of included ?? []) {
+    const key = `${o.type}|${o.name}|${o.parent ?? ''}`
+    const seen = byObject.get(key)
+    if (!seen) byObject.set(key, { ...o, files: o.file ? [o.file] : [] })
+    else if (o.file && !seen.files.includes(o.file)) seen.files.push(o.file)
+  }
+  return [...byObject.values()]
+}
+
 function parseOps(ops) {
   return (ops ?? [])
     .map(op => {
@@ -26,6 +43,15 @@ function parseOps(ops) {
 }
 
 const STEP_TITLES = ['Test', 'Close', 'Commit', 'Build release', 'Review', 'Approve', 'Deploy', 'Verify']
+// Four decisions, not eight stops. The eight steps remain the detail inside
+// them — the nav shows the shape of the journey, and clicking a phase lands on
+// the first step that phase still needs.
+const PHASES = [
+  { label: 'Prepare', steps: [1, 2, 3, 4] },
+  { label: 'Review',  steps: [5] },
+  { label: 'Approve', steps: [6] },
+  { label: 'Deploy',  steps: [7, 8] },
+]
 const STEPS = {
   1: { explain: 'Add the tests that cover what this change set changed, then run them. Behaviour checks the numbers are right (DEV only). Control checks the model holds together (DEV and PROD). A change is not done until it has the tests that prove it.' },
   2: { explain: 'Close the change set when you have finished building. Closing records the test result and is the gate \u2014 it starts the deploy journey. Blocking failures must be fixed first.' },
@@ -83,6 +109,11 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const [lock,      setLock]      = useState(null)
   const [busy,      setBusy]      = useState('')
   const [error,     setError]     = useState(null)
+  const [confirming, setConfirming] = useState(false)
+  // target → 'signed-in' | 'needs-login' | 'rejected' | 'paw'. Read up front so
+  // the login requirement shows before the Build release click, not as a 401
+  // after the commit.
+  const [serverAuth, setServerAuth] = useState({})
   const [addedTests, setAddedTests] = useState(0)
   const [setAssertions, setSetAssertions] = useState([])
 
@@ -95,7 +126,45 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     .sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1))[0] ?? null
   const deployCtx = isCatchUp ? (catchSession ?? initialSession) : (initialSession ?? (releaseMode ? latestClosed : activeSession ?? latestClosed))
 
+  // Where this change set actually is in the journey. The wizard used to always
+  // open on step 1 and make the user click past Test/Close/Commit they had
+  // already done elsewhere.
+  const resume = (() => {
+    if (!deployCtx) return null
+    if (!deployCtx.closed_at) return { label: 'open — continue building', step: 1 }
+    if (!deployCtx.commit_ref) return { label: 'closed — ready to commit', step: 3 }
+    if (deployCtx.deployed_target) return { label: 'shipped', step: 8 }
+    return { label: 'committed — build a release', step: 4 }
+  })()
+
   useEffect(() => { if (deployCtx?.id) setSessionId(deployCtx.id) }, [deployCtx?.id])
+
+  // Jump to the first incomplete step, once, when the context is known. A
+  // release/catch-up start at Build release. After that the user owns the step.
+  const jumped = useRef(false)
+  useEffect(() => {
+    if (jumped.current || !deployCtx?.id) return
+    jumped.current = true
+    if (releaseMode || isCatchUp) return
+    if (resume?.step && resume.step > 1) setStep(resume.step)
+  }, [deployCtx?.id, resume?.step, releaseMode, isCatchUp])
+
+  // Per-server login state, refreshed whenever a sign-in completes.
+  useEffect(() => {
+    let alive = true
+    const load = () => request('/api/auth/servers', { headers: authHeader() })
+      .then(r => r.json())
+      .then(list => {
+        if (!alive) return
+        const map = {}
+        for (const s of list ?? []) map[s.name] = s.status
+        setServerAuth(map)
+      })
+      .catch(() => {})
+    load()
+    window.addEventListener('tm1-server-signed-in', load)
+    return () => { alive = false; window.removeEventListener('tm1-server-signed-in', load) }
+  }, [])
 
   useEffect(() => {
     const onSignedIn = (e) => {
@@ -129,7 +198,9 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
         ? (d?.targets ?? []).map(t => t.target).filter(Boolean)
         : (d ?? []).map(s => s?.name).filter(n => n && n !== server)
       setServers(others)
-      setTarget(t => t || (others[0] ?? ''))
+      // A deploy target is (almost) always PROD. Defaulting to the first
+      // alphabetical server picked 24Retail, which nobody meant to deploy to.
+      setTarget(t => t || others.find(n => /prod/i.test(n)) || (others.length === 1 ? others[0] : ''))
     }).catch(() => {})
   }, [server, isCatchUp])
 
@@ -204,10 +275,15 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     const d = await run('approve', { source: server, target, commit, note: approvalNote, deletes }, '/api/deploy/git/approve')
     if (d) { setApproval(d); setStep(7) }
   }
+  // The confirmation lives in the wizard now (target, commit, objects) instead of
+  // a native confirm() on the most consequential button in the app.
   const doDeploy = async () => {
-    if (!window.confirm(`Deploy to ${target}? This applies the release and runs safety checks on it.`)) return
+    setConfirming(false)
     const d = await run('deploy', { source: server, target, session: sessionId }, '/api/deploy/git/execute')
-    if (d) setRes(d)
+    if (d) {
+      setRes(d)
+      if (d.executed) { setDrift(null); setStep(8) }   // Verify runs itself from here
+    }
   }
   const doClearLock = async () => {
     if (!window.confirm(`Clear the stale deploy lock on ${target}? A deploy that died left it behind. This records who cleared it and when.`)) return
@@ -218,6 +294,30 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     const d = await run('drift', { server: target }, '/api/git/drift')
     if (d) setDrift(d)
   }
+
+  // Review is the plan — fetch it on entry instead of asking for a second click.
+  // The handler is kept in a ref updated by an effect (writing a ref during
+  // render is what react-hooks/refs forbids), so the trigger below can stay
+  // keyed on step + release without re-running on every render.
+  const prepareRef = useRef(null)
+  useEffect(() => { prepareRef.current = doPrepare })
+  const plannedFor = useRef(null)
+  useEffect(() => {
+    if (step !== 5) return
+    const commit = release?.releaseCommit
+    if (!commit || plannedFor.current === commit) return
+    plannedFor.current = commit
+    prepareRef.current()
+  }, [step, release?.releaseCommit])
+
+  // Deploy → straight to Verify with the drift check already running: the two
+  // used to be separate clicks with a dead end at the end.
+  const driftRef = useRef(null)
+  useEffect(() => { driftRef.current = doDrift })
+  useEffect(() => {
+    if (step !== 8 || !res?.executed || drift) return
+    driftRef.current()
+  }, [step, res?.executed, drift])
 
   useEffect(() => {
     if (step !== 7 && step !== 8) return setLock(null)
@@ -230,14 +330,6 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     return () => clearInterval(t)
   }, [step, target])
 
-  const resume = (() => {
-    if (!deployCtx) return null
-    if (!deployCtx.closed_at) return { label: 'open — continue building', step: 1 }
-    if (!deployCtx.commit_ref) return { label: 'closed — ready to commit', step: 3 }
-    if (deployCtx.deployed_target) return { label: 'shipped', step: 8 }
-    return { label: 'committed — build a release', step: 4 }
-  })()
-
   const handleClose = () => {
     if (busy === 'deploy' && !window.confirm('A deploy to ' + target + ' is in progress. It will finish on the server — re-open after it completes to see the result. Close anyway?')) return
     onClose()
@@ -247,6 +339,13 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
   const behaviour = tests?.results?.filter(r => (r.kind ?? 'behaviour') === 'behaviour') ?? []
   const control   = tests?.results?.filter(r => r.kind === 'control') ?? []
   const blockFails = tests?.results?.filter(r => !r.pass && (r.severity ?? 'block') === 'block') ?? []
+  // One row per object: the release lists files, which double up per object.
+  const ships = uniqueIncluded(release?.included)
+
+  // A target that has no live session makes Build release fail with a 401 after
+  // the commit. Say so on selection instead. 'paw' servers ride the shared PAW
+  // session, so they never need this.
+  const targetNeedsLogin = !!target && (serverAuth[target] === 'needs-login' || serverAuth[target] === 'rejected')
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -263,19 +362,30 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
         </div>
 
         <div className="flex items-center gap-1 px-4 py-2.5 border-b border-border bg-muted/20 flex-wrap">
-          {STEP_TITLES.map((t, i) => {
-            if (isCatchUp && i < 3) return null
+          {PHASES.map((p, i) => {
+            const steps = isCatchUp ? p.steps.filter(s => s >= 4) : p.steps
+            if (steps.length === 0) return null
+            const active = steps.includes(step)
+            const done = steps.every(s => s < step)
+            const first = steps[0]
+            // Prepare lands on the first step that phase still needs, which is
+            // what the resume link would have sent you to anyway.
+            const go = p.label === 'Prepare' && resume?.step >= first && resume.step <= steps[steps.length - 1]
+              ? resume.step
+              : first
             return (
-            <span key={t} className="flex items-center gap-1">
-              {i > 0 && <span className="text-muted-foreground/40 mx-0.5">→</span>}
-              <button
-                onClick={() => setStep(i + 1)}
-                className={i + 1 === step ? 'text-xs font-semibold text-foreground underline underline-offset-4' : 'text-xs text-muted-foreground hover:text-foreground'}
-              >
-                {i + 1} {t}
-              </button>
-            </span>
-          )})}
+              <span key={p.label} className="flex items-center gap-1">
+                {i > 0 && <span className="text-muted-foreground/40 mx-0.5">→</span>}
+                <button
+                  onClick={() => setStep(go)}
+                  title={steps.length > 1 ? steps.map(s => STEP_TITLES[s - 1]).join(' → ') : STEP_TITLES[first - 1]}
+                  className={active ? 'text-xs font-semibold text-foreground underline underline-offset-4' : 'text-xs text-muted-foreground hover:text-foreground'}
+                >
+                  {done ? '✓' : `${i + 1}`} {p.label}
+                </button>
+              </span>
+            )
+          })}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -420,14 +530,21 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   <label className="text-xs text-muted-foreground w-16">Target</label>
                   <select value={target} onChange={e => {
                     setTarget(e.target.value)
-                    setRelease(null); setPrep(null); setApproval(null)
+                    setRelease(null); setPrep(null); setApproval(null); setConfirming(false)
                   }} disabled={isCatchUp && !!target} className={inputCls + (isCatchUp ? ' opacity-70' : '')}>
+                    {!target && <option value="">Select target…</option>}
                     {servers.map(s => <option key={s} value={s} className="bg-background">{s}</option>)}
                     {servers.length === 0 && <option value="">(no other servers)</option>}
                   </select>
-                  <button onClick={doBuildRelease} disabled={busy === 'release' || !target || (isCatchUp && !deployCtx)} className={primaryBtn}>Build release</button>
+                  <button onClick={doBuildRelease} disabled={busy === 'release' || !target || targetNeedsLogin || (isCatchUp && !deployCtx)} className={primaryBtn}>Build release</button>
                   {busy === 'release' && <span className="text-xs text-muted-foreground">Building…</span>}
                 </div>
+                {targetNeedsLogin && (
+                  <div className="flex items-center gap-2 text-[11px] text-amber-600">
+                    <span>{target} needs its own login before a release can be built.</span>
+                    <button onClick={() => window.dispatchEvent(new CustomEvent('tm1-server-login', { detail: { server: target, force: true } }))} className={textBtn}>Sign in to {target}</button>
+                  </div>
+                )}
                 {release && (
                   <div className="space-y-2">
                     {release.catchUp && (
@@ -438,20 +555,20 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                     )}
                     <p className="text-xs">Release <span className="font-mono">{release.releaseCommit}</span> built on {target}'s recorded commit <span className="font-mono">{release.base}</span>.</p>
                     <div className="border border-emerald-600/30 rounded-md p-2 space-y-1 bg-emerald-600/5">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Included — ships to {target} ({release.included?.length ?? 0})</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Included — ships to {target} ({ships.length})</p>
                       {release.catchUp
-                        ? Object.entries(groupByType(release.included)).map(([type, items]) => (
+                        ? Object.entries(groupByType(ships)).map(([type, items]) => (
                           <div key={type} className="space-y-0.5">
                             <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide pt-1">{type} ({items.length})</p>
                             {items.map((o, i) => (
-                              <p key={i} className="text-[11px]"><span className="text-emerald-700">{o.action === 'D' ? 'delete' : 'update'}</span> · <span className="font-mono">{type === 'other' ? o.name : `${o.type} ${o.name}`}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span></p>
+                              <p key={i} className="text-[11px]"><span className="text-emerald-700">{o.action === 'D' ? 'delete' : 'update'}</span> · <span className="font-mono">{type === 'other' ? o.name : `${o.type} ${o.name}`}</span>{o.files.length ? <span className="text-muted-foreground/60"> ({o.files.map(humanizeFile).join(', ')})</span> : null}</p>
                             ))}
                           </div>
                         ))
-                        : (release.included ?? []).map((o, i) => (
-                          <p key={i} className="text-[11px]"><span className="text-emerald-700">{o.action === 'D' ? 'delete' : 'update'}</span> · <span className="font-mono">{o.type} {o.name}</span> <span className="text-muted-foreground/60">({humanizeFile(o.file)})</span></p>
+                        : ships.map((o, i) => (
+                          <p key={i} className="text-[11px]"><span className="text-emerald-700">{o.action === 'D' ? 'delete' : 'update'}</span> · <span className="font-mono">{o.type} {o.name}</span>{o.files.length ? <span className="text-muted-foreground/60"> ({o.files.map(humanizeFile).join(', ')})</span> : null}</p>
                         ))}
-                      {(release.included ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing from this change set changed a file.</p>}
+                      {ships.length === 0 && <p className="text-[11px] text-muted-foreground">Nothing from this change set changed a file.</p>}
                     </div>
                     {release.catchUp && (
                       <div className="border border-border rounded-md p-2 space-y-1 bg-muted/20">
@@ -544,9 +661,14 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
               <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[5].explain}</p>
               <div className="border border-border rounded-md p-3 space-y-3">
                 {!release && <p className="text-xs text-muted-foreground">Build the release first (step 4).</p>}
-                {release && (
+                {release && !prep && (
                   <div className="flex items-center gap-2">
-                    <button onClick={doPrepare} disabled={busy === 'prepare' || !target} className={primaryBtn}>Show what will change</button>
+                    <span className="text-xs text-muted-foreground">{busy === 'prepare' ? 'Reading the plan…' : 'Reading the plan…'}</span>
+                  </div>
+                )}
+                {release && prep && (
+                  <div className="flex items-center gap-2">
+                    <button onClick={doPrepare} disabled={busy === 'prepare' || !target} className={textBtn}>Refresh plan</button>
                     {busy === 'prepare' && <span className="text-xs text-muted-foreground">Reading the plan…</span>}
                   </div>
                 )}
@@ -591,7 +713,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                     <p className="text-xs">Approve release <span className="font-mono">{release.releaseCommit}</span> for <span className="font-semibold">{target}</span>.</p>
                     <div className="border border-border rounded-md p-3 text-xs space-y-1 bg-muted/20">
                       <p><span className="text-muted-foreground">Change set:</span> {deployCtx?.name ?? (sessionId ? `(closed ${String(sessionId).slice(0, 8)})` : '—')}</p>
-                      <p><span className="text-muted-foreground">Ships:</span> {(release.included ?? []).map(o => `${o.name} (${o.type})`).join(', ') || 'nothing'}</p>
+                      <p><span className="text-muted-foreground">Ships:</span> {ships.map(o => `${o.name} (${o.type})`).join(', ') || 'nothing'}</p>
                       {tests && <p><span className="text-muted-foreground">Tests:</span> {tests.passed}/{tests.total} passing{blockFails.length ? `, ${blockFails.length} blocking` : ''}</p>}
                       <p><span className="text-muted-foreground">Release commit:</span> <span className="font-mono">{release.releaseCommit}</span></p>
                       <p className="text-[10px] text-muted-foreground/70 pt-2 border-t border-border mt-1">Approving records who approved, when, and this exact commit. A failed rule/process dependency blocks approval. On a solo model this is self-approval — it is still recorded.</p>
@@ -623,11 +745,30 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
               <div className="border border-border rounded-md p-3 space-y-3">
                 {!release?.releaseCommit && <p className="text-xs text-muted-foreground">Build and approve a release first.</p>}
                 {release?.releaseCommit && !approval && <p className="text-xs text-amber-600">Not approved yet — go back to Approve (step 6) to record the decision.</p>}
-                <div className="flex items-center gap-2">
-                  <button onClick={doDeploy} disabled={busy === 'deploy' || !release?.releaseCommit || !approval} className={primaryBtn}>Deploy to {target}</button>
-                  {busy === 'deploy' && <span className="text-xs text-muted-foreground">Applying…</span>}
-                </div>
-                {release?.included?.length > 0 && <p className="text-[11px] text-muted-foreground">This applies {release.included.length} change{release.included.length !== 1 ? 's' : ''} ({release.included.map(o => o.name).join(', ')}) to {target}.</p>}
+                {confirming ? (
+                  <div className="border border-red-600/40 rounded-md p-3 space-y-2 bg-red-500/5">
+                    <p className="text-xs font-semibold">Deploy to {target}?</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Applies {ships.length} object{ships.length !== 1 ? 's' : ''}
+                      {ships.length ? ` (${ships.map(o => o.name).join(', ')})` : ''} and moves {target} to{' '}
+                      <span className="font-mono">{release?.releaseCommit}</span>, then runs the safety checks.
+                      <span className="text-foreground"> There is no rollback.</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button onClick={doDeploy} disabled={busy === 'deploy'} className={primaryBtn}>
+                        {busy === 'deploy' ? 'Applying…' : `Yes, deploy to ${target}`}
+                      </button>
+                      <button onClick={() => setConfirming(false)} disabled={busy === 'deploy'} className={textBtn}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setConfirming(true)} disabled={busy === 'deploy' || !release?.releaseCommit || !approval} className={primaryBtn}>Deploy to {target}</button>
+                    {busy === 'deploy' && <span className="text-xs text-muted-foreground">Applying…</span>}
+                  </div>
+                )}
+                {/* The confirmation panel says the same thing in more detail. */}
+                {ships.length > 0 && !confirming && <p className="text-[11px] text-muted-foreground">This applies {ships.length} change{ships.length !== 1 ? 's' : ''} ({ships.map(o => o.name).join(', ')}) to {target}.</p>}
                 {res && (
                   <div className="border border-border rounded-md p-3 space-y-2 bg-muted/20">
                     {res.error && <p className="text-xs text-red-600">{res.error}</p>}
@@ -672,7 +813,28 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
           {/* Step 8 — Verify */}
           {step === 8 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[8].explain}</p>
+              {res?.executed ? (
+                <div className="border border-emerald-600/30 rounded-md p-3 space-y-1.5 bg-emerald-600/5">
+                  <p className="text-sm font-semibold">Deployed to {target}</p>
+                  <p className="text-xs">{target} is now at <span className="font-mono">{res.targetCommit}</span>.</p>
+                  {res.verification && (
+                    <p className="text-xs">Safety checks: <span className={res.controlOk ? 'text-emerald-700' : 'text-red-600'}>{res.verification.passed} of {res.verification.total} passed</span></p>
+                  )}
+                  <p className="text-xs">
+                    {drift == null
+                      ? 'Checking drift…'
+                      : (drift.entries?.length ?? 0) > 0
+                        ? <span className="text-amber-600">{drift.entries.length} difference{drift.entries.length !== 1 ? 's' : ''} — deploys to {target} stay paused.</span>
+                        : <span className="text-emerald-700">No drift — {target} matches exactly what it was given.</span>}
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button onClick={handleClose} className={primaryBtn}>Done</button>
+                    <button onClick={doDrift} disabled={busy === 'drift'} className={textBtn}>Check again</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground leading-relaxed">{STEPS[8].explain}</p>
+              )}
               <div className="border border-border rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-muted-foreground w-16">Target</label>

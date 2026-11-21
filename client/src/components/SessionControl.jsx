@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Clock, Circle, History, Check } from 'lucide-react'
+import { Clock, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
-import { useActiveWorkSession, useStartWorkSession, useCloseWorkSession, useServerLogins } from '@/hooks/useApi'
+import { useActiveWorkSession, useStartWorkSession } from '@/hooks/useApi'
 import ChangeLogPanel from '@/components/ChangeLogPanel'
 
 function StartModal({ server, onClose, onStart }) {
@@ -19,7 +19,7 @@ function StartModal({ server, onClose, onStart }) {
   }
 
   return (
-    <div className="absolute top-10 right-0 w-72 bg-popover border border-border rounded-lg shadow-xl z-50 p-3">
+    <div className="absolute top-10 right-0 w-72 bg-popover border border-border rounded-lg shadow-xl z-[60] p-3">
       <div className="text-xs font-semibold mb-2">Start Change Set</div>
       <input
         autoFocus
@@ -40,18 +40,14 @@ function StartModal({ server, onClose, onStart }) {
   )
 }
 
-export default function SessionControl() {
+export default function SessionControl({ deploy = null }) {
   const { server } = useStore()
-  const [showModal, setShowModal]     = useState(false)
-  const [showLog,   setShowLog]       = useState(false)
-  const [confirmClose, setConfirmClose] = useState(false)
+  const [showModal, setShowModal] = useState(false)
+  const [showLog,   setShowLog]   = useState(false)
+  const wrapRef = useRef(null)
 
   const qc = useQueryClient()
   const { data: activeSession } = useActiveWorkSession(server)
-  // Ownership display — the TM1 user signed in to this server (case-insensitive).
-  const { data: logins = [] } = useServerLogins()
-  const serverUser = logins.find(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase())?.username ?? null
-  const closeSession = useCloseWorkSession()
 
   // A first-save may auto-start a change set (api wrapper) — keep the bar fresh.
   useEffect(() => {
@@ -63,79 +59,72 @@ export default function SessionControl() {
     return () => window.removeEventListener('tm1-sessions-changed', refresh)
   }, [qc])
 
+  // Deploy Center closes back to the Change Sets panel.
+  useEffect(() => {
+    const open = () => { setShowLog(true); setShowModal(false) }
+    window.addEventListener('tm1-open-change-sets', open)
+    return () => window.removeEventListener('tm1-open-change-sets', open)
+  }, [])
+
+  // Close the panel/modal when clicking outside the control.
+  useEffect(() => {
+    if (!showLog && !showModal) return
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setShowLog(false)
+        setShowModal(false)
+      }
+    }
+    const onEsc = (e) => {
+      if (e.key === 'Escape') {
+        setShowLog(false)
+        setShowModal(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onEsc)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onEsc)
+    }
+  }, [showLog, showModal])
+
   if (!server) return null
 
   return (
-    <div className="relative flex items-center gap-1">
-      {activeSession ? (
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => { setShowLog(v => !v); setShowModal(false); setConfirmClose(false) }}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors',
-              showLog ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-            title="View change set log"
-          >
-            <Circle size={7} className="fill-emerald-500 text-emerald-500 animate-pulse" />
-            <Clock size={13} />
-            <span className="font-medium max-w-[180px] truncate">Change set: {activeSession.name} · {activeSession.entry_count ?? 0} changes · as {serverUser ?? '?'} on {server}</span>
-          </button>
-          {confirmClose ? (
-            <div className="flex items-center gap-1 pl-1">
-              <span className="text-[10px] text-muted-foreground whitespace-nowrap">Stop tracking changes into this set?</span>
-              <button
-                onClick={async () => { await closeSession.mutateAsync({ id: activeSession.id }); setConfirmClose(false) }}
-                disabled={closeSession.isPending}
-                className="px-1.5 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-40"
-              >
-                Close set
-              </button>
-              <button
-                onClick={() => setConfirmClose(false)}
-                className="px-1.5 py-0.5 text-[10px] rounded border border-border text-muted-foreground hover:bg-muted"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmClose(true)}
-              title="Close change set — stops tracking new changes into it. Reopen later with Resume."
-              className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-muted transition-colors"
-            >
-              <Check size={12} />
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => { setShowModal(v => !v); setShowLog(false) }}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors',
-              showModal ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-            title="Start a change set to track changes"
-          >
-            <Clock size={13} />
-            <span>Change set</span>
-          </button>
-          <button
-            onClick={() => { setShowLog(v => !v); setShowModal(false) }}
-            className={cn(
-              'p-1.5 rounded transition-colors',
-              showLog ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-            title="View change set log"
-          >
-            <History size={13} />
-          </button>
-        </div>
+    <div ref={wrapRef} className="relative flex items-center gap-1">
+      {(showLog || showModal) && (
+        <div
+          className="fixed inset-0 z-40"
+          onMouseDown={() => { setShowLog(false); setShowModal(false) }}
+        />
       )}
+      <button
+        onClick={() => { setShowLog(v => !v); setShowModal(false) }}
+        className={cn(
+          'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors',
+          showLog ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+        )}
+        title="Change sets — current, previous, and start a new one"
+      >
+        {activeSession
+          ? <Circle size={7} className="fill-emerald-500 text-emerald-500 animate-pulse" />
+          : <Clock size={13} />}
+        <span
+          className="font-medium max-w-[480px] truncate"
+          title={activeSession ? `Change set: ${activeSession.name}` : 'Change sets'}
+        >
+          {activeSession
+            ? `Change set: ${activeSession.name} · ${activeSession.entry_count ?? 0} changes`
+            : 'Change sets'}
+        </span>
+      </button>
 
-{showModal && <StartModal server={server} onClose={() => setShowModal(false)} onStart={() => setShowLog(true)} />}
-      {showLog   && <ChangeLogPanel server={server} onClose={() => setShowLog(false)} direction="down" />}
+      {showModal && <StartModal server={server} onClose={() => setShowModal(false)} onStart={() => setShowLog(true)} />}
+      {/* New closes the list first: both surfaces are anchored to this button and
+          share its space, and the panel (also z-50, rendered later) would paint
+          over the form and make Cancel/Start unclickable. */}
+      {showLog   && <ChangeLogPanel server={server} onClose={() => setShowLog(false)} direction="down" onNew={() => { setShowLog(false); setShowModal(true) }} deploy={deploy} />}
     </div>
   )
 }

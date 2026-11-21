@@ -106,7 +106,7 @@ export default function AssertionsManager({ server, onClose }) {
   const inputText = 'w-full bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring'
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={onClose}>
       <div className="w-[760px] max-h-[85vh] flex flex-col bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">

@@ -61,14 +61,13 @@ Eight steps, plain language, no icons:
 
 ## Docs
 
-- `docs/deploy/DEPLOY_LIFECYCLE.md` — proven-loop record + the two bug fixes + the first-time GitHub setup gap.
+- `docs/deploy/DEPLOY_LIFECYCLE.md` — proven-loop record + the two bug fixes + the first-time GitHub setup flow.
 - `docs/deploy/MULTI_DEVELOPER.md` — per-person change sets marked built (review points #3/#4).
 - `docs/deploy/ASSERTIONS.md` — the ground rules.
 
 ## Caveats / not done
 
 - **Backend restart** needed after these server/core changes.
-- The **first-time GitHub setup** flow (link a server to a repo) is designed but **not built** — see
-  `DEPLOY_LIFECYCLE.md`.
+- The **first-time GitHub setup** flow is built: Deploy → GitHub setup links a server to an existing repo, sets its DEV/PROD role and stores the token. See `DEPLOY_LIFECYCLE.md`.
 - The **change-log correlation** ("did the data move or a rule?") is designed, not built.
 - `docs/ide/IMPROVEMENTS.md` was **not touched** (yours).

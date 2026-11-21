@@ -51,7 +51,50 @@ app.post('/api/sessions/resume', async (req, res) => {
         if (!(await mayManageSession(req, sess))) {
             return res.status(403).json({ error: `Change set ${id} belongs to ${sess.user ?? 'another user'}.` })
         }
+        if (sess.kind === 'catch-up') {
+            return res.status(409).json({ error: `Catch-up "${sess.name}" is a one-shot release and cannot be resumed. Start a new catch-up if needed.` })
+        }
+        if (sess.deployed_target) {
+            return res.status(409).json({ error: `Change set "${sess.name}" is already deployed to ${sess.deployed_target}. Start a new change set instead.` })
+        }
+        if (sess.covered_by) {
+            return res.status(409).json({ error: `Change set "${sess.name}" was covered by a catch-up release. Start a new change set instead.` })
+        }
+        if (sess.wont_deploy_at) {
+            return res.status(409).json({ error: `Change set "${sess.name}" is retired as a phantom and cannot be resumed.` })
+        }
         res.json(cl.resumeSession(id))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Retire a change set: mark it "won't deploy" so it stops appearing as something
+// to ship. This is the manual counterpart to automatic phantom detection, which
+// only retires a set whose objects no longer exist — a set whose edits were
+// reverted still exists, and used to sit in the list for ever.
+app.post('/api/sessions/:id/retire', async (req, res) => {
+    try {
+        const sess = cl.getSession(req.params.id)
+        if (!sess) return res.status(404).json({ error: `No change set ${req.params.id}` })
+        if (!gateReadOnly(res, sess.server)) return
+        if (!(await mayManageSession(req, sess))) {
+            return res.status(403).json({ error: `Change set ${sess.name} belongs to ${sess.user ?? 'another user'}.` })
+        }
+        if (!sess.closed_at) return res.status(409).json({ error: `"${sess.name}" is still open — close it before retiring it.` })
+        if (sess.deployed_target) return res.status(409).json({ error: `"${sess.name}" is already deployed to ${sess.deployed_target}.` })
+        if (sess.covered_by) return res.status(409).json({ error: `"${sess.name}" was carried by a catch-up release.` })
+        res.json(cl.markSessionWontDeploy(sess.id, { by: req.user, reason: req.body?.reason ?? '' }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/sessions/:id/unretire', async (req, res) => {
+    try {
+        const sess = cl.getSession(req.params.id)
+        if (!sess) return res.status(404).json({ error: `No change set ${req.params.id}` })
+        if (!gateReadOnly(res, sess.server)) return
+        if (!(await mayManageSession(req, sess))) {
+            return res.status(403).json({ error: `Change set ${sess.name} belongs to ${sess.user ?? 'another user'}.` })
+        }
+        res.json(cl.unmarkSessionWontDeploy(sess.id))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

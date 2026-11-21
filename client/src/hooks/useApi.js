@@ -4,6 +4,7 @@ import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { conflictEntry } from '@/lib/conflict'
 import { get, post, patch, del, request } from '@/lib/api'
+import { readyToRelease, inProgress } from '@/lib/deploy/change-sets'
 
 // ── Global /api fetch wrapper ─────────────────────────────────────────────────
 // 1. Attaches the IDE token to every same-origin /api call that lacks one (some
@@ -92,6 +93,15 @@ if (typeof window !== 'undefined' && !window.__tm1FetchWrapped) {
       init = { ...init, headers }
     }
     const r = await nativeFetch(input, init)
+    // A write that landed in a change set changes that set's size, and the header
+    // count is only refreshed by this event. Save routes answer { noSession } —
+    // noSession === false means a change was recorded. (Before this, the count
+    // stayed at its old value until a reload.)
+    if (r.ok && WRITE.has(method) && url.startsWith('/api/')) {
+      r.clone().json().then(d => {
+        if (d && d.noSession === false) window.dispatchEvent(new CustomEvent('tm1-sessions-changed'))
+      }).catch(() => {})
+    }
     // A write refused on a read-only (PROD-posture) server — one toast, fixed id
     // so it never duplicates while the user keeps trying.
     if (r.status === 409 && url.startsWith('/api/')) {
@@ -715,6 +725,14 @@ function useServerUser(server) {
 }
 export const useActiveWorkSession  = (server) => { const user = useServerUser(server); return useQuery({ queryKey: ['work-session-active', server, user], queryFn: () => get(`/api/sessions/active?server=${enc(server)}`), enabled: !!server, staleTime: 0, refetchInterval: 0 }) }
 export const useWorkSessions       = (server) => { const user = useServerUser(server); return useQuery({ queryKey: ['work-sessions', server, user], queryFn: () => get(`/api/sessions?server=${enc(server)}`), enabled: !!server, staleTime: 0 }) }
+
+// The one place screens ask "what is ready to ship?" — derived from the same
+// query, so a count shown in the header, the panel and the Release list agrees.
+export const useChangeSetSummary = (server) => {
+  const query = useWorkSessions(server)
+  const sessions = query.data ?? []
+  return { ...query, sessions, ready: readyToRelease(sessions), inProgress: inProgress(sessions) }
+}
 export const useWorkSessionLog     = (sessionId) => useQuery({ queryKey: ['work-session-log', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log`), enabled: !!sessionId, staleTime: 0 })
 export const useWorkSessionLogVerbose = (sessionId) => useQuery({ queryKey: ['work-session-log-verbose', sessionId], queryFn: () => get(`/api/sessions/${enc(sessionId)}/log/verbose`), enabled: !!sessionId, staleTime: 0 })
 export const useStartWorkSession   = () => { const qc = useQueryClient(); return useMutation({ mutationFn: (body) => post('/api/sessions/start', body), onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ['work-session-active', v.server] }); qc.invalidateQueries({ queryKey: ['work-sessions', v.server] }) } }) }

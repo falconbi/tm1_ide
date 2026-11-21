@@ -74,7 +74,7 @@ function LensRow({ entry, showHash = true }) {
 }
 
 function HistoryPanel({ target }) {
-  const { data, isLoading } = useLensDeployHistory(target)
+  const { data, isLoading, error } = useLensDeployHistory(target)
   const history = [...(data?.history ?? [])].reverse().slice(0, 6)
   if (!target) return null
   return (
@@ -83,7 +83,12 @@ function HistoryPanel({ target }) {
         <RefreshCw size={11} className="text-muted-foreground" /> Lens deploy history on {target}
       </div>
       {isLoading && <div className="p-3 text-xs text-muted-foreground flex items-center gap-2"><Loader2 size={11} className="animate-spin" /> Loading…</div>}
-      {!isLoading && !history.length && <p className="p-3 text-xs text-muted-foreground">No Lens deploys recorded on this target yet.</p>}
+      {/* A failed read is not an empty history. A 401 here is the target's own
+          login (see Drift, which says so); "no records" would claim it was read. */}
+      {!isLoading && error && (
+        <p className="p-3 text-xs text-red-500">{error.message ?? `Could not read the Lens deploy history on ${target}.`}</p>
+      )}
+      {!isLoading && !error && !history.length && <p className="p-3 text-xs text-muted-foreground">No Lens deploys recorded on this target yet.</p>}
       {history.map(h => {
         const ok = h.entries?.filter(e => e.ok).length ?? 0
         const bad = h.entries?.filter(e => !e.ok).length ?? 0

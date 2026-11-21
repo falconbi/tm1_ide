@@ -44,7 +44,7 @@ function Status({ ok }) {
     : <span className="inline-flex items-center gap-1 text-xs text-red-600"><XCircle size={13} /> Issues</span>
 }
 
-export default function ModelHealth({ server, onClose }) {
+export default function ModelHealth({ server, onClose, onOpenAssertions, embedded = false }) {
   const { openTab } = useStore()
   const [result,  setResult]  = useState(null)
   const [running, setRunning] = useState(false)
@@ -94,8 +94,14 @@ export default function ModelHealth({ server, onClose }) {
   const h = result?.sections?.house_standards
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="w-[640px] max-h-[85vh] flex flex-col bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+    <div
+      className={embedded ? 'flex-1 min-h-0 overflow-y-auto p-6' : 'fixed inset-0 bg-black/50 flex items-center justify-center z-50'}
+      onClick={embedded ? undefined : onClose}
+    >
+      <div
+        className={embedded ? 'w-full max-w-4xl mx-auto flex flex-col bg-background' : 'w-[640px] max-h-[85vh] flex flex-col bg-background border border-border rounded-lg shadow-xl'}
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
           <Activity size={14} className="text-muted-foreground" />
@@ -105,10 +111,10 @@ export default function ModelHealth({ server, onClose }) {
             className="flex items-center gap-1.5 px-3 py-1 text-xs rounded border border-border text-foreground hover:bg-muted disabled:opacity-40 transition-colors">
             {running ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />} Run health check
           </button>
-          <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Close"><X size={14} /></button>
+          {!embedded && <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Close"><X size={14} /></button>}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className={embedded ? 'p-4 space-y-4' : 'flex-1 overflow-y-auto p-4 space-y-4'}>
           {error && <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">{error}</p>}
           {!result && !running && <p className="text-xs text-muted-foreground italic">Nothing has run yet. Click "Run health check" — it executes the model's assertions and scans for readiness and house standards (this can take a few seconds).</p>}
 
@@ -118,6 +124,11 @@ export default function ModelHealth({ server, onClose }) {
               <span className="text-xs font-semibold">Assertions</span>
               <span className="text-[10px] text-muted-foreground">does the model compute the right numbers?</span>
               <div className="flex-1" />
+              {onOpenAssertions && (
+                <button onClick={onOpenAssertions} className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground">
+                  Manage assertions
+                </button>
+              )}
               {a && (a.error ? <Status ok={false} /> : <Status ok={a.ok} />)}
             </div>
             <div className="p-3 space-y-2">

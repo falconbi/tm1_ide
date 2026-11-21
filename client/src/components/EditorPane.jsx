@@ -15,6 +15,7 @@ import SessionReportTab from '@/components/SessionReportTab'
 import CubeMapEditor from '@/components/cubemap-editor/CubeMapEditor'
 import LensEditor from '@/components/LensEditor'
 import RulesEditor from '@/components/rules-editor/RulesEditor'
+import DeployTab from '@/components/DeployTab'
 import { getRevealTarget } from '@/lib/reveal-target'
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
@@ -54,6 +55,7 @@ export default function EditorPane({ groupId }) {
         {tab.type === 'cubemap'         && <CubeMapEditor      key={tab.id} tab={tab} />}
         {tab.type === 'session-report'  && <SessionReportTab   key={tab.id} tab={tab} />}
         {tab.type === 'lens'           && <LensEditor        key={tab.id} tab={tab} />}
+        {tab.type === 'deploy'         && <DeployTab          key={tab.id} />}
         {tab.type === 'transactionlog'  && (
           <div key={tab.id} className="flex h-full min-h-0 bg-sidebar">
             <TransactionLogPanel
@@ -71,7 +73,7 @@ export default function EditorPane({ groupId }) {
       <div className="flex items-center px-3 py-0.5 bg-muted border-t border-border text-xs text-muted-foreground shrink-0">
         <span>Ln {cursor.line}, Col {cursor.col}</span>
         <span className="ml-4">
-          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'Subset' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : tab.type === 'chore' ? 'Chore' : tab.type === 'cubeeditor' ? 'Cube' : 'TM1 TI'}
+          {tab.type === 'rules' ? 'TM1 Rules' : tab.type === 'subset' ? 'Subset' : tab.type === 'dimension' ? 'Dimension' : tab.type === 'view' || tab.type === 'cubeview' ? 'View' : tab.type === 'chore' ? 'Chore' : tab.type === 'cubeeditor' ? 'Cube' : tab.type === 'deploy' ? 'Deploy' : 'TM1 TI'}
         </span>
         {getRevealTarget(tab) && (
           <button

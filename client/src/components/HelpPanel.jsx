@@ -1,6 +1,12 @@
 import { useEffect } from 'react'
-import { X, HelpCircle } from 'lucide-react'
+import { X, HelpCircle, ExternalLink } from 'lucide-react'
 import { HELP_CONTENT } from '@/lib/help-content'
+
+const ARTICLES = 'https://falconbi.github.io/articles/'
+const DEFAULT_DOCS = [
+  { label: 'falconbi articles', href: ARTICLES },
+  { label: 'TM1 IDE guide', href: ARTICLES + 'tm1-ide-guide.html' },
+]
 
 // Minimal markdown-lite: **bold** and `code` spans only — deliberately not a
 // full markdown renderer for a handful of short paragraphs per section.
@@ -30,8 +36,11 @@ export default function HelpPanel({ open, onClose, area }) {
   const content = HELP_CONTENT[area]
   if (!content) return null
 
+  const docs = [...(content.docs ?? DEFAULT_DOCS)]
+  if (!docs.some(d => d.href === ARTICLES)) docs.push({ label: 'All articles', href: ARTICLES })
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
         className="bg-popover border border-border rounded-lg shadow-xl w-[520px] max-w-[90vw] max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -53,6 +62,24 @@ export default function HelpPanel({ open, onClose, area }) {
               <p className="text-xs text-muted-foreground leading-relaxed">{renderBody(s.body)}</p>
             </div>
           ))}
+
+          <div className="pt-2 border-t border-border">
+            <div className="text-xs font-semibold text-foreground mb-1">Documentation</div>
+            <div className="flex flex-col gap-1">
+              {docs.map(d => (
+                <a
+                  key={d.href}
+                  href={d.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground w-fit"
+                >
+                  <ExternalLink size={11} className="shrink-0" />
+                  {d.label}
+                </a>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground text-center">
