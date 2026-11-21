@@ -3,7 +3,7 @@
 Every bug-fix commit, newest first, by the date it was committed. Generated from the git history;
 commits that mixed a fix into a feature are included too. New features are not listed here.
 
-166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November, 9 for 18 November and 8 for 19 November. Last updated 2026-11-19.
+166 fixes from 2026-05-20 to 2026-10-10, plus 46 entries for 11–27 October, 6 for 28 October–1 November, 7 for 2 November, 4 for 5 November, 10 for 6 November, 9 for 9 November, 8 for 15 November, 3 for 17 November, 9 for 18 November, 8 for 19 November and 2 for 20 November. Last updated 2026-11-20.
 
 ← [Back to README](../../README.md)
 
@@ -35,6 +35,11 @@ commits that mixed a fix into a feature are included too. New features are not l
 - **Release dependencies** — A subset or view was matched to its owning change set by type and name only, so a `Default` subset on one dimension falsely owned `Default` on another. Rebuilding a release could refuse with the wrong owner and hide unowned “Add to this release” items. Dependency ownership now uses the same type/name/parent key as the change set itself
 
 - **Git token setup** — `.env`’s `TM1_GIT_TOKEN` silently overrode the token saved from the setup screen after a restart, and an already-linked server still opened on a blank link form. `git-secrets.tokenSource()` now reports env/saved/none without the value, saving is refused with a 409 when `.env` owns the token, the status route returns the source (and a token-expiry hint on failure), and the linked screen shows the link, token source and a deliberate “Link to a different repo” path
+
+### 2026-11-20
+
+- **rules formatter structure** — Formatting a selection used the previously saved Verbose/Structured setting, not the option just chosen. "No Change" fell back to the old line formatter and flattened multi-line calls. The chosen structure now applies to both whole-document and selection formatting; No Change was removed and **Undo format** restores the text from before the last format
+- **Lens editor on tab move** — Moving a Lens tab to another pane remounted the editor, resetting its Published/Draft state and any unsaved code. The editor now keeps its state per tab across the move and discards it only when the tab is closed
 
 ### 2026-11-19
 

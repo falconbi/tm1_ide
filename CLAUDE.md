@@ -146,6 +146,27 @@ cd client && npm run dev   # terminal 2 (Vite on :5173)
 
 ---
 
+## Browser testing (the `browse` extension)
+
+When driving this app in a browser, the allowlist is **fixed**. Open every tab with exactly these
+two origins and nothing else:
+
+```js
+allowedOrigins: ['http://localhost:5173', 'http://localhost:8083']
+```
+
+- `localhost:5173` — the Vite dev server; `localhost:8083` — the Express backend it proxies `/api` to.
+- **Never open a tab without `allowedOrigins`.** Never add a third origin, and never use `file:`,
+  `data:`, `blob:`, `view-source:` or any public site.
+- If a task seems to need a different origin, **stop and ask the user** before opening anything.
+- Only touch tabs this agent opened (or ones the user lends on purpose). Never reuse the user's own tabs.
+- **Never type credentials.** Sign-in, 2FA and permission prompts go through `handoff`, so the user
+  answers them in their own browser.
+- **Screenshots come back blank on this machine** (Brave snap compositing). Use `snapshot` and `eval`
+  to read the page, not `screenshot`.
+
+---
+
 ## Architecture Constraints
 
 - **All TM1 calls go through `TM1Client`** — never call the TM1 REST API directly from a route. Add a method to `tm1-client.js` and call it from the route.
@@ -160,6 +181,13 @@ cd client && npm run dev   # terminal 2 (Vite on :5173)
 ---
 
 ## TM1-Specific Conventions
+
+### Read the model from the server, never from loose files
+TM1 model state (rules, processes, dimensions, chores, views, subsets) — read it from the server
+through the TM1 MCP tools or the IDE (or the TM1 Git repo as of its last commit). **Never from files
+in `tmp/`**: those are working copies and backups saved by build scripts (e.g.
+`tmp/workforce/live-WFP_Workforce_Cost.rules` is a month-old snapshot despite its name). In Nov 2026
+a review relied on one and described a WFP Base rule that no longer exists.
 
 ### TI Variable Naming
 All IDE-generated TI code must follow the `p/v/n/s/c` prefix convention:
