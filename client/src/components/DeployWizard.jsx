@@ -66,6 +66,9 @@ const STEPS = {
 
 const textBtn = 'px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40'
 const primaryBtn = 'px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 transition-colors disabled:opacity-40'
+// The way forward for a step, pinned to the bottom of the scrolling body so it
+// is visible while you read a long result or plan list.
+const stepActionBar = 'sticky bottom-0 -mx-4 -mb-4 px-4 py-2 bg-background border-t border-border flex items-center justify-end gap-2 flex-wrap'
 const inputCls = 'bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring'
 
 function TestList({ title, meaning, results }) {
@@ -494,10 +497,14 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                     )}
                     <TestList title="Behaviour" meaning="the numbers are right (DEV only)" results={behaviour} />
                     <TestList title="Control" meaning="the model holds together (DEV and PROD)" results={control} />
-                    <button onClick={() => setStep(2)} className={textBtn}>Continue to Close</button>
                   </div>
                     )
                   })()}
+              </div>
+              {/* The result list can be 60 rows long; the way forward stays on
+                  screen instead of waiting at the bottom of it. */}
+              <div className={stepActionBar}>
+                <button onClick={() => setStep(2)} className={primaryBtn}>Continue to Close</button>
               </div>
             </div>
           )}
@@ -557,7 +564,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                 {pushed && (
                   <div className="border border-border rounded-md p-3 bg-muted/20">
                     <p className="text-xs">Committed. {server} is filed in the GitHub repo as <span className="font-mono">{pushed.commit}</span>.</p>
-                    <button onClick={() => setStep(4)} className={textBtn + ' mt-2'}>Continue to Build release</button>
+                    <button onClick={() => setStep(4)} className={primaryBtn + ' mt-2'}>Continue to Build release</button>
                   </div>
                 )}
               </div>
@@ -700,7 +707,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                     {(release.noFile?.length > 0) && (
                       <p className="text-[11px] text-amber-600">In this change set but no file changed (e.g. only a value): {release.noFile.map(o => `${o.type} ${o.name}`).join(', ')}</p>
                     )}
-                    <button onClick={() => setStep(5)} className={textBtn}>Continue to Review</button>
+                    <button onClick={() => setStep(5)} className={primaryBtn}>Continue to Review</button>
                   </div>
                 )}
               </div>
@@ -749,13 +756,16 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                     {prep.plan && (prep.planByType?.Skip ?? 0) > 0 && <p className="text-[11px] text-muted-foreground">{prep.planByType.Skip} objects are unchanged — nothing to do for them.</p>}
                     {changed.length === 0 && prep.plan && <p className="text-xs">Nothing would change — the target already matches the release.</p>}
                     {prep.error && <p className="text-xs text-red-600">The pull plan failed — cannot continue to Approve. {prep.error}</p>}
-                    <div className="flex items-center gap-2 pt-1">
-                      <button onClick={() => setStep(4)} className={textBtn}>Back to Build release</button>
-                      <button onClick={() => setStep(6)} disabled={!prep.ready || !!prep.error} className={primaryBtn} title={prep.error ? 'The pull plan failed — fix it, then re-show what will change' : ''}>Continue to Approve</button>
-                    </div>
                   </div>
                 )}
               </div>
+              {/* Same reason as Test: the plan can list a hundred objects. */}
+              {prep && (
+                <div className={stepActionBar}>
+                  <button onClick={() => setStep(4)} className={textBtn}>Back to Build release</button>
+                  <button onClick={() => setStep(6)} disabled={!prep.ready || !!prep.error} className={primaryBtn} title={prep.error ? 'The pull plan failed — fix it, then re-show what will change' : ''}>Continue to Approve</button>
+                </div>
+              )}
             </div>
           )}
 
@@ -787,7 +797,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                     {approval && (
                       <div className="border border-border rounded-md p-3 bg-muted/20">
                         <p className="text-xs">Approved by <span className="font-semibold">{approval.approver}</span> at {new Date(approval.approved_at).toLocaleTimeString()}.</p>
-                        <button onClick={() => setStep(7)} className={textBtn + ' mt-2'}>Continue to Deploy</button>
+                        <button onClick={() => setStep(7)} className={primaryBtn + ' mt-2'}>Continue to Deploy</button>
                       </div>
                     )}
                   </>
@@ -861,7 +871,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                         {res.reconcile.error && <p className="text-red-600">{res.reconcile.error}</p>}
                       </div>
                     )}
-                    {res.executed && <button onClick={() => setStep(8)} className={textBtn + ' mt-1'}>Continue to Verify</button>}
+                    {res.executed && <button onClick={() => setStep(8)} className={primaryBtn + ' mt-1'}>Continue to Verify</button>}
                   </div>
                 )}
               </div>
