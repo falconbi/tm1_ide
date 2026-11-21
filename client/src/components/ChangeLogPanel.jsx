@@ -100,7 +100,7 @@ function LogEntry({ entry, server, openTab, onDiff }) {
 }
 
 function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = false, onDiff }) {
-  const { openDeployWizard } = useStore()
+  const { openShip } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
   // A draft only exists while the user is editing; otherwise the text follows the
@@ -209,7 +209,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
           {/* One primary action. */}
           {owns && (isActive || (!session.deployed && !session.covered_by && !session.wont_deploy_at)) && (
             <button
-              onClick={() => { openDeployWizard({ session }); onClose?.() }}
+              onClick={() => { openShip(session); onClose?.() }}
               title={isActive ? 'Run the tests, close it, then deploy' : 'Deploy this change set'}
               className="shrink-0 px-2 py-1 rounded text-[10px] font-medium text-emerald-500 hover:text-emerald-400 hover:bg-muted transition-colors"
             >

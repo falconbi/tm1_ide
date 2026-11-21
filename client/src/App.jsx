@@ -25,6 +25,7 @@ import ServerLoginDialog from '@/components/ServerLoginDialog'
 import CatalogAdmin from '@/components/CatalogAdmin'
 import AssertionsManager from '@/components/AssertionsManager'
 import DeployWizard from '@/components/DeployWizard'
+import ShipDialog from '@/components/ShipDialog'
 import { useIsSimple, useServerLogins } from '@/hooks/useApi'
 
 const queryClient = new QueryClient({
@@ -385,6 +386,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
         <AdminOnly server={server}>{showUserMgmt && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}</AdminOnly>
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
+        <ShipDialog />
         {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} catchUp={!!deployWizard.catchUp} catchUpTarget={deployWizard.catchUpTarget ?? null} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <ServerLoginDialog />

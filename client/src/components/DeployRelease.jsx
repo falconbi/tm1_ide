@@ -11,7 +11,7 @@ import { useStore } from '@/store'
 
 
 export default function DeployRelease({ server }) {
-  const openDeployWizard = useStore(s => s.openDeployWizard)
+  const openShip = useStore(s => s.openShip)
   const { ready, inProgress: open } = useChangeSetSummary(server)
 
   return (
@@ -40,7 +40,7 @@ export default function DeployRelease({ server }) {
                   </p>
                 </div>
                 <button
-                  onClick={() => openDeployWizard({ session: s })}
+                  onClick={() => openShip(s)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-border text-foreground hover:bg-muted transition-colors shrink-0"
                 >
                   Continue…
@@ -76,7 +76,7 @@ export default function DeployRelease({ server }) {
                 </p>
               </div>
               <button
-                onClick={() => openDeployWizard({ session: s })}
+                onClick={() => openShip(s)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-emerald-700 text-white hover:bg-emerald-600 transition-colors shrink-0"
               >
                 <Rocket size={12} /> Deploy…

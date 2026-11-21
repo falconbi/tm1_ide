@@ -500,8 +500,16 @@ export const useStore = create((set, get) => ({
   // the IDE exactly as it was; tab/group state is untouched by this.
 
   // The one deploy surface. `{ release: true }` opens the latest closed change
-  // set; `{ session }` opens a specific change set.
+  // set; `{ session }` opens a specific change set. This is the detailed,
+  // step-by-step view; the normal path is `ship` below.
   deployWizard: null,
   openDeployWizard:  (config = {}) => set({ deployWizard: config }),
   closeDeployWizard: () => set({ deployWizard: null }),
+
+  // The normal path: one action that ships a change set. Everything the stepped
+  // wizard exposes (commit, release, approval, deploy) happens automatically.
+  // { session } — the change set to send.
+  ship: null,
+  openShip:  (session) => set({ ship: { session } }),
+  closeShip: () => set({ ship: null }),
 }))
