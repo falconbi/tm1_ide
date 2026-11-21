@@ -35,7 +35,11 @@ stub('core/git-lock', { acquire: async () => ({ by: 't' }), release: async () =>
 stub('core/git-state', { lastDeployed: () => ({ lastDeployedCommit: 'BASE' }), recordDeploy: async () => ({ ok: true }) })
 stub('core/git-drift', { driftCheck: async () => ({ entries: [], deployed: 'BASE' }) })
 stub('core/git-reconcile', { reconcile: async () => reconcileResult })
+// Keep the parts of git-release that are pure and used by the deploy path
+// (viewSubsetConflicts, objectFromFile) — override only what this test fakes.
+const gitReleaseReal = require(resolve('core/git-release'))
 stub('core/git-release', {
+    ...gitReleaseReal,
     changedObjects: async () => ([{ type: 'cube', name: 'A' }]),
     objectKey: (type, name) => `${type}::${String(name).toLowerCase()}`,
     expectedPlanKeys: (objects) => new Set((objects ?? []).map(o => `${o.type}::${String(o.name).toLowerCase()}`)),

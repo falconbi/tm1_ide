@@ -101,6 +101,28 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         return out
     }
 
+    // The same conflict the deploy guard catches — but here, at Review, before
+    // anyone approves. A view or subset this change set ships that ALSO changed on
+    // the target would be replaced by the REST complement after the pull. The
+    // change set's own log is enough to know what it ships; no extra git fetch.
+    if (out.drift === 'clean' && session && (out.driftNonBlocking ?? []).length) {
+        try {
+            const { viewSubsetConflicts, expectedPlanKeys, objectFromFile } = require('./git-release')
+            const log = require('./change-log').getSessionLog(session)
+            const shipped = (log ?? [])
+                .filter(e => e.object_type === 'view' || e.object_type === 'subset')
+                .map(e => ({ type: e.object_type, name: e.object_name, parent: e.detail ?? null }))
+            const conflicts = shipped.length ? viewSubsetConflicts(out.driftNonBlocking, expectedPlanKeys(shipped)) : []
+            if (conflicts.length) {
+                const names = conflicts.map(c => objectFromFile(c.file)?.name ?? c.file)
+                out.ready = false
+                out.blocked = true
+                out.driftConflicts = conflicts.map(c => c.file)
+                out.error = `${target} has its own version of ${names.join(', ')}, and this release ships ${names.length === 1 ? 'it' : 'them'}. Deploying would replace ${target}'s version. Resolve it before approving: keep ${target}'s copy, or take this release's.`
+            }
+        } catch { /* best effort here; execute() refuses regardless */ }
+    }
+
     try {
         const plan = await c.post('GitPull', { Branch: branch, ExecutionMode: 'SingleCommit', Force: false, Username: gitUser, Password: token })
         const ops = plan.Operations ?? []
@@ -271,11 +293,8 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 // REPLACES. So if one changed on the target AND this release ships
                 // it, the deploy would silently overwrite the target's version.
                 // Refuse and name it; Review resolves this by choosing a side.
-                const { objectFromFile } = require('./git-release')
-                const conflicts = (out.driftNonBlocking ?? []).filter(e => {
-                    const o = objectFromFile(e.file)
-                    return o && expectedKeys.has(objectKey(o.type, o.name, o.parent))
-                })
+                const { viewSubsetConflicts } = require('./git-release')
+                const conflicts = viewSubsetConflicts(out.driftNonBlocking, expectedKeys)
                 if (conflicts.length) {
                     out.executed = false
                     out.refused = true

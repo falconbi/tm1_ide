@@ -49,7 +49,10 @@ function objectFromFile(file) {
     if (m) return { type: 'dimension', name: m[1], kind: 'dimension' }
     m = f.match(/^processes\/(.+)\.(json|ti)$/)
     if (m) return { type: 'process', name: m[1], kind: 'process' }
-    m = f.match(/^cubes\/([^/]+)\.views\/([^/]+)\.json$/)
+    // A view is two files when it is MDX-driven: the definition and its .mdx text.
+    // Both belong to the same view — mapping only the .json left an MDX-only change
+    // invisible to the release and to the conflict check.
+    m = f.match(/^cubes\/([^/]+)\.views\/([^/]+)\.(json|mdx)$/)
     if (m) return { type: 'view', name: m[2], parent: m[1] }
     m = f.match(/^cubes\/(.+)\.rules$/)
     if (m) return { type: 'cube', name: m[1], kind: 'rules' }
@@ -102,6 +105,17 @@ function expectedPlanKeys(objects) {
         if (o.type === 'view' && o.parent) keys.add(objectKey('cube', o.parent))
     }
     return keys
+}
+
+// A view or subset that changed on the target AND is shipped by this release:
+// TM1's pull does not touch those, but the IDE applies them over REST afterwards,
+// and that REPLACES — so the target's version would be lost. Pure, so both the
+// Review check and the final deploy guard use exactly the same rule.
+function viewSubsetConflicts(nonBlockingEntries, releaseKeys) {
+    return (nonBlockingEntries ?? []).filter(e => {
+        const o = objectFromFile(e.file)
+        return o?.type && releaseKeys?.has(objectKey(o.type, o.name, o.parent))
+    })
 }
 
 // ── Link closure ─────────────────────────────────────────────────────────────
@@ -472,7 +486,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
+module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
 // never applies them. After the pull, apply every included subset and view to the
