@@ -74,6 +74,49 @@ not record is shown as "not recorded in this change set" and ships only if a per
 it is either dropped from the release or refused with the object named. Archiving (re-parenting under
 `Archive`) is the intended way to retire an element, and it is not a removal.
 
+**Rollup edges (re-parenting).** The same rule, applied to one edge at a time:
+
+| Who moved the edge | What happens |
+|---|---|
+| PROD re-parented one of its own elements (an admin archiving, a load rebuilding a rollup) | **Kept.** It is PROD's element; the merge does not put it back |
+| DEV re-parented an element the merge sees on PROD | **Shown, not applied.** It appears at Review as "moves `A-1000` under `Archive` — PROD owns `A-1000`", and ships only if a person ticks it |
+| DEV re-parented an element DEV owns | Ships normally |
+
+A re-parent can change numbers as much as a removal can, which is why a change to a PROD-owned
+element is never silent.
+
+## Views and subsets: the REST step can still overwrite
+
+The pull never touches views or subsets (proved 21 Nov), but the IDE applies them itself afterwards —
+and `applyReleaseComplement` calls `saveSubset` / `saveView` / `saveNativeView`, all of which
+**replace**. So if a release ships the view `WFP Assignment Default` and someone also changed it on
+PROD since the last deploy, the deploy silently overwrites their work.
+
+That is a conflict, and it is not the drift gate's job to catch it — the object is legitimately in the
+release. It has to be caught at Review:
+
+> **Changed on PROD and in this release** — `WFP Assignment Default`.
+> [ Keep PROD's version ] [ Use this release's version ]
+
+Nothing ships until one is chosen, and the choice is recorded on the release (like a delete, or an
+added item). "Keep PROD's" removes the object from the release's complement list; "use the release's"
+goes ahead as today.
+
+The same applies to a subset the release ships.
+
+## Chores
+
+A chore file holds two different things, and they need different answers:
+
+| Part | Answer |
+|---|---|
+| the schedule and the active flag | **PROD's is kept** — operations staff own when it runs |
+| the steps (tasks, order) | **DEV's is taken** — that is model work, and it is what a change set edits |
+
+So a deploy never switches a chore on or off, and never moves its schedule, but it does update what
+the chore does. If PROD changed the steps too, that is the same conflict as a view: shown at Review,
+chosen.
+
 ## The timing gap
 
 PROD can load again between the build and the deploy. Sequence:
@@ -81,30 +124,63 @@ PROD can load again between the build and the deploy. Sequence:
 1. snapshot PROD (`prod-live`), record that commit on the release
 2. build the release on it
 3. immediately before executing, snapshot again
-4. if PROD moved in a PROD-owned object, **refuse and rebuild** — rebuilding is seconds, and it is the
-   only safe answer
-5. if PROD moved in an object nobody owns, that is ordinary drift and still blocks
+4. if PROD moved **only inside PROD-owned objects**, the release is rebuilt on the new snapshot and the
+   approval below still holds — no re-approval, no re-review
+5. if PROD moved **anywhere else**, that is ordinary drift and still blocks
 
 The release record carries the snapshot commit it was built on, so "did PROD move" is a comparison of
 two known commits rather than a guess.
 
-## What this does to approval and the deploy record
+## Approval vs rebuild
 
-Approval is bound to the release commit, and the release commit now contains PROD's own state. So
-approving means approving *"this, on top of what PROD has now"* — which is honest, and the review
-screen already lists the objects.
+Binding approval to the release commit is right, but it breaks on the first nightly load: PROD moves,
+the release is rebuilt, the commit changes, and the approval is void — every single day, for a change
+nobody asked to re-review.
 
-The deploy record gains one field: the snapshot commit the release was built on. After a successful
-deploy, both the snapshot and the deployed commit advance, so drift is clean by construction.
+**Instead, approve the change-set delta, not the commit.**
+
+- At build, record the **delta**: the exact objects and contents this change set brings from DEV,
+  as a hash, on the release.
+- Approval binds to that hash. Rebuilding on a newer snapshot does not change the delta, so the
+  approval survives.
+- At deploy, the delta is recomputed from the rebuilt release and compared with the approved hash.
+  If it differs at all, the deploy is refused.
+
+**Why that is safe:** the only thing allowed to change between approval and deploy is the *base*, and
+only inside objects we have already given to PROD. The part being approved — what DEV contributes —
+is byte-for-byte the same, and is checked again immediately before executing. Anything outside the
+PROD-owned set moving still blocks the deploy outright.
+
+So the promise is narrower and stronger than "approve the commit": *the thing you approved is the
+thing that ships; the rest is PROD's own state, merged in.*
+
+The deploy record gains two fields: the snapshot commit the release was built on, and the approved
+delta hash. After a successful deploy, both the snapshot and the deployed commit advance, so drift is
+clean by construction.
+
+## Attribute values (carried over from brief 14)
+
+Two rules, both about not overwriting PROD's data:
+
+1. **Never copy loaded attribute values from DEV.** The GL load writes descriptions and mappings on
+   PROD; a deploy has no business replacing them with DEV's.
+2. **No wholesale copy for a PROD-owned dimension.** Today, when the log only knows that a dimension
+   changed, `syncAttributeValues` copies *every* attribute value for *every* element. For a PROD-owned
+   dimension that is a guaranteed overwrite, so it must be refused and the recorded element/attribute
+   pairs used instead — or nothing copied at all.
 
 ## What should happen first, separately
 
-**Exclude views and subsets from the drift gate.** They are never pulled, so a change to one can
-never be damaged by a deploy, and blocking on them is pure friction — the most common day-to-day
-case, because users save views. This is a small change on its own and does not need any of the merge
-work.
+**Exclude views and subsets from the drift gate.** They are never pulled by TM1, so blocking on them
+is pure friction — the most common day-to-day case, because users save views.
 
-The same reasoning does **not** apply to chores or cubes: they are in the pull.
+That does not mean ignoring them:
+
+- **Drift still lists them**, labelled *"changed on PROD — not blocking"*, with the object named.
+- **Verify shows them**, so after a deploy you can see what PROD has that the repo does not.
+- And the release-versus-PROD conflict above still stops a deploy that would actually overwrite one.
+
+Report, don't block. The same reasoning does **not** apply to chores or cubes: they are in the pull.
 
 ## Tests that would prove it on the lab
 
@@ -119,6 +195,13 @@ The same reasoning does **not** apply to chores or cubes: they are in the pull.
 5. **Removal:** a change set removing an element from a PROD-owned dimension is refused, naming it.
 6. **Chore:** change a chore's schedule on PROD; confirm it drifts and a deploy that touches the chore
    resets it (to prove chores need ownership, or to prove they do not).
+7. **View conflict:** change a view on PROD *and* in a change set; confirm Review refuses until one
+   version is chosen, and that "keep PROD's" really keeps it.
+8. **Approval survives a load:** approve a release, add an element to a PROD-owned dimension, deploy.
+   It should rebuild and deploy **without** re-approval, and the delta check should still refuse if the
+   change set's own objects were altered.
+9. **Attribute values:** on a PROD-owned dimension whose log knows only the dimension name, confirm no
+   wholesale copy happens and PROD's descriptions survive.
 
 ## What cannot work
 
@@ -132,9 +215,12 @@ The same reasoning does **not** apply to chores or cubes: they are in the pull.
 
 | # | Decision | Recommendation |
 |---|---|---|
-| 1 | Drop views and subsets from the drift gate now? | **Yes.** They cannot be damaged by a pull, and they are the common day-to-day change. |
-| 2 | Ownership scope: which object types can be PROD-owned? | Dimensions (loaded), public views and subsets, chore schedules. Not rules, processes, cube structure. |
+| 1 | Drop views and subsets from the drift gate now? | **Yes** — reported as "not blocking" at Drift and Verify, never silent. |
+| 2 | Ownership scope: which object types can be PROD-owned? | Dimensions (loaded), public views and subsets, chore *schedule and active flag*. Not rules, processes, cube structure, chore steps. |
 | 3 | Where ownership is stored | Per target, in the model, admin-confirmed, with suggestions. |
 | 4 | Overlap: merge add-only, refuse removals | **Yes** — the only answer that cannot lose data. |
-| 5 | PROD moved between build and deploy | Refuse and rebuild; never deploy a stale merge. |
-| 6 | Does this block client use? | **Yes.** A client model with a nightly load cannot deploy at all today. This is the gate before the first client. |
+| 5 | A release ships a view/subset PROD also changed | **Stop at Review** and make someone choose; never last-writer-wins. |
+| 6 | Approve the delta or the commit? | **The delta.** Otherwise every nightly load forces a re-approval for a change nobody re-reviewed. |
+| 7 | PROD moved between build and deploy | Rebuild silently **only** for PROD-owned objects; anything else blocks. Never deploy a stale merge. |
+| 8 | Attribute values on a PROD-owned dimension | Never wholesale; never copy the loaded ones. |
+| 9 | Does this block client use? | **Yes.** A client model with a nightly load cannot deploy at all today. This is the gate before the first client. |
