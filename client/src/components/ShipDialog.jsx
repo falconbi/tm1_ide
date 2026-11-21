@@ -144,9 +144,8 @@ export default function ShipDialog() {
                 >
                   Ship to {target || 'target'}
                 </button>
-                <button onClick={() => { closeShip(); openDeployWizard({ session }) }} className="ml-auto text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground">
-                  Step by step instead
-                </button>
+                {/* No second entrance. The detailed view is reachable from the
+                    result ("Details"), not offered up front — one product, not two. */}
               </div>
             </>
           )}
@@ -183,6 +182,12 @@ export default function ShipDialog() {
               <div className="flex items-center gap-2">
                 <button onClick={closeShip} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 transition-colors">Done</button>
                 <button onClick={() => { setPhase('idle'); setApproved(false); setResult(null) }} className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors">Try again</button>
+                <button
+                  onClick={() => { closeShip(); openDeployWizard({ session }) }}
+                  className="ml-auto text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground flex items-center gap-1"
+                >
+                  Details <ExternalLink size={9} />
+                </button>
               </div>
             </div>
           )}
@@ -202,7 +207,7 @@ export default function ShipDialog() {
               <div className="flex items-center gap-2">
                 <button onClick={() => { setPhase('idle'); setError(null) }} className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors">Try again</button>
                 <button onClick={() => { closeShip(); openDeployWizard({ session }) }} className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground flex items-center gap-1">
-                  Open the details <ExternalLink size={9} />
+                  Details <ExternalLink size={9} />
                 </button>
               </div>
             </div>
