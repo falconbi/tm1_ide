@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useActiveWorkSession, useCloseWorkSession, useWorkSessions } from '@/hooks/useApi'
 import { humanizeFile } from '@/lib/tm1-terms'
 import DiffViewerModal from '@/components/DiffViewerModal'
+import { classifyDeployOutcome, toneClasses } from '@/lib/deploy/deploy-outcome'
 
 // Deploy wizard — the deploy journey in one guided screen:
 //   Test → Close → Commit → Build release → Review → Approve → Deploy → Verify
@@ -70,6 +71,18 @@ const primaryBtn = 'px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:
 // is visible while you read a long result or plan list.
 const stepActionBar = 'sticky bottom-0 -mx-4 -mb-4 px-4 py-2 bg-background border-t border-border flex items-center justify-end gap-2 flex-wrap'
 const inputCls = 'bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring'
+
+// What failed, what state the target is in, and the one next thing to do.
+function OutcomeCard({ outcome }) {
+  if (!outcome || outcome.kind === 'ok') return null
+  return (
+    <div className={`border rounded-md p-3 space-y-1 ${toneClasses(outcome.tone)}`}>
+      <p className="text-xs font-semibold">{outcome.title}</p>
+      <p className="text-[11px] leading-relaxed"><span className="font-medium">The target:</span> {outcome.prod}</p>
+      {outcome.action && <p className="text-[11px] leading-relaxed"><span className="font-medium">Next:</span> {outcome.action}</p>}
+    </div>
+  )
+}
 
 function TestList({ title, meaning, results }) {
   if (!results?.length) return null
@@ -409,6 +422,9 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
     return () => clearInterval(id)
   }, [step, prepAt])
   const rereadNeeded = !prep || !!prep.error || prepStale
+
+  // A deploy is six steps that fail differently; say which one failed.
+  const outcome = classifyDeployOutcome(res)
 
   // A target that has no live session makes Build release fail with a 401 after
   // the commit. Say so on selection instead. 'paw' servers ride the shared PAW
@@ -863,6 +879,7 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                 )}
                 {/* The confirmation panel says the same thing in more detail. */}
                 {ships.length > 0 && !confirming && <p className="text-[11px] text-muted-foreground">This applies {ships.length} change{ships.length !== 1 ? 's' : ''} ({ships.map(o => o.name).join(', ')}) to {target}.</p>}
+                <OutcomeCard outcome={outcome} />
                 {res && (
                   <div className="border border-border rounded-md p-3 space-y-2 bg-muted/20">
                     {res.error && <p className="text-xs text-red-600">{res.error}</p>}
@@ -907,8 +924,9 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
           {/* Step 8 — Verify */}
           {step === 8 && (
             <div className="space-y-3">
+              <OutcomeCard outcome={outcome} />
               {res?.executed ? (
-                <div className="border border-emerald-600/30 rounded-md p-3 space-y-1.5 bg-emerald-600/5">
+                <div className={`border rounded-md p-3 space-y-1.5 ${res.controlOk === false ? 'border-red-600/40 bg-red-500/5' : 'border-emerald-600/30 bg-emerald-600/5'}`}>
                   <p className="text-sm font-semibold">Deployed to {target}</p>
                   <p className="text-xs">{target} is now at <span className="font-mono">{res.targetCommit}</span>.</p>
                   {res.verification && (
@@ -964,8 +982,8 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
             <div className="border border-border rounded-md">
               <div className="px-3 py-2 border-b border-border bg-muted/20 text-xs font-semibold">If something goes wrong</div>
               <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground leading-relaxed">
-                <p>· <span className="text-foreground">No rollback.</span> A deploy cannot be automatically undone — if it breaks, <span className="text-foreground">fix forward</span>: correct on {server}, commit, rebuild the release, and deploy again.</p>
-                <p>· <span className="text-foreground">PROD has drifted?</span> Re-apply the change on DEV in a change set, then release it — deploys to this server are paused until drift is clean.</p>
+                <p>· <span className="text-foreground">Each failure leaves a different state.</span> If this deploy fails, a card above says which step failed, what the target now holds, and the one next action. Read that before doing anything else.</p>
+                <p>· <span className="text-foreground">Nothing rolls back automatically.</span> A deploy that reached the target is corrected on {server} and shipped again. A pull that failed part-way is different: the target then has to be returned to its last received commit first.</p>
               </div>
             </div>
           )}
