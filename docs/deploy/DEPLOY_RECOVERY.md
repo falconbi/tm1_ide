@@ -1,468 +1,449 @@
-# Deploy recovery — every failure and how the user gets out of it
+# When a deploy goes wrong
 
-Status: **for review**. This describes what the code does today, including the places where
-the answer is "there is no path in the IDE". Those are listed plainly in §7 — they are the
-part worth reviewing.
+This is the practical guide. Every scenario below is something that can actually happen,
+written as: **what you see → why → what to do → how you know it's fixed.**
 
-Source of truth: `core/git-deploy.js` (`prepare`, `execute`), `core/git-release.js`,
-`core/git-lock.js`, `core/git-approvals.js`, `routes/deploy.js`,
-`client/src/lib/deploy/deploy-outcome.js`, `client/src/components/ShipDialog.jsx`,
-`client/src/components/DeployWizard.jsx`.
+Read the one that matches your screen. You do not need to read the rest.
 
 ---
 
-## 1. The one idea that decides recovery
+## Before you start: the four things that are always true
 
-A deploy is not one step. It is:
+1. **There is no undo.** A deploy that reached the target is corrected by fixing it on DEV and
+   shipping again. Nothing in the IDE rolls a production server back.
+2. **Drift stops everything.** If the target has changed outside the pipeline, no deploy to it
+   will run until that is resolved. This is deliberate — it is what stops a deploy quietly
+   overwriting someone's work.
+3. **One deploy at a time, per target.** A second one is refused while the first is running.
+4. **The report tells you what happened.** After any deploy, open it from the change set row
+   (`⋯` → **Deploy report**), from **Deploy → History**, or from **Details** on the result.
+   It names the step that failed. Read it before doing anything else.
 
+---
+
+## Quick index
+
+| What you see | Scenario |
+|---|---|
+| Ship button greyed out | [1](#1-the-ship-button-is-greyed-out) |
+| `Cannot close: N block-severity assertions failing` | [2](#2-tests-fail-so-the-change-set-will-not-close) |
+| `Stopped before anything changed` | [3](#3-stopped-before-anything-changed) |
+| `the release has failing dependencies` | [4](#4-the-release-cannot-be-built) |
+| `commit … is not approved for …` | [5](#5-the-approval-no-longer-matches) |
+| `PROD has drifted` | [6](#6-prod-has-drifted--the-most-common-one) |
+| `PROD has its own version of <view>` | [7](#7-a-view-or-subset-exists-on-both-sides) |
+| `already being deployed by …` | [8](#8-someone-elses-deploy-is-running) and [9](#9-nobody-is-deploying-but-it-says-someone-is) |
+| `The pull failed part-way` | [10](#10-the-pull-failed-part-way--the-dangerous-one) |
+| `safety checks failed` | [11](#11-deployed-but-the-safety-checks-failed) |
+| `N views/subsets did not apply` | [12](#12-some-views-or-subsets-did-not-apply) |
+| `the deploy record could not be written` | [13](#13-deployed-but-the-record-was-not-written) |
+| `the incoming commit moved` | [14](#14-the-approval-is-for-a-different-commit) |
+| It worked, but weeks later PROD differs | [15](#15-weeks-later-prod-no-longer-matches-what-we-shipped) |
+| I sent the wrong change set / wrong target | [16](#16-i-shipped-the-wrong-change-set) |
+
+---
+
+## 1. The Ship button is greyed out
+
+**What you see:** the Ship dialog is open, but the green button does nothing.
+
+**Why:** two things must be true before it will send — a target chosen, and the approval box
+ticked. The target deliberately starts empty: the IDE does not guess which server is
+production.
+
+**Do this:**
+1. Pick the target from **Send to**.
+2. Tick **I approve sending `<change set>` to `<target>`**.
+3. The button enables and names the target.
+
+**You're done when:** the button is green and says *Ship to `<target>`*.
+
+---
+
+## 2. Tests fail, so the change set will not close
+
+**What you see:**
 ```
-preconditions → pull (TM1 Git) → record → subsets/views over REST → verify landing → reconcile → control checks
+Cannot close: 3 block-severity assertions failing. Fix them, or set severity to warn.
 ```
 
-Each stage fails differently and leaves the target in a **different state**. So the only
-useful question in recovery is:
+**Why:** the model's own tests run before anything is committed. A failing block-severity
+assertion means the model is known to be wrong; shipping it would carry that to production.
 
-> **Where did it stop, and what does the target hold right now?**
+**Do this:**
+1. Open **Deploy → Model health** (or the Tests panel) and read the failing assertions — each
+   shows what was expected and what the model actually returned.
+2. Fix the calculation on DEV, **or**, if the assertion itself is out of date, update its
+   expected value and record why.
+3. Re-run the tests, then close the change set and ship again.
 
-There are exactly four answers.
+**You're done when:** tests show `N/N passed` and the set closes.
 
-| State | Meaning | Recovery shape |
+**Note:** an assertion you believe is advisory can be set to `warn` severity — it still runs
+and still reports, but no longer blocks. Do that deliberately, not to get past a red light.
+
+---
+
+## 3. "Stopped before anything changed"
+
+**What you see:** a card saying the deploy was refused, with a message underneath.
+
+**Why:** almost every refusal happens before the target is touched, so this is the safe
+outcome — nothing was applied.
+
+**Do this:** read the message; it names the exact reason. The common ones:
+
+| Message | What it means | Next |
 |---|---|---|
-| **Untouched** | Nothing reached the target. | Fix the reason, run it again. |
-| **Part-changed** | The pull died part-way. Unknown mix. | **Stop.** Do not re-run. Read Drift first. |
-| **Changed, bookkeeping wrong** | Objects are on the target; the IDE's record is not. | Fix the record before anything else ships. |
-| **Changed, but wrong** | The release is on the target and computes wrongly, or parts of it did not land. | Fix on DEV, ship a new release. |
+| `Build a release first` | nothing was built for this target | use **Ship** (it builds one) or the step-by-step **Build release** |
+| `Readiness blockers must be fixed before pushing: …` | DEV's model is not in a shippable state | fix what is listed, then ship |
+| `source does not match the approved change set` | the approval belongs to a different change set | ship from the change set that was approved |
+| `Commit <x> is not a release built for <target>` | the approval was for a raw commit, not a built release | build the release, then approve |
+| `the pull plan contains N objects not in this release` | the branch carries work nobody approved | do not retry — someone else's commit is on the branch; investigate |
 
-**There is no automatic rollback anywhere in the pipeline.** Not a missing feature to note in
-passing — it is the design (`15_RELEASE_ON_LIVE.md`): TM1 has no undo for a pull, and a
-half-understood automatic revert is more dangerous than a human fixing forward.
+**You're done when:** the ship completes, or the message is one of the ones with its own
+scenario below.
 
 ---
 
-## 2. Before anything reaches the target (target untouched)
+## 4. The release cannot be built
 
-Every one of these returns `executed: false`. The UI card says
-**"Stopped before anything changed — the target is untouched."**
-
-### 2.1 Tests fail when closing the change set
-
-```
-Cannot close: N block-severity assertions failing. Fix them, or set severity to warn.
-```
-
-**Recovery:** fix the assertion on DEV (or set its severity to `warn` if it is advisory),
-re-run the tests, close again. Deploy was never attempted.
-
-### 2.2 Commit / push refused
-
-```
-Readiness blockers must be fixed before pushing: <blockers>
-Change set "<name>" is retired as a phantom change set — restore it before committing.
-```
-
-**Recovery:** retire → unretire the change set (row `⋯` menu), or fix the blockers the
-readiness check named. Then ship again.
-
-### 2.3 Release cannot be built
-
+**What you see:**
 ```
 Refused: the release has failing dependencies — <object>: <message>
-Change set "<name>" is retired as a phantom change set — restore it before releasing.
-The release could not be built.            (client, when no releaseCommit comes back)
 ```
 
-**Recovery:** the dependency check is telling you the change set references objects that are
-not in it and are not on the target — add the missing object to the change set (it gets added
-automatically as a dependency at approve time in the normal path, but a *failing* dependency
-means it could not be resolved), or fix the object on DEV. Then ship again.
+or, in the step-by-step view, a red line under **Build release**.
 
-### 2.4 Nothing was ever built for this target
+**Why:** a release is built from the target's last state plus *only* this change set's
+objects. If the change set references something that is neither in it nor on the target, the
+release would be broken — so it is refused rather than built.
 
+**Do this:**
+1. The message names the object and why.
+2. Add that object to the change set (save it on DEV while the change set is open), or fix the
+   reference on DEV.
+3. Ship again.
+
+**You're done when:** a release builds and shows the **Included** list.
+
+---
+
+## 5. The approval no longer matches
+
+**What you see:**
 ```
-Build a release first — deploys ship only a change set’s objects. First-time setup
-(first-pull) is the only whole-model path.
-```
-
-**Recovery:** this comes from `execute` being called without a `release_commit` on the change
-set. In the one-button path it cannot happen (release is built immediately before). In the
-step-by-step path: go back to **Build release** and build one. This is the guard that stops
-"deploy whatever is on DEV".
-
-### 2.5 Commit is not approved for this target
-
-```
-Refused: commit <id> is not approved for <target>. Record an approval first (the Approve
-step), then deploy.
-Refused: commit <id> is not a release built for <target>. Build the release first, then
-approve it.
-Refused: the change set for commit <id> has failing block-severity tests. Fix and re-close
-before approving.
+Refused: the incoming commit moved (approved 2dae44c9, branch head is now 8f31b002).
+Approve the new commit before deploying.
 ```
 
-**Recovery:** approve the release commit (Approve step), or fix the failing tests and
-re-close. Approvals are bound to `(target, commit)` — a new commit never inherits one.
+**Why:** an approval is bound to one exact commit. If the commit changed after you approved
+it, the approval is void — that is the point of it.
 
-### 2.6 Source does not match
+**Do this:** ship again from the change set. The one-button path always builds a fresh release
+and records a fresh approval, so it never hits this. In the step-by-step view, go to
+**Approve** and approve the current release commit.
 
+**You're done when:** the deploy runs.
+
+---
+
+## 6. PROD has drifted — the most common one
+
+**What you see:**
 ```
-source does not match the approved change set
-source is required when the approval has no linked change set
-Could not determine the incoming commit from <source>: <error>
+PROD has drifted: M dimensions/Account.hierarchies/Account.json. Re-apply the change on DEV
+in a change set, then release it. Deploys to this server are paused until drift is clean.
 ```
 
-**Recovery:** the approval records the change set; the deploy must run against the same
-server. Ship from the same change set. The third is a connectivity/Git problem on the source
-— check the source server is signed in and its Git remote is reachable.
+**Why:** the target no longer matches what the last deploy gave it. Something changed it
+outside the pipeline — a nightly load, someone in PAW/Architect, another tool. Deploying on
+top of that would silently discard whatever it was.
 
-### 2.7 Another deploy holds the lock
+**First, decide which case you are in.**
 
+### 6a. The change was intended
+
+1. Open **Deploy → Drift** and read exactly what differs.
+2. On **DEV**, make the same change (open a change set first so it is recorded).
+3. Close the change set and ship it.
+4. The deploy now carries that change; drift returns to clean.
+
+### 6b. The change was a mistake
+
+1. Undo it **on the target** (PAW or Architect) so the object matches what it was given.
+2. Open **Deploy → Drift** and press **Check**.
+3. When it reports clean, shipping resumes.
+
+**You're done when:** Drift says clean and the next ship runs.
+
+**Don't:** ship repeatedly hoping it clears. It cannot — the gate is doing its job.
+
+**Know the cost:** one changed dimension pauses **every** deploy to that target, for everyone,
+until it is resolved. This is the strongest argument for keeping manual edits off production.
+
+---
+
+## 7. A view or subset exists on both sides
+
+**What you see:**
 ```
-Refused: <target> is already being deployed by <user> since <time>. Wait for that deploy
+TM1_Test_PROD has its own version of WFP Assignment Default, and this release ships it.
+Deploying would replace TM1_Test_PROD's version. Resolve it before approving: keep
+TM1_Test_PROD's copy, or take this release's.
+```
+
+**Why:** views and subsets are applied over the API *after* the Git pull, and that application
+replaces whatever is there. If both sides changed the same view, one version is about to be
+lost. Unlike §6, views alone do not block deploys — only a view that this release also ships.
+
+**Do this — pick a side:**
+
+- **Take the release's version** (the usual case: DEV's is the one you want):
+  1. Open the view on PROD and note what is there, in case you need it back.
+  2. Ship. PROD receives DEV's version. Nothing else to do.
+
+- **Keep PROD's version:**
+  1. Open the view on PROD and copy its definition (MDX, or the rows/columns/titles).
+  2. Paste it onto DEV, save, and commit that to the change set.
+  3. Ship. Both sides now agree, so the release carries the same definition PROD already has.
+
+  *There is currently no button that says "ship everything except this view". The message
+  offers that choice; the workaround is the copy above.*
+
+**You're done when:** the ship completes and the view on PROD is the version you chose.
+
+---
+
+## 8. Someone else's deploy is running
+
+**What you see:**
+```
+Refused: TM1_Test_PROD is already being deployed by jane since 10:42. Wait for that deploy
 to finish.
 ```
 
-**Recovery:**
-- If a real deploy is running: wait.
-- If it is stale (backend died mid-deploy), the lock becomes clearable after **30 minutes**.
-  In the wizard at Deploy/Verify there is a **Clear lock** button. It refuses a live lock:
+**Why:** one deploy at a time per target, so two people cannot interleave changes.
 
-```
-Refused: <target> is being deployed by <user> since <time> — that lock is not stale, so it
-is not cleared.
-```
+**Do this:** wait. The lock is released when that deploy ends, successfully or not. Ask them
+if it has been longer than a few minutes.
 
-Clearing is recorded in `Deployments/lock-events.json` (who, when, whose lock).
-
-Note: this is also the model-writability gate — if the target's model cannot be written, the
-deploy stops here rather than silently proceeding.
-
-### 2.8 The target has drifted (blocking)
-
-```
-PROD has drifted: <status> <file>; <status> <file>. Re-apply the change on DEV in a change
-set, then release it. Deploys to this server are paused until drift is clean.
-(<n> view/subset changes on <target> are reported but not blocking: <files>)
-
-PROD drift could not be checked (<error>). Deploys to this server are paused until drift is
-clean.
-```
-
-Drift means: what the target holds now is not what it last received from a deploy. Checked in
-`prepare` (shown at Review, `ready=false`) **and** re-checked in `execute` (refuses).
-
-Blocking: dimensions, hierarchies, attributes, cubes, rules, processes, chores.
-Reported only: views and subsets — TM1's pull never applies them, so they cannot be
-overwritten by this deploy.
-
-**Recovery — and this is the weakest part of the whole flow:**
-
-1. Open **Deploy → Drift**, look at what differs.
-2. If it is a legitimate change someone made on the target, **re-apply it on DEV inside a
-   change set and release that**. The next deploy then carries it and drift returns to clean.
-3. If it was accidental, the change has to be undone **on the target** (by hand, in PAW or
-   Architect) so it matches what it last received. The pipeline has no "reset target to last
-   received commit" action.
-
-There is no partial credit here: **one drifted dimension pauses every deploy to that
-target.** See §7.1.
-
-### 2.9 A view or subset changed on the target *and* this release ships it
-
-```
-<target> has its own version of <names>, and this release ships it. Deploying would replace
-<target>'s version. Resolve it before approving: keep <target>'s copy, or take this
-release's.
-                                                                    (Review / prepare)
-
-Refused: <files> changed on <target> and is also in this release. The view/subset step would
-replace the target's version. Resolve it at Review (keep <target>'s, or take the release's).
-                                                                    (Deploy / execute)
-```
-
-Why it blocks here and not in 2.8: a view or subset *on its own* is harmless (the pull ignores
-it). The danger is the IDE applying this release's version over it afterwards — that is a
-silent overwrite of someone's work.
-
-**Recovery — the honest version:** the message offers two choices, and **only one of them is
-built.**
-
-| Choice | Built? |
-|---|---|
-| Take the release's version | Yes — remove the view/subset from the change set, or simply accept the overwrite by deleting the target's version first |
-| Keep the target's copy | **No.** There is no control that says "ship this change set but leave PROD's view alone". The user must remove that view/subset from the change set (and lose the DEV version of it), or copy PROD's version back onto DEV |
-
-See §7.2 — this is decision 5 in `15_RELEASE_ON_LIVE.md`, still unbuilt.
-
-### 2.10 The pull plan cannot be produced
-
-```
-Pull plan failed: <TM1 message> (a stale view or name in the source breaks the pull — run
-the readiness check)
-```
-
-**Recovery:** the source's Git state is not pullable — commonly a view or subset referencing
-an object that no longer exists. Fix on DEV (delete or repair the offending view/subset),
-commit, rebuild the release, ship again. Nothing reached the target.
-
-### 2.11 The plan does not match the approval
-
-```
-Refused: cannot verify the commit being deployed (approved-incoming <a>, plan commit <b>).
-Approve a specific commit and retry.
-Refused: the incoming commit moved (approved <a>, branch head is now <b>). Approve the new
-commit before deploying.
-Refused: the pull plan contains <n> object(s) not in this release — <list>. Rebuild the
-release; it must carry only the change set's objects.
-Refused: the pull plan contains <n> operation(s) this deploy cannot classify — <ops>.
-Rebuild or inspect the release before deploying.
-Refused: could not verify the release's objects against the pull plan (<error>).
-```
-
-All five mean the same thing: **what is about to be applied is not what was approved.**
-Nothing reached the target.
-
-**Recovery:** rebuild the release and approve it again. If the "not in this release" list
-contains objects you never touched, that is a signal the branch carried someone else's work —
-investigate before retrying.
+**You're done when:** the message disappears and your ship runs.
 
 ---
 
-## 3. During the pull (the only part-changed state)
+## 9. Nobody is deploying, but it says someone is
 
+**What you see:** the same message as §8, but the named person finished long ago (or the
+backend was restarted mid-deploy, so the lock was never released).
+
+**Why:** a deploy that died unexpectedly leaves its lock behind. A lock is only clearable once
+it is **30 minutes old** — that window exists so a slow but live deploy is never unlocked
+underneath itself.
+
+**Do this:**
+1. Press **Ship** (or **Deploy…**). It refuses with the message above — that is expected here.
+2. On the red result card, press **Details**. The step-by-step view opens with the lock line at
+   the **top**, on whichever step it lands.
+3. Press **Clear lock** (it only appears once the lock is older than 30 minutes — that window
+   exists so a genuinely slow deploy is never unlocked underneath itself).
+4. Nothing else is needed; the clearing is recorded in the target's governance log (who cleared
+   it, whose lock it was).
+5. Ship again.
+
+**You're done when:** the lock line is gone and the ship runs.
+
+**Don't:** ask an admin to delete the lock file directly unless the button is unavailable —
+the record of who cleared it matters.
+
+---
+
+## 10. The pull failed part-way — the dangerous one
+
+**What you see:**
 ```
-Pull failed: <TM1 message>
+Pull failed: <TM1's own message>
 ```
-
-This is the one failure where the target may hold **some** of the release. The recorded
-commit has **not** moved, so the target no longer matches what it last received — drift will
-report it, and every later deploy is paused.
-
-The outcome card says:
-
-> **The pull failed part-way** — the target may hold some of the release but not all of it.
+and the card:
+> **The pull failed part-way.** The target may hold some of the release but not all of it.
 > Its recorded commit has NOT moved, so it no longer matches what it last received.
-> **Next:** Do not run the deploy again. Open Drift first: if it reports differences, the
-> target has to be returned to its last received commit before anything else ships.
+> **Next:** Do not run the deploy again. Open Drift first.
 
-**Recovery, as built:**
+**Why:** this is the only failure where the target may be **half-updated**. The IDE does not
+know which objects landed. Re-running immediately would push onto an unknown state.
 
-1. **Drift** — see what actually landed.
-2. Undo it **on the target** (by hand) until Drift is clean, **or** make DEV match the
-   half-applied state and ship that as a new change.
-3. Re-run only when Drift is clean.
+**Do this:**
+1. **Do not press Ship again.**
+2. Open **Deploy → Drift → Check.** It shows exactly which objects differ from what the
+   target last received — that is your list of what the failed pull changed.
+3. Choose one:
+   - **Undo on the target:** revert those objects in PAW/Architect to their pre-deploy
+     definition, then check Drift until it is clean.
+   - **Finish it from DEV:** if the half-applied state is acceptable, make DEV match it and
+     ship that as a new change set.
+4. When Drift is clean, ship again.
 
-**Gap:** step 2's first option is manual work on a production server, and there is no
-"restore to last received commit" helper in the IDE (§7.3).
+**You're done when:** Drift is clean and a ship completes.
+
+**Worth knowing:** the failure itself is usually environmental (target unreachable, TM1
+restarted, a permissions fault mid-pull). The report records TM1's own message — read it, it
+usually says which.
 
 ---
 
-## 4. The pull applied, but the record was not written
+## 11. Deployed, but the safety checks failed
 
+**What you see:**
+```
+Deployed, but the safety checks failed
+TM1_Test_PROD has the release and is at 55941a6b — but what it computes is now wrong.
+Next: Fix it on DEV, commit, build a new release and deploy that. First failure: <description>
+```
+
+**Why:** the release is on the target, but an invariant that must hold for *any* data no longer
+holds. The deploy was technically successful and the model is now wrong.
+
+**Do this:**
+1. Read the first failure in the report (**Details** → Checks) — it shows expected vs actual.
+2. Reproduce and fix it on DEV.
+3. Close, ship. The new release corrects the target.
+
+**You're done when:** a ship ends with `safety checks N/N passed`.
+
+**Don't:** assume the next deploy will fix it — only a change that addresses the cause will.
+
+---
+
+## 12. Some views or subsets did not apply
+
+**What you see:**
+```
+2 views did not apply
+The cubes, dimensions and processes are on the target. The subsets and views, which TM1 Git
+does not pull, did not all land.
+Next: Deploy the same release again — that step re-applies and is safe to repeat.
+If it keeps failing: <type> <name>: <error>
+```
+(A sibling card, "some objects could not be confirmed", behaves the same way.)
+
+**Why:** TM1's Git pull handles cubes, dimensions, processes and rules. Views and subsets are
+applied separately, over the API, after the pull. That step can partly fail.
+
+**Do this:**
+1. Ship the same change set again. The step is idempotent — repeating it is safe and normally
+   fixes it.
+2. If it fails twice, the named object is the fault. The usual causes: a view referencing a
+   subset or element that no longer exists; a subset containing a deleted element.
+3. Fix that object on DEV, ship again.
+
+**You're done when:** the ship completes with no such card, and the report shows the view or
+subset in **What shipped**.
+
+---
+
+## 13. Deployed, but the record was not written
+
+**What you see:**
 ```
 Deploy applied, but the deploy record could not be written: <error>. Investigate before the
 next deploy.
 ```
 
-`executed: true`, `recorded: false`. The target **has** the release. The IDE's
-`lastDeployedCommit` did not move.
+**Why:** the release reached the target, but the IDE could not write its record of "this target
+is now at commit X". Drift and "already deployed" both depend on that record, so they will be
+wrong from here.
 
-Card:
+**Do this:**
+1. Stop shipping.
+2. Check the target is writable by the IDE user — governance documents live under
+   `Applications/Governance/Deployments/`. A rights change or a locked model is the usual cause.
+3. Once writable, that record needs correcting before the next deploy (an administrator task;
+   the report names the commit it should hold).
+4. Ship again afterwards.
 
-> **Deployed, but the deploy record was not written.** The target has the release and is at
-> `<commit>`. The IDE does not know which commit the target received, so drift and
-> "already deployed" will be wrong until that is fixed. Investigate before the next deploy.
-
-**Recovery:** this is a model-writability fault on the target, not a deploy fault. Fix the
-target's governance documents (`Applications/Governance/Deployments/state.json` — rights,
-existence), then correct the record before any further deploy. There is no UI to repair it
-(§7.4).
-
----
-
-## 5. Applied, but something did not land (all amber, target is changed)
-
-These are all `executed: true`. Nothing is rolled back; each card names one next action.
-
-### 5.1 Subsets/views did not apply
-
-```
-<n> subset/view(s) did not apply
-The cubes, dimensions and processes are on the target. The subsets and views, which TM1 Git
-does not pull, did not all land.
-Next: Deploy the same release again — that step re-applies and is safe to repeat.
-If it keeps failing: <type> <name>: <error>; …
-```
-
-**Recovery:** ship again. The complement step is idempotent. If it repeats, the named object
-is the fault (commonly a view referencing a deleted subset or element).
-
-### 5.2 Objects not confirmed on the target
-
-```
-Some objects could not be confirmed on the target
-The deploy ran. Verification could not prove every object in the release is there.
-Next: Deploy the same release again. Still missing: <objects>
-        (or) The check itself errored: <error>
-```
-
-**Recovery:** ship again. A `Skip` in the pull is never reported as a clean deploy — this card
-exists because a skip once looked like success.
-
-### 5.3 Safety checks failed
-
-```
-Deployed, but the safety checks failed
-The target has the release and is at <commit> — but what it computes is now wrong.
-Next: Fix it on DEV, commit, build a new release and deploy that. First failure:
-<description>. There is no automatic rollback yet.
-```
-
-**Recovery:** fix on DEV → new change set → ship. The target stays wrong until that lands;
-there is nothing to click that makes it right.
-
-The same verdict (`controlOk: false`) is produced by any of: a failing control assertion, a
-reconcile error, a skipped delete, a failed attribute sync, an errored verification.
-
-### 5.4 Reconcile problems
-
-Reconcile runs after the pull for the things TM1 Git does not cover: deletes, attribute
-values. Each problem is pushed into `controlReasons` and forces `controlOk: false`:
-
-```
-reconcile: <error>
-reconcile deletes: <error>
-delete skipped: <type> <name> — <error>
-reconcile attribute values: <error>
-attribute sync <dim>: <error>
-```
-
-**Recovery:** same as 5.3 — the change is on the target but the model is not fully correct.
-Fix on DEV and ship. A `delete skipped` usually means the object is still referenced
-somewhere (a view, a rule, a process) and must be unhooked first.
-
-### 5.5 Reconcile skipped because there is no change set
-
-```
-This approval has no linked change set — reconcile scope is unknown and was skipped (not
-silently).
-```
-
-Only reachable in catch-up/legacy paths. Recovery: re-approve through a change set if reconcile
-matters for the change.
+**You're done when:** **Deploy → History** shows that commit as the latest deploy and Drift
+reports clean.
 
 ---
 
-## 6. After the fact — drift appears later
+## 14. The approval is for a different commit
 
-Nothing failed; something changed afterwards (a nightly load added an element, someone edited
-a rule in PAW, another pipeline deployed).
+**What you see:** one of
+```
+Refused: commit <x> is not approved for <target>. Record an approval first…
+Refused: cannot verify the commit being deployed (approved-incoming <a>, plan commit <b>).
+```
 
-- **Reported, not blocking:** views and subsets. No action. Shown in Drift, Verify, and inside
-  any refusal message.
-- **Blocking:** everything else. Every deploy to that target is paused until it is resolved
-  (`§2.8`).
+**Why:** the plan TM1 produced does not match the approval — the release was rebuilt, DEV moved,
+or the approval was recorded against a different commit.
 
-**Recovery:** the same as `§2.8` — bring the change into DEV through a change set and release
-it, or undo the change on the target by hand.
+**Do this:** ship again from the change set (builds a fresh release and approval), or in the
+step-by-step view go back to **Build release** then **Approve** the commit shown.
 
----
-
-## 7. What has no recovery path today
-
-Listed plainly, because this is where review should focus.
-
-### 7.1 Drift blocks everything, with no repair action in the IDE
-One changed dimension pauses all deploys to that target. The message says "re-apply the change
-on DEV and release it", which is right when the drift is intended — but when it is accidental,
-the only path is hand-editing a production server. There is no "accept target's state as the
-new baseline" (that would be a seed, and seeding is currently a separate admin action) and no
-"reset target to last received commit". **A single careless edit on PROD can stop the team
-shipping, with no in-product way out.**
-
-### 7.2 "Keep the target's copy" (view/subset conflict) is offered but not built
-The refusal message gives two choices. Only "take the release's" exists. To keep the target's
-version the user must strip the view/subset out of the change set — which also discards their
-work on it. This is decision 5 in `15_RELEASE_ON_LIVE.md` (`Review` should let you choose per
-object); it is not built.
-
-### 7.3 A part-changed target has no restore
-`§3`. Detecting it is solid; undoing it is manual. There is no engine action that replays the
-target to `lastDeployedCommit`.
-
-### 7.4 A lost deploy record has no repair
-`§4`. The state is wrong in a way that only matters *later* (drift compares against it), and
-fixing it means editing governance documents by hand.
-
-### 7.5 Nothing durable records what a deploy shipped
-`Deploy → History` stores: the commit, the time, the commit's summary line, and the approvals
-(who, when, note, added objects). It does **not** store the release's object list, the safety
-check results, or the drift result at deploy time. After the completion card is closed, "what
-did this deploy actually change" is not answerable from the product.
-
-This matters for recovery: after a part-changed pull or a failed check, the record you would
-want in order to reason about it was never written.
-
-### 7.6 Retry is not resumption
-"Try again" re-runs the whole sequence: tests → commit → **rebuild release** → **new
-approval** → deploy. That is safe (an approval is never stale) but it is not a resume, and it
-means a retry always produces a new release commit — so two attempts are two entries in the
-approval history for one intent.
-
-### 7.7 A deploy killed outright (backend dies) leaves a stale lock
-Recovery is: wait up to 30 minutes, then **Clear lock** in the wizard. There is no
-"clear now, I know it is dead" (deliberate — but it does mean a crash costs up to half an
-hour of not being able to deploy).
-
-### 7.8 Concurrency
-`git-lock.js` is check-then-write, not compare-and-swap. Two deploys to the same target issued
-at the same instant can both acquire. Noted in the code as acceptable for small teams; it is
-still a real hole in "one deploy at a time".
+**You're done when:** the deploy runs.
 
 ---
 
-## 8. Worked examples
+## 15. Weeks later, PROD no longer matches what we shipped
 
-### A. Someone edited a rule on PROD last night
-1. Ship → Drift refuses: `PROD has drifted: M cubes/WFP.rules ...`.
-2. Human decides it was legitimate.
-3. In DEV, recreate that edit inside a new change set; close it.
-4. Ship → release contains the rule; drift now clean after deploy.
-5. If instead it was a mistake: undo it on PROD by hand (PAW/Architect), then Drift returns
-   to clean and shipping resumes.
+**What you see:** nothing until you ask — **Deploy → Drift → Check** reports differences, or the
+next ship refuses with `PROD has drifted`.
 
-### B. The pull died half-way
-1. Card: *"The pull failed part-way… do not run the deploy again."*
-2. Drift shows a mix of what landed.
-3. Undo on the target until Drift is clean; then ship again.
-4. If step 3 is impractical, make DEV match the half-applied state and ship that instead.
+**Why:** something changed the target after the deploy: a load process, a person in PAW, another
+tool. Expected over time.
 
-### C. Deploy applied, checks failed
-1. Card: *"safety checks failed — what it computes is now wrong."*
-2. Fix the cause on DEV.
-3. New change set, new release, ship.
-4. The target is wrong for the whole interval — that is accepted, visible, and not hidden.
+**Do this:** exactly §6. Decide whether the change was intended. If it was, bring it into DEV
+through a change set and ship it, so the pipeline owns it. If it was not, undo it on the target.
 
-### D. A view is on both sides
-1. Review blocks: *"PROD has its own version of `<view>`, and this release ships it."*
-2. If the release's version should win: remove the view from the change set and add it back
-   after copying PROD's version to DEV, or overwrite deliberately.
-3. If PROD's should win: there is no button — copy PROD's version to DEV, then release.
-   (§7.2)
+**To see what a past deploy actually did:** the change set row `⋯` → **Deploy report**, or
+**Deploy → History** → the commit. Newer deployments record what shipped, who approved it, the
+check results and the drift at the time. Deployments from before that was introduced show only
+the commit, time and summary, and say so.
 
 ---
 
-## 9. Code map
+## 16. I shipped the wrong change set
 
-| Behaviour | Where |
+**What you see:** the completion card is green. The change set was not the one you meant, or
+the target was not the one you meant.
+
+**Why:** it happens. The dialog names the target in the approval sentence precisely so this is
+visible before you click.
+
+**Do this:**
+1. **Open the deploy report** and note exactly what shipped — that list is what is now on the
+   target.
+2. If the change was harmless, no action. If it must be undone:
+   - **Undo it through the pipeline:** on DEV, revert each shipped object to its previous
+     definition, put that in a new change set, and ship it. This is the supported route, and it
+     leaves a record of both changes.
+   - **Undo it by hand** only if the model is currently unusable, and then bring DEV back into
+     line so drift does not block the team.
+3. If it went to the wrong target entirely, the same applies on that target — it now holds the
+   release, so it has to be corrected there.
+
+**There is no "un-deploy".** The report is what tells you the size of the job.
+
+---
+
+## Things that look like failures but are not
+
+| What you see | What it is |
 |---|---|
-| Review gate (drift + view/subset conflict, `ready=false`) | `core/git-deploy.js` `prepare` ~77–146 |
-| Deploy gate (approval, lock, drift, plan ⊆ release, view/subset conflict) | `core/git-deploy.js` `execute` ~154–325 |
-| Drift refusal text | `core/git-deploy.js` `driftRefusal` ~36 |
-| Conflict rule (shared by Review and Deploy) | `core/git-release.js` `viewSubsetConflicts` |
-| Lock, stale rule, clear | `core/git-lock.js` |
-| Approvals bound to `(target, commit)` | `core/git-approvals.js` |
-| Post-pull verification / complement | `core/git-release.js` `applyReleaseComplement`, `verifyRelease` |
-| Six outcome classes shown to the user | `client/src/lib/deploy/deploy-outcome.js` |
-| One-button flow, Try again, done/failed cards | `client/src/components/ShipDialog.jsx` |
-| Step-by-step, Clear lock, drift panel | `client/src/components/DeployWizard.jsx` |
-| Durable record (commit, time, summary, approvals) | `core/git-state.js`, `core/git-approvals.js`, `routes/deploy.js` `/api/deploy/git/history` |
+| *"Checked 0 differences"* on Drift right after a ship | normal — nothing has had time to change |
+| A green **Check for drift** button on the result screen | a manual re-read, not a next step. **Done** closes |
+| The same change set listed under **Show N finished** | deployed sets move there; that is the "done" shelf |
+| `Resume` missing on a deployed change set | correct — a shipped set cannot be reopened; start a new one |
+| The Ship dialog showing "Done — PROD is up to date" for a set you never shipped | stale panel from an earlier run — reload the page (fixed in the current build) |
+
+---
+
+## Appendix — where each message comes from
+
+For whoever maintains this: the messages above are the exact strings returned by
+`core/git-deploy.js` (`prepare` for Review, `execute` for the deploy), with drift text from
+`driftRefusal`, the view/subset rule from `viewSubsetConflicts` in `core/git-release.js` (used
+by both paths), locks from `core/git-lock.js`, approvals from `core/git-approvals.js`, and the
+six user-facing outcome classes from `client/src/lib/deploy/deploy-outcome.js`. The per-deploy
+record is written by `core/deploy-records.js` from the `execute()` result and read back through
+`/api/deploy/record?target=&commit=`.

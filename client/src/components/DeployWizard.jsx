@@ -502,7 +502,10 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
               {deployCtx.wont_deploy_reason ? <> Reason: “{deployCtx.wont_deploy_reason}”.</> : null} Unmark it in Change Sets to use it again.
             </p>
           )}
-          {lock && (step === 7 || step === 8) && (
+          {/* The lock is a property of the TARGET, not of one step — a refused
+              deploy has to be clearable from wherever the wizard happens to land
+              (a lock-held refusal opens at Build release, not at Deploy). */}
+          {lock && (
             <div className={'text-xs border rounded px-3 py-2 ' + (lock.stale ? 'border-red-600/40 text-red-600' : 'border-amber-600/40 text-amber-600')}>
               {lock.stale
                 ? <span className="flex items-center gap-2 flex-wrap">
