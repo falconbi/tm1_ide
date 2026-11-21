@@ -42,6 +42,16 @@ export default function ShipDialog() {
   const [error, setError]     = useState(null)
   const [reachedProd, setReachedProd] = useState(false)
 
+  // Opening the dialog for a change set must always start from a clean form.
+  // The component is never unmounted (it renders null when closed), so without
+  // this the previous run's "Done — PROD is up to date" card reappears for the
+  // next change set — and there is no target field, because there is no form.
+  useEffect(() => {
+    if (!ship) return
+    setPhase('idle'); setResult(null); setError(null)
+    setApproved(false); setTarget(''); setReachedProd(false); setStep('')
+  }, [ship?.session?.id])
+
   useEffect(() => {
     if (!ship) return
     request('/api/servers', { headers: authHeader() })
