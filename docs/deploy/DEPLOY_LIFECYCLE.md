@@ -473,3 +473,22 @@ round, not part of the current fix brief.
 - `}TestResults` run history (phase 2), change-set documents in the model (phase 2), deploy history/approvals/hooks into the model (phase 4), migration of existing RIG history (phase 5). Set by the maker; single runs and history read failures are surfaced now.
 - The mirror of `Applications/Governance` into the repo (the decided mechanism above) — to implement with the deploy work.
 - The first-time GitHub setup flow above (admin, once per model).
+---
+
+## Deploy order on shared objects — and what it cannot see (22 Nov 2026)
+
+Two change sets that touch the same object must deploy in the order the changes were made. A release
+is refused when:
+
+- an **older** change to an object in this release sits in a change set that is not deployed to this
+  target (and not retired) — deploy that one first; or
+- a **newer** change to the same object has **already been deployed** — this release would undo it.
+
+Order is taken from the change log: each change set's **last change to that object**, by timestamp.
+Not the change-set number, not the close time — a set can be closed long after the edit that matters.
+Catch-up releases ship everything and keep their own rule.
+
+**The limitation, stated plainly:** the check sees only changes recorded in the change log — the IDE
+and MCP agents. A change made in Planning Analytics Workspace, or by a TI process running on DEV, is
+**not** ordered. If someone edits an object in PAW and a change set also touches it, the order between
+them is not enforced. That gap is visible later as ordinary drift, not here.

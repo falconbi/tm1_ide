@@ -345,6 +345,29 @@ function getRecentLog(server, limit = 100) {
 
 // ── Object history ────────────────────────────────────────────────────────────
 
+// For a set of objects, the latest change-log time each SESSION has touched them
+// — this session and every other on the same server. Ordering deploys needs the
+// other sessions' deploy state too, which is joined here so the caller does not
+// re-query per object.
+function getObjectOrdering(server, sessionId, objects) {
+    const out = []
+    const stmt = db.prepare(`
+        SELECT s.id AS session_id, s.name AS session_name, s.user,
+               s.deployed_target, s.wont_deploy_at, s.covered_by, s.kind, s.closed_at,
+               MAX(l.timestamp) AS at
+        FROM log_entries l
+        JOIN sessions s ON s.id = l.session_id
+        WHERE l.server = ? AND l.object_type = ? AND l.object_name = ? AND IFNULL(l.detail, '') = ?
+        GROUP BY s.id
+    `)
+    for (const o of objects) {
+        const rows = stmt.all(server, o.object_type, o.object_name, o.detail ?? '')
+        const mine = rows.find(r => r.session_id === sessionId) ?? null
+        out.push({ ...o, mineAt: mine?.at ?? null, others: rows.filter(r => r.session_id !== sessionId) })
+    }
+    return out
+}
+
 function getObjectHistory(server, objectType, objectName) {
     // Fetch one extra row to detect truncation instead of silently hiding history.
     const rows = db.prepare(`
@@ -471,4 +494,4 @@ try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch { /* alrea
 // The TM1 login a change was made with (the MCP's builder identity), next to the developer in `user`.
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch { /* already migrated */ }
 
-module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionWontDeploy, unmarkSessionWontDeploy, markSessionCovered, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionWontDeploy, unmarkSessionWontDeploy, markSessionCovered, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getObjectOrdering, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }

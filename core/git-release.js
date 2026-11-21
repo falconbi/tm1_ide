@@ -118,6 +118,53 @@ function viewSubsetConflicts(nonBlockingEntries, releaseKeys) {
     })
 }
 
+// ── Deploy order on shared objects ──────────────────────────────────────────
+// Two change sets that touch the same object must deploy in the order the changes
+// were made. Order is judged by the change-log timestamp of each session's LAST
+// change to that object — not by change-set number, not by close time, because a
+// set can be closed long after the edit that matters.
+//
+// Two refusals:
+//   older change, not deployed   → this release would ship a state that predates it
+//                                  (the classic: created in 1001, deleted in 1002;
+//                                   deploy 1002 first and 1001 puts it back)
+//   newer change, already deployed → this release would undo work already on the
+//                                  target
+//
+// Retired sets are ignored (they own nothing), and a set carried by a catch-up
+// counts as deployed. A newer change that has not been deployed yet does not
+// block: shipping the older one first preserves the order.
+//
+// Pure, so the rule can be tested without a repo: rows are
+//   { label, mineAt, other: { id, name, at, deployed, covered, retired } }
+function sharedObjectOrdering(rows, target) {
+    const older = []
+    const newer = []
+    for (const r of rows ?? []) {
+        if (!r?.other || r.other.retired) continue
+        const at = r.other.at
+        const mine = r.mineAt
+        if (!at || !mine) continue
+        const deployed = !!(r.other.deployed || r.other.covered)
+        if (!deployed) {
+            if (at < mine) older.push(r)
+        } else if (at > mine) {
+            newer.push(r)
+        }
+    }
+    if (!older.length && !newer.length) return null
+
+    const clock = (iso) => String(iso).slice(11, 16)
+    const parts = []
+    for (const r of older) {
+        parts.push(`${r.label} was also changed in ${r.other.name} (${clock(r.other.at)}), which hasn't been deployed to ${target}. Deploy ${r.other.name} first, or retire it.`)
+    }
+    for (const r of newer) {
+        parts.push(`${r.other.name} already deployed a newer change to ${r.label} (${clock(r.other.at)}). This release would undo it. Retire this change set, or redo the change on DEV.`)
+    }
+    return { older, newer, message: `Refused: ${parts.join(' ')}` }
+}
+
 // ── Link closure ─────────────────────────────────────────────────────────────
 // TM1 Git stores cross-object references as `@Code.links` (an array) or
 // `@Code.link` (one string). A released hierarchy without its linked subsets is
@@ -465,6 +512,66 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             }
         }
 
+        // Order on shared objects. A release must not ship a version of an object
+        // that is older than one already deployed, nor one that would be undone by
+        // a later change waiting on DEV. Catch-ups ship everything and keep their
+        // own rule.
+        if (!catchUp) {
+            const LOG_TYPES = {
+                dimension: ['dimension', 'attribute'],
+                cube: ['cube', 'rules'],
+                process: ['process'],
+                chore: ['chore'],
+                subset: ['subset'],
+                view: ['view'],
+            }
+            const objs = included
+                .filter(i => i?.type && LOG_TYPES[i.type] && i.name)
+                .map(i => ({
+                    type: i.type,
+                    name: i.name,
+                    parent: (i.type === 'subset' || i.type === 'view') ? (i.parent ?? null) : null,
+                    logTypes: LOG_TYPES[i.type],
+                }))
+
+            let rows = []
+            try {
+                const items = []
+                for (const o of objs) for (const lt of o.logTypes) items.push({ object_type: lt, object_name: o.name, detail: o.parent })
+                const ordering = cl.getObjectOrdering(session.server, session.id, items)
+                for (const o of objs) {
+                    const relevant = ordering.filter(x => x.object_name === o.name && (x.detail ?? null) === o.parent)
+                    const mineAt = relevant.map(x => x.mineAt).filter(Boolean).sort().pop() ?? session.closed_at ?? new Date().toISOString()
+                    const bySession = new Map()
+                    for (const r of relevant) {
+                        for (const other of r.others) {
+                            const at = bySession.get(other.session_id)
+                            if (!at || other.at > at.at) bySession.set(other.session_id, { ...other, at: other.at })
+                        }
+                    }
+                    for (const other of bySession.values()) {
+                        rows.push({
+                            label: `${o.type} ${o.name}`,
+                            mineAt,
+                            other: {
+                                id: other.session_id, name: other.session_name ?? '(unnamed)', at: other.at,
+                                deployed: !!other.deployed_target, covered: !!other.covered_by, retired: !!other.wont_deploy_at,
+                            },
+                        })
+                    }
+                }
+            } catch (e) {
+                // Fail closed: an ordering check that silently skipped would be the
+                // exact bug it exists to prevent.
+                return { ok: false, refused: true, error: `Refused: could not check the deploy order of these objects (${sanitize(e.message, token)}). Nothing was built.` }
+            }
+
+            const conflict = sharedObjectOrdering(rows, target)
+            if (conflict) {
+                return { ok: false, refused: true, error: conflict.message, ordering: { older: conflict.older.map(r => r.label), newer: conflict.newer.map(r => r.label) } }
+            }
+        }
+
         git(work, 'add', '-A')
         git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
         const releaseCommit = git(work, 'rev-parse', 'HEAD').trim()
@@ -522,7 +629,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
+module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, sharedObjectOrdering, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
 // never applies them. After the pull, apply every included subset and view to the

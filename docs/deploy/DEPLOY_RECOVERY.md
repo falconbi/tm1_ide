@@ -549,6 +549,51 @@ normal answer there.
 
 ---
 
+## 19. Two change sets changed the same object
+
+**What you see:** the release will not build, with one of two messages.
+
+```
+Refused: subset JDLove was also changed in 1001 (10:00), which hasn't been deployed to
+TM1_Test_PROD. Deploy 1001 first, or retire it.
+```
+
+```
+Refused: 1002 already deployed a newer change to subset JDLove (11:00). This release would
+undo it. Retire this change set, or redo the change on DEV.
+```
+
+**Why:** two change sets touched the same object, and they must deploy in the order the changes
+were made. Without the check, the classic case is silent: `JDLove` created in 1001, deleted in 1002.
+Deploy 1002 first and its delete finds nothing — treated as already gone — then deploy 1001 and the
+subset comes back, with no warning.
+
+The order is judged by the time each change set **last changed that object**, from the change log.
+Not the change-set number, not when it was closed.
+
+**Do this — the first message (older change not yet deployed):**
+
+1. Deploy the named change set first, then this one.
+2. Or, if it is no longer needed, retire it (row `⋯` → *Retire*), then build this release again.
+3. Nothing was built and nothing reached the target, so either choice is free.
+
+**Do this — the second message (a newer change is already deployed):**
+
+1. This release would put an older version back on the target. Normally the change has been
+   superseded: retire this change set.
+2. If the older version really is what you want, **redo the change on DEV** — a fresh edit makes it
+   the newest change to that object, and the release will then build.
+
+**What the check cannot see:** it only knows changes recorded in the change log — edits made in the
+IDE or by an MCP agent. A change made in Planning Analytics Workspace, or by a TI process running on
+DEV, is not ordered. Those still show up as ordinary drift after a deploy; they just are not caught
+here.
+
+**What it always names:** every object and change set involved, so one message is enough to resolve
+it.
+
+---
+
 ## Things that look like failures but are not
 
 | What you see | What it is |
