@@ -511,4 +511,18 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
     }
 }
 
-module.exports = { prepare, execute }
+// What a specific release commit would remove from the target. Small, read-only,
+// and shared by Review (via prepare), the one-button Ship (which never shows
+// Review) and execute's record — one implementation of the comparison.
+async function elementLossFor(target, commit, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
+    if (!commit) return { loss: { elements: 0, dimensions: 0 }, elementLoss: [] }
+    const c = makeClient(target, ideToken)
+    const st = await c.post('GitStatus', { Username: gitUser, Password: token })
+    const repoUrl = st?.URL
+    if (!repoUrl) throw new Error(`${target} is not linked to a repo.`)
+    const { compareTargetWithRepo } = require('./git-readiness')
+    const cmp = await compareTargetWithRepo(target, { commit, repoUrl, token, gitUser, ideToken, client: c })
+    return { loss: cmp.loss, elementLoss: cmp.elementLoss, targetOnly: cmp.targetOnly }
+}
+
+module.exports = { prepare, execute, elementLossFor }

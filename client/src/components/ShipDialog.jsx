@@ -41,6 +41,11 @@ export default function ShipDialog() {
   const [result, setResult]   = useState(null)   // deploy outcome + drift
   const [error, setError]     = useState(null)
   const [reachedProd, setReachedProd] = useState(false)
+  // A release that would remove elements stops here before anything is approved
+  // or sent. The one-button path never shows Review, so this is where that list
+  // has to appear — otherwise the quick path is also the blind one.
+  const [loss, setLoss] = useState(null)
+  const [pending, setPending] = useState(null)   // { release, id } — resume after the confirm
 
   // Opening the dialog for a change set must always start from a clean form.
   // The component is never unmounted (it renders null when closed), so without
@@ -50,6 +55,7 @@ export default function ShipDialog() {
     if (!ship) return
     setPhase('idle'); setResult(null); setError(null)
     setApproved(false); setTarget(''); setReachedProd(false); setStep('')
+    setLoss(null); setPending(null)
   }, [ship?.session?.id])
 
   useEffect(() => {
@@ -72,6 +78,40 @@ export default function ShipDialog() {
     qc.invalidateQueries({ queryKey: ['work-session-active'] })
   }
 
+  // Approve and send — the part that runs once, after any loss confirmation.
+  const deployRelease = async (rel, id) => {
+    setStep('Recording your approval…')
+    await POST('/api/deploy/git/approve', { source: server, target, commit: rel.releaseCommit, note: 'Shipped from the one-step ship' })
+
+    setStep(`Sending to ${target}…`)
+    setReachedProd(true)
+    const res = await POST('/api/deploy/git/execute', { source: server, target, session: id })
+    setResult({ ...res, releaseCommit: rel.releaseCommit, ships: rel.included?.length ?? 0 })
+
+    if (res.executed) {
+      setStep('Checking the target matches what it was given…')
+      const drift = await POST('/api/git/drift', { server: target }).catch(() => null)
+      setResult(r => ({ ...r, drift }))
+    }
+    setPhase('done')
+    finish()
+  }
+
+  // "Yes, remove these" — the release is already built; nothing is rebuilt, so
+  // the approval recorded now is the one that ships.
+  const confirmLoss = async () => {
+    if (!pending) return
+    setPhase('running'); setError(null)
+    try {
+      await deployRelease(pending.release, pending.id)
+    } catch (e) {
+      setError(e.message)
+      setPhase('failed')
+    } finally {
+      setStep('')
+    }
+  }
+
   const shipIt = async () => {
     setPhase('running'); setError(null); setResult(null); setReachedProd(false)
     const id = session?.id
@@ -89,21 +129,20 @@ export default function ShipDialog() {
       const rel = await POST('/api/deploy/git/release', { source: server, target, session: id })
       if (!rel?.releaseCommit) throw new Error('The release could not be built.')
 
-      setStep('Recording your approval…')
-      await POST('/api/deploy/git/approve', { source: server, target, commit: rel.releaseCommit, note: 'Shipped from the one-step ship' })
-
-      setStep(`Sending to ${target}…`)
-      setReachedProd(true)
-      const res = await POST('/api/deploy/git/execute', { source: server, target, session: id })
-      setResult({ ...res, releaseCommit: rel.releaseCommit, ships: rel.included?.length ?? 0 })
-
-      if (res.executed) {
-        setStep('Checking the target matches what it was given…')
-        const drift = await POST('/api/git/drift', { server: target }).catch(() => null)
-        setResult(r => ({ ...r, drift }))
+      // Read the release before approving it. If it would remove elements, STOP:
+      // the person names them before anything reaches the target.
+      setStep('Checking what this release would remove…')
+      let lossInfo = null
+      try { lossInfo = await POST('/api/deploy/git/loss', { target, commit: rel.releaseCommit }) } catch { lossInfo = null }
+      if ((lossInfo?.loss?.elements ?? 0) > 0) {
+        setLoss(lossInfo)
+        setPending({ release: rel, id })
+        setStep('')
+        setPhase('confirm-loss')
+        return
       }
-      setPhase('done')
-      finish()
+
+      await deployRelease(rel, id)
     } catch (e) {
       setError(e.message)
       setPhase('failed')
@@ -199,6 +238,47 @@ export default function ShipDialog() {
                 >
                   Details <ExternalLink size={9} />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ---------- stops before approving: this would delete elements ---------- */}
+          {phase === 'confirm-loss' && loss && (
+            <div className="space-y-3">
+              <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-1">
+                <p className="text-sm font-semibold flex items-center gap-1.5 text-amber-700">
+                  <AlertTriangle size={14} />
+                  This deploy removes {loss.loss.elements} element{loss.loss.elements === 1 ? '' : 's'} in {loss.loss.dimensions} dimension{loss.loss.dimensions === 1 ? '' : 's'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {target} has elements the release does not. Deploying deletes them and their data.
+                  Nothing has been sent yet.
+                </p>
+              </div>
+              <div className="border border-border rounded-md overflow-hidden">
+                <div className="grid grid-cols-[1fr_70px_1fr] text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/30 px-3 py-1 border-b border-border gap-2">
+                  <span>Dimension</span><span>Count</span><span>Sample</span>
+                </div>
+                {(loss.elementLoss ?? []).map((l, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_70px_1fr] px-3 py-1 text-[11px] border-b border-border/40 last:border-0 gap-2">
+                    <span>{l.dimension}<span className="text-muted-foreground/60"> / {l.hierarchy}</span></span>
+                    <span>{l.count}</span>
+                    <span className="text-muted-foreground truncate">{l.sample?.join(', ')}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                If this is not what you expected, cancel and check the release — the elements may have been
+                added on {target} rather than on {server}.
+              </p>
+              <div className="flex items-center gap-2">
+                <button onClick={confirmLoss} className="px-3 py-1.5 text-xs rounded bg-amber-700 text-white hover:bg-amber-600">
+                  Yes, remove these
+                </button>
+                <button
+                  onClick={() => { setPhase('idle'); setLoss(null); setPending(null) }}
+                  className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted"
+                >Cancel</button>
               </div>
             </div>
           )}

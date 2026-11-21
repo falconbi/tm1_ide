@@ -128,6 +128,17 @@ app.post('/api/deploy/git/execute', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// What a built release would remove from the target. Read-only, so the one-button
+// Ship can stop and show the same list Review shows before anything is approved.
+app.post('/api/deploy/git/loss', async (req, res) => {
+    try {
+        const { target, commit } = req.body
+        if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
+        const { elementLossFor } = require('../core/git-deploy')
+        res.json(await elementLossFor(target, commit, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Return a target to the release it last received. The recovery for a pull that
 // died part-way. Admin only, under the deploy lock, with the target name typed
 // as the confirmation, and recorded in the target's deploy history.

@@ -486,9 +486,9 @@ data — go. It is the same check the first pull and a return use.
 
 **Do this:**
 1. Read the list. Usually it is what you intended: you deleted the elements on DEV.
-2. If it is **not** what you intended, stop — do not approve. Something is missing from the
-   release, most often because those elements were added directly on the target rather than
-   on DEV.
+2. If it is **not** what you intended, stop — do not approve (Ship: press **Cancel**).
+   Something is missing from the release, most often because those elements were added
+   directly on the target rather than on DEV.
 3. If elements were added on the target by mistake, remove them there first (§6b), or bring
    them into DEV so the release contains them.
 4. Once the list matches your intent, **Continue to Approve**.
@@ -497,9 +497,10 @@ data — go. It is the same check the first pull and a return use.
 before it happens rather than discovering it afterwards. The count is also written into the
 deploy report, so a later reader can see what a deploy removed.
 
-**Worth knowing:** the one-button **Ship** does not show this list before sending — it records
-it in the report afterwards. When a change set deletes elements, use **Details** on the result,
-or the step-by-step view for the set, to check before the next ship.
+**The one-button Ship does the same thing.** Before it approves anything it reads the release;
+if any elements would go, it stops on the same list and asks for **Yes, remove these** — and
+then sends. Nothing has reached the target at that point, so **Cancel** is free. If nothing is
+removed, Ship stays one click: no extra step appears.
 
 ---
 
