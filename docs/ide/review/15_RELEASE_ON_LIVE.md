@@ -333,6 +333,146 @@ signed in is a fact worth having afterwards.
 administrator pauses it and the deploy report says it was paused. A pipeline that silently disables
 production schedules is worse than a refused deploy.
 
+## The shape it becomes: Pre-deploy and Deploy
+
+Agreed direction, 22 Nov. The flow splits into two phases, and **both existing surfaces become
+one**. Today there are two — the one-button **Ship** dialog and the eight-step wizard behind
+*Step by step instead* — and they are two paths to test, two vocabularies, and a standing question
+of which one is the product. In this shape there is one:
+
+**Pre-deploy is where you look and decide. Deploy is one button.**
+
+```
+PRE-DEPLOY                                      DEPLOY
+1  check PROD is idle                           6  approve
+2  refresh DEV from PROD                        7  check PROD is still idle
+3  run the tests and close                      8  Save Data, then the backup
+4  build the release                            9  send to PROD
+5  review (plan, diffs, elements removed)      10  verify: matches, checks pass
+```
+
+That is not a cosmetic re-ordering. It is the consequence of refresh-to-DEV: everything that can be
+decided is decided before the deploy, so the deploy itself has almost nothing left that can go
+wrong — and almost nothing a person has to read mid-flight.
+
+### The screens
+
+**1. Start** — from the change set row (`Deploy…`), or the Ready-to-ship list.
+
+```
+Deploy "JDLove test" to [ TM1_Test_PROD ▾ ]
+
+TM1_Test_PROD: idle · 2 people signed in · next chore in 4h
+3 objects changed on PROD since its last release      [ refresh them ]
+
+[ Start pre-deploy ]
+```
+
+**2. Pre-deploy · Check PROD is idle**
+
+```
+✓ PROD is idle
+  WFP Load Accounts        not running
+  next chore: WFP Month End at 02:15 (in 4h 10m)
+  2 people signed in: admin, jdoe — recorded
+[ Continue ]
+```
+
+If something is running it is red and Continue is disabled: *"WFP Load Accounts has been running
+since 12:31 — deploy when it finishes."*
+
+**3. Pre-deploy · Refresh DEV from PROD** — one row per object the drift report found.
+
+```
+Changed on PROD (3)                                    ticked by default
+☑ WFP Cost Centre            dimension   3 elements, 1 move
+☑ WFP Month End              chore       schedule + active flag
+☐ WFP Period › 2026 Months   subset      PROD deleted it —
+                                          unticked: the next deploy puts it back on PROD
+
+[ Refresh 2 objects into "JDLove test" ]      [ Skip for now ]
+```
+
+Running it reports one line per object — *"refreshed: 3 elements, 1 move, 1 chore"* — and every
+write is recorded in the open change set. Nothing is copied by default at deploy time; this is the
+only place it happens, and it is a button a person presses.
+
+**4. Pre-deploy · Tests and close** — the existing test list, unchanged; the close refuses on a
+block-severity failure, as now.
+
+**5. Pre-deploy · Build the release** — target, `Included (N)`, `Left on DEV (0)`, unchanged.
+
+**6. Pre-deploy · Review** — what will change, with diffs, and the elements that will be removed.
+
+```
+What will change on TM1_Test_PROD
+  1 cube     WFP Assignment (rules)         [ View change ]
+  1 process  WFP Add Opening Period         [ View change ]
+
+Elements removed: 1 in WFP Currency — ZZ_PROBE
+  [ Yes, remove these ]                     ← required before continuing
+
+[ Continue to Deploy ]                      ← disabled until the loss is confirmed
+```
+
+The "Yes, remove these" gate lives **here**, at the end of pre-deploy, not on the send button. It
+is the last decision of the phase that is about deciding, and it is already built (Ship and Review
+both use the same comparison and the same panel).
+
+**7. Deploy** — one screen, one button.
+
+```
+Deploy "JDLove test" to TM1_Test_PROD
+Ships 2 objects · release 55941a6b · there is no rollback
+
+☐ I approve sending JDLove test to TM1_Test_PROD
+
+Backup: WFP Backup runs first        (or)  Last backup of PROD: [ 2026-11-22 09:00 ]
+
+[ Deploy to TM1_Test_PROD ]
+```
+
+While it runs, one line per step, in order: *checking · saving data · backup · sending · verifying*.
+
+**8. Done**
+
+```
+✓ Done — TM1_Test_PROD is up to date
+2 objects · checks 6/6 · no drift · data saved 12:40 · backup 12:41
+[ Done ]   [ Details ]
+```
+
+`Details` opens the deploy report — the same record the report screen already shows.
+
+### What disappears
+
+| Today | Becomes |
+|---|---|
+| Ship dialog (target, approve, ship) | screens 1 and 7 — same decisions, split by phase |
+| "Step by step instead" | gone; there is no second entrance |
+| Eight-step nav (Test, Close, Commit, Build, Review, Approve, Deploy, Verify) | five pre-deploy steps, then a one-screen deploy |
+| Drift as a blocking screen you must clear | a **task** inside pre-deploy (screen 3); the Drift view stays as a report |
+| Element-loss confirm inside Ship | folded into Review (screen 6) |
+| "Catch up a server…" | **stays separate** — it is first-time setup, not a deploy |
+
+### What this costs, and what it buys
+
+- **Buys:** one path to test, one vocabulary. The two-paths problem goes away by construction, not
+  by hiding one behind a link. A cautious approver gets the plan, the diffs and the loss list in the
+  same phase they approve from — which is the gap Ship has today (it never shows Review).
+- **Costs:** pre-deploy is longer than pressing Ship, because it is where the reading happens. And
+  pre-deploy **writes to DEV** (the refresh), so it is not a read-only phase — it has to be explicit,
+  recorded, and undoable the way any change set is.
+- **Reuses:** every panel exists — test list, close, build release, review with `View change`, the
+  loss panel, the approval line, the completion card, the deploy report.
+
+### What it means for the wizard
+
+The wizard is not deleted; it is **re-cut**. Its steps 1–4 become Pre-deploy 3–5, its Review becomes
+Pre-deploy 6, its Approve and Deploy become screens 7–8. The step-by-step detail stops being a
+parallel product and becomes the only product — with the detail shown where it is needed rather than
+offered as an alternative.
+
 ## What each needs in code
 
 | Work | Design 15 | Refresh-to-DEV |
@@ -348,8 +488,9 @@ production schedules is worse than a refused deploy.
 | Drift rule: don't block when the release already carries PROD's state | **Yes**, by ownership | **Yes**, by content — but per object type, not element names alone: elements, edges, types, hierarchy membership, attribute definitions/values, chore flag. One comparison shared with the refresh. ~1 day |
 | Attribute-value discipline (brief 14) | **Yes** — never wholesale on a PROD-owned dimension | **Yes**, and *more* important: the refresh writes PROD's values onto DEV, and a later deploy writes DEV's values back |
 | Idle check (threads, chores due, sessions) + the two call sites + report fields | **Yes** too — same value here, and it is what makes the timing gap small in either design. ~1–1.5 days | **Yes** — reads `getThreads`, `getChores` / `getChore`, `getSessions`; all exist. ~1–1.5 days |
+| Two-phase shell (Pre-deploy / Deploy) replacing Ship and the wizard | **Yes** — same shell, whichever merge wins ~2–3 days | **Yes** — re-cuts screens that exist; no new machinery ~2–3 days |
 | Tests + lab proof | ~2 days | ~2 days |
-| **Rough total** | **~11–13 days** | **~8–9 days** |
+| **Rough total** | **~13–16 days** | **~10–12 days** |
 
 ### What it reuses
 
@@ -583,6 +724,8 @@ Conditions, without which I would not ship it:
    this design can refresh those and they would block every night.
 7. **The idle check is in place at both points**, with the second one as late as the window allows —
    it is what makes "refresh, then deploy" a safe sentence rather than a hopeful one.
+8. **One path in the UI** — Pre-deploy and Deploy, replacing both Ship and the wizard. Keeping both
+   entrances while changing the flow underneath would make the two-paths problem permanent.
 
 If refresh-to-DEV is chosen, these parts of design 15 are **no longer needed**:
 
@@ -607,12 +750,13 @@ These parts **stay**, because they are true regardless of which side the merge h
 
 | # | Decision | Recommendation |
 |---|---|---|
-| A1 | Merge on DEV (refresh) rather than in the release? | **Yes**, with conditions 1–7 above |
+| A1 | Merge on DEV (refresh) rather than in the release? | **Yes**, with conditions 1–8 above |
 | A2 | Do the copy as an explicit, recorded action in the open change set? | **Yes** — never automatic, never silent |
 | A3 | Copy loaded attribute *values* to DEV? | **Aliases and definitions only, plus values for a confirmed list** — element existence is what the deploy needs |
 | A4 | Deletes on refresh: ticked by default, or unticked? | **Unticked (agreed)**, with the "puts it back on PROD" consequence written on each item |
 | A5 | Chore active flag: copy it, or force inactive on DEV? | Force inactive on DEV; the deploy carries PROD's own chore file decision from design 15, so PROD's flag is never switched |
 | A6 | Scope: which object types does the refresh cover? | **Dimensions, hierarchies, attributes, views, subsets, chores** (agreed). Rules, processes and cube structure stay blocking. |
 | A7 | Deploy only when the target is idle, with the refuse / warn / confirm split? | **Yes** (agreed), and put the second check as late as possible — after the backup, immediately before the pull |
+| A8 | One UI: Pre-deploy (check, refresh, test, build, review) then Deploy (approve, idle, save, backup, send, verify)? | **Yes** — it replaces Ship and the wizard, and it is what makes "one path" true rather than aspirational |
 
 Nothing here is built. This appendix stops for James's decision.
