@@ -79,6 +79,7 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         out.deployedSummary = st?.DeployedCommit?.Summary ?? null
         out.connected       = st?.Remote?.Connected ?? false
         out.fullOverwrite   = !out.deployedCommit
+        out.repoUrl         = st?.URL ?? null
 
         // Refresh the target's live snapshot and refuse Review if it has drifted
         // from what it last received.
@@ -144,6 +145,23 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         for (const op of ops) {
             const m = String(op).match(/^(Create|Update|Delete|Skip)\s+(.+)$/) || [null, 'Other', String(op)]
             out.planByType[m[1]] = (out.planByType[m[1]] ?? 0) + 1
+        }
+
+        // What this release would REMOVE from the target's dimensions — the same
+        // check the first pull and a return use, aimed at the commit this deploy
+        // would land on. Reported at Review, never blocking: removing elements is
+        // sometimes exactly the intent, and it is always worth seeing first.
+        if (out.plan.targetCommit && out.repoUrl) {
+            try {
+                const { compareTargetWithRepo } = require('./git-readiness')
+                const cmp = await compareTargetWithRepo(target, {
+                    commit: out.plan.targetCommit, repoUrl: out.repoUrl, token, gitUser, ideToken, client: c,
+                })
+                out.elementLoss = cmp.elementLoss
+                out.loss = cmp.loss
+            } catch (e) {
+                out.elementLossError = e.message
+            }
         }
     } catch (e) {
         out.error = `Pull plan failed: ${e.response?.data?.error?.message ?? e.message} (a stale view or name in the source breaks the pull — run the readiness check)`
@@ -378,6 +396,22 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                 return out
             }
         }
+        // The same loss figure the Review showed, captured with the deployment so
+        // the report can say what was removed — computed here because Review may
+        // never have run (the one-button path skips it).
+        try {
+            const { compareTargetWithRepo } = require('./git-readiness')
+            // repoUrl is scoped to the release block above; read it again here.
+            const lossRepoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+            if (lossRepoUrl && out.targetCommit) {
+                const cmp = await compareTargetWithRepo(target, {
+                    commit: out.targetCommit, repoUrl: lossRepoUrl, token, gitUser, ideToken, client: c,
+                })
+                out.elementLoss = cmp.elementLoss
+                out.loss = cmp.loss
+            }
+        } catch (e) { out.elementLossError = e.message }
+
         try {
             await c.post(`GitPlans('${encodeURIComponent(plan.ID)}')/tm1.Execute`, {})
             out.executed = true

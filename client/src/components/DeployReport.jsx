@@ -68,6 +68,11 @@ function toMarkdown(r) {
     lines.push('## Views and subsets that did not apply')
     for (const e of r.subsetsViews.errors) lines.push(`- ${e.type} ${e.name}: ${e.error}`)
   }
+  if (r.loss?.elements > 0) {
+    lines.push('')
+    lines.push(`## Elements removed (${r.loss.elements} in ${r.loss.dimensions} dimensions)`)
+    for (const l of r.elementLoss ?? []) lines.push(`- ${l.dimension}/${l.hierarchy}: ${l.count} (${(l.sample ?? []).join(', ')})`)
+  }
   if (r.incomplete?.length) {
     lines.push('')
     lines.push('## Objects not confirmed')
@@ -235,6 +240,20 @@ export default function DeployReport() {
                   ))}
                 </div>
               </div>
+
+              {rec.loss?.elements > 0 && (
+                <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-1">
+                  <p className="text-[10px] uppercase tracking-wide text-amber-700 font-semibold">
+                    Elements removed ({rec.loss.elements} in {rec.loss.dimensions} dimension{rec.loss.dimensions === 1 ? '' : 's'})
+                  </p>
+                  {(rec.elementLoss ?? []).map((l, i) => (
+                    <p key={i} className="text-[11px]">
+                      {l.dimension}/{l.hierarchy}: <span className="font-semibold">{l.count}</span>
+                      {l.sample?.length ? <span className="text-muted-foreground"> — {l.sample.join(', ')}</span> : null}
+                    </p>
+                  ))}
+                </div>
+              )}
 
               {(rec.subsetsViews?.errors?.length ?? 0) > 0 && (
                 <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-1">

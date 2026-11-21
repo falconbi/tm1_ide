@@ -91,3 +91,13 @@ test('drift entries and failed checks survive into the record', () => {
 test('a restore is recorded as its own outcome, not as a deploy', () => {
     assert.equal(classify({ outcome: 'restored', executed: true, controlOk: true }), 'restored')
 })
+
+test('elements the deploy removed are recorded, with their samples', () => {
+    const r = buildRecord({
+        ...base,
+        elementLoss: [{ dimension: 'WFP Currency', hierarchy: 'WFP Currency', count: 1, sample: ['ZZ_RESTORE_PROBE'] }],
+        loss: { elements: 1, dimensions: 1 },
+    })
+    assert.equal(r.loss.elements, 1)
+    assert.deepEqual(r.elementLoss[0].sample, ['ZZ_RESTORE_PROBE'])
+})

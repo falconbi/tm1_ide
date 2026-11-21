@@ -125,6 +125,10 @@ function buildRecord(out, { startedAt } = {}) {
         incomplete: out.incomplete ?? [],
         incompleteCheckError: out.incompleteCheckError ?? null,
         reconcile,
+        // What the deploy removed from the target's dimensions, when it could be
+        // measured before the pull (see compareTargetWithRepo).
+        elementLoss: out.elementLoss ?? [],
+        loss: out.loss ?? null,
         restoreCommit: out.restoreCommit ?? null,
         startedAt: startedAt ?? null,
         finishedAt: at,

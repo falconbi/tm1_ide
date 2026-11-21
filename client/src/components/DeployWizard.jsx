@@ -835,6 +835,32 @@ export default function DeployWizard({ server, onClose, onOpenTests, initialSess
                   </div>
                 )}
               </div>
+              {/* Elements this release would REMOVE from the target. Reported, not
+                  blocking — often exactly the intent — but never silent. */}
+              {prep?.loss?.elements > 0 && (
+                <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-1">
+                  <p className="text-xs font-semibold text-amber-700">
+                    This deploy removes {prep.loss.elements} element{prep.loss.elements === 1 ? '' : 's'} in {prep.loss.dimensions} dimension{prep.loss.dimensions === 1 ? '' : 's'}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {target} has {prep.loss.elements === 1 ? 'an element' : 'elements'} the release does not. Deploying deletes them
+                    and their data. This does not stop the deploy — check the list is what you expect.
+                  </p>
+                  <table className="w-full text-left text-[11px] border border-border rounded mt-1">
+                    <thead><tr className="text-muted-foreground"><th className="px-2 py-1">Dimension</th><th className="px-2 py-1">Hierarchy</th><th className="px-2 py-1">Count</th><th className="px-2 py-1">Sample</th></tr></thead>
+                    <tbody>
+                      {prep.elementLoss.map(l => (
+                        <tr key={`${l.dimension}/${l.hierarchy}`} className="border-t border-border">
+                          <td className="px-2 py-1">{l.dimension}</td>
+                          <td className="px-2 py-1 text-muted-foreground">{l.hierarchy}</td>
+                          <td className="px-2 py-1">{l.count}</td>
+                          <td className="px-2 py-1 text-muted-foreground">{l.sample?.join(', ')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {prep?.driftConflictObjects?.length > 0 && (
                 <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-2">
                   <p className="text-xs font-semibold text-amber-600">
