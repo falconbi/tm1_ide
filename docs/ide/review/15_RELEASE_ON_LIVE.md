@@ -224,3 +224,235 @@ Report, don't block. The same reasoning does **not** apply to chores or cubes: t
 | 7 | PROD moved between build and deploy | Rebuild silently **only** for PROD-owned objects; anything else blocks. Never deploy a stale merge. |
 | 8 | Attribute values on a PROD-owned dimension | Never wholesale; never copy the loaded ones. |
 | 9 | Does this block client use? | **Yes.** A client model with a nightly load cannot deploy at all today. This is the gate before the first client. |
+
+---
+
+# Appendix A — compared with "Refresh DEV from PROD"
+
+James's alternative, as proposed (22 Nov 2026):
+
+> Instead of merging PROD's changes into the release, copy PROD's changes back into DEV before the
+> deploy. DEV then holds PROD's state plus DEV's own work, and the normal deploy carries everything.
+> The merge happens on DEV through the REST API, and TM1 Git writes the file itself, so no TM1 Git
+> file format is built by hand.
+
+Both designs solve the same problem — *a target whose dimensions are loaded every night cannot be
+deployed to, because the pull would delete what the load added.* They solve it on different sides of
+the wire:
+
+- **Design 15 (this document)**: merge on the **release**. The release commit is built on
+  `prod-live` (PROD's own snapshot) plus DEV's delta, so the pull writes PROD's state back to
+  itself. DEV is never touched.
+- **Refresh-to-DEV**: merge on **DEV**. PROD's state is copied *into* DEV's model over REST, the
+  change set carries it, and the release is an ordinary release of DEV. PROD is never special-cased.
+
+The second one is smaller, because it removes two of the hardest parts of this design: building a
+correct TM1 Git file by hand, and approving something that changes after approval.
+
+## What each needs in code
+
+| Work | Design 15 | Refresh-to-DEV |
+|---|---|---|
+| Ownership registry (`ownership.json`, admin UI, suggestions from `process-scan`) | **Yes** — decisions 2 and 3. New model document, a settings screen, suggestion heuristics. ~1.5–2 days | **No** for release building. A much smaller list is still needed: *which attributes PROD's load maintains*, per dimension. ~0.25 day |
+| Merge PROD's state into a release | **Yes** — `buildRelease` gains a merge mode: dimension add-only, chore split (schedule vs steps), views/subsets conflict. Edits the JSON that `prod-live` produced. ~3–4 days | **No** |
+| Copy PROD → DEV | — | **Yes** — compare live PROD with live DEV per object, then `addElementAt` / `addEdge` / `deleteElement` / `writeElementAttribute`, `updateChore`, `saveView` / `saveSubset`. ~1.5–2 days |
+| Record it in the change set | — | **Yes** — the existing `writeLog` for the open session, per object, so the change set owns what was copied. ~0.25 day |
+| Snapshot + rebuild between build and deploy | **Yes** — decision 7, `prod-live` re-snapshot, rebuild, rebind. ~1–1.5 days | **No** — the release is ordinary. The timing gap is covered by the element-loss stop that is already built (with the caveat below). |
+| Delta-hash approval | **Yes** — decision 6. New hash on the release, compared at deploy. ~1–1.5 days | **No** — normal commit approval (§ "Approval" below) |
+| Review UI for merge results (moves, removals, conflicts) | **Yes** — ~1–1.5 days | **Yes**, but smaller: a refresh panel with the objects, ticked deletes, and a run button. ~1 day |
+| Drift rule: don't block when the release already carries PROD's state | **Yes**, by ownership | **Yes**, by content — needs the element-loss comparison per dimension (~0.5 day, reuses `compareTargetWithRepo`) |
+| Attribute-value discipline (brief 14) | **Yes** — never wholesale on a PROD-owned dimension | **Yes**, and *more* important: the refresh writes PROD's values onto DEV, and a later deploy writes DEV's values back |
+| Tests + lab proof | ~2 days | ~1.5 days |
+| **Rough total** | **~10–12 days** | **~5–6 days** |
+
+### What it reuses
+
+Refresh-to-DEV is mostly assembly of things that exist:
+
+- `TM1Client`: `getElements`, `getEdges`, `addElementAt`, `addEdge`, `deleteElement`, `writeElementAttribute`, `getElementAttributeValues`, `getChore` / `updateChore`, `getViewWithSubsets`, `saveView`, `saveSubset`.
+- `applyView` / `applySubset` (`core/git-restore.js`) for writing a view or subset onto DEV, unchanged.
+- `writeLog` (`core/change-log.js`) so the open change set records each copied object — the same
+  entries the editors write, so diffs, ownership and releases work as normal.
+- `compareTargetWithRepo` (`core/git-readiness.js`) for the drift rule — but see the caveat: it
+  compares **element names only**.
+- The element-loss stop in Ship and Review, which is the timing-gap guard.
+
+What it does not need at all: `prod-live` as a base, a merge in `buildRelease`, an ownership
+registry, a delta hash.
+
+## What can go wrong
+
+### DEV fills up with PROD's codes
+
+This is real, and it is the cost of the design rather than a bug.
+
+- Every element the load creates on PROD becomes part of DEV's dimension. DEV stops being a clean
+  room and becomes a copy of production definitions — real cost centres, real employee codes,
+  whatever the load writes.
+- Every developer then sees production codes in autocomplete and dropdowns, and any test they run
+  uses them.
+- A developer who deletes one of those elements on DEV is deleting a production element as far as
+  the next deploy is concerned. The element-loss stop would name it (that stop is already live),
+  but the *intent* is now ambiguous: did they mean "remove this from DEV" or "remove this from
+  PROD"?
+- It compounds: refresh, then someone adds an element in DEV for testing, then refresh again. DEV
+  accumulates both.
+
+Mitigations, all cheap: refresh is an explicit action, per object, never automatic; the copied
+elements are recorded in the change set so they are visible in the diff; and the element-loss stop
+already refuses a deploy that would delete them by surprise. But no mitigation makes DEV small
+again — the state itself is now large.
+
+By contrast, design 15 leaves DEV exactly as it is. That is a genuine advantage if DEV is used for
+training, demos, or by people who should not see production codes.
+
+### Attribute values copied to DEV
+
+The proposal says "copy the values of attributes PROD loads". That is the right instinct and the
+riskiest step.
+
+- **Which attributes?** There is no existing notion of "loaded attributes". `process-scan` knows
+  what a process *writes* to a dimension (brief 14's `maintainedBy`), so it can suggest a list, but
+  it must be confirmed per dimension — this is the small piece of ownership the design cannot avoid.
+- **Copying the value is a write to DEV**, and the change log records it. `reconcile` already has a
+  wholesale path (`syncAttributeValues`) that copies *every* value for *every* element when the log
+  only names the dimension. On a refresh, that is exactly what must not happen: it would copy DEV's
+  stale values over PROD's on the next deploy. Brief 14's rule stands — never wholesale, always the
+  recorded element/attribute pairs.
+- **Values drift immediately.** A value copied at 09:00 is stale by 09:05 if the load runs again.
+  That is acceptable (the deploy only needs the element to exist), but it means the refresh is not a
+  snapshot of data, only of *definitions plus a sample of values*.
+- Recommendation: copy **attribute definitions and alias values** (they affect element identity in
+  views and subsets), and copy **numeric/text attribute values only for the confirmed loaded list**,
+  or not at all. Element existence is what the deploy actually needs; values come from PROD's own
+  load.
+
+### The drift rule as proposed has a hole: edges and types
+
+The proposal is: *drift on a dimension no longer blocks if the element-loss count for that dimension
+is 0, using `compareTargetWithRepo`.*
+
+`compareTargetWithRepo` compares **element names per hierarchy**. It does not compare:
+
+- **consolidation edges** — a re-parent, including the archiving pattern this project uses
+  (`Archive` under weight 0);
+- **element types** (Numeric vs String);
+- **attribute definitions or values**;
+- element **order**.
+
+So a PROD dimension that was re-parented (someone archiving an element, or the load rebuilding a
+rollup) has element loss 0, would stop blocking, and the pull would silently put the old edge back.
+That is the same class of loss the whole design exists to prevent, and `elementLoss` cannot see it.
+
+Fix, still small: the rule must be *"the release carries everything PROD has for this dimension"*,
+not *"no element is missing"*. That means comparing edges and element types as well as names — the
+comparison is a superset of today's `compareTargetWithRepo`, and the readiness module is the right
+home for it. Budget +0.5 day over the estimate above; do not ship the rule without it.
+
+### Deletes default in the wrong direction
+
+"Deletes are shown and must be ticked" means unticked by default. But unticked means the element
+stays on DEV, and the release therefore **re-creates it on PROD** — the opposite of what a person
+reading "PROD deleted this" would expect. Either:
+
+- tick deletes by default (refreshing DEV *is* adopting PROD's state), or
+- label the unticked state explicitly: *"kept on DEV — the next deploy will put it back on PROD"*.
+
+The second is honest and leaves the choice with the person; the first is less surprising. Either
+way it must not be a silent default.
+
+### Chores: copying the schedule onto DEV changes DEV's behaviour
+
+`updateChore` on DEV with PROD's schedule and active flag means DEV's chore may become **active at
+production times** and start executing loads on DEV. Copying the flag is what makes the deploy not
+switch PROD's chore off, but it has a side effect on the dev server.
+
+Mitigation: refresh chores while DEV's chores are known-inactive, or copy the schedule but force
+`Active = false` on DEV and let the deploy bring PROD's own flag from PROD's file (which is what
+design 15 does by keeping PROD's chore file). This needs a decision; it is not obvious.
+
+### Refresh and the change set's own history
+
+The refresh writes to DEV under someone's open change set, so PROD's elements appear as *that
+person's* changes. The diff will show a dimension change they did not make, and the approval covers
+it. That is correct but worth saying plainly in the UI: *"12 objects refreshed from PROD into this
+change set"* with a list.
+
+## Approval: does refresh-to-DEV still need decision 6?
+
+**No — and this is its biggest simplification.**
+
+With the merge on DEV, the release is an ordinary release built on the target's recorded commit from
+DEV's own commit. There is no base that changes underneath the approval: approve the release commit,
+deploy the release commit. Decision 6 (approve the delta, not the commit) and decision 7 (rebuild on
+a newer snapshot without re-approval) both exist only because design 15 changes the base after
+approval.
+
+Two consequences worth stating:
+
+- A refresh *after* approval writes to DEV, moves DEV's commit, and therefore **voids the
+  approval** — correctly. The workflow is: refresh → close → build → approve → ship. The person
+  approves what will actually ship.
+- The timing gap (PROD loads between refresh and deploy) is handled by the element-loss stop, which
+  is already built and live-tested — **for elements**. It does not cover edges, types or chores, and
+  the drift rule must cover those (see the hole above). "Refresh again" is a real answer only if the
+  stop tells you to.
+
+## What only one design can handle
+
+| Situation | Design 15 | Refresh-to-DEV |
+|---|---|---|
+| DEV must stay free of production codes (training, demos, external developers) | ✅ | ❌ — the codes are copied in |
+| Two targets with different ownership of the same object | ✅ per-target registry | ⚠️ per-refresh choices only |
+| PROD moves inside owned objects between approval and deploy | ✅ rebuilt without re-approval | ⚠️ refresh again; caught by the stop only if the comparison covers the change |
+| No hand-built TM1 Git files | ❌ — the merge edits exported JSON | ✅ — TM1 writes DEV's file itself |
+| Smallest approval model | ❌ delta hash | ✅ ordinary commit approval |
+| DEV remains an accurate mirror of the loaded dimension day to day | ❌ DEV drifts, always | ✅ after each refresh |
+| Works when the load is not the only writer (people edit dimensions on PROD) | ⚠️ needs ownership to know whose edit wins | ✅ the refresh takes PROD's state as fact |
+
+## Recommendation
+
+**Take refresh-to-DEV as the route to the client gate.** It is roughly half the work, removes the two
+most dangerous inventions (hand-built Git files, approval that outlives a rebuild), and turns the
+problem into "make DEV match PROD, then ship normally" — which every existing safety in the pipeline
+already understands.
+
+Conditions, without which I would not ship it:
+
+1. **The drift rule must compare edges and element types**, not merely element names. Without that,
+   a re-parent on PROD is silently reverted and the design's whole point is defeated.
+2. **Attribute rules from brief 14 stand**: no wholesale copy, and only the confirmed loaded
+   attributes are refreshed.
+3. **Deletes must not default silently** in either direction — tick-by-default or an explicit label.
+4. **The chore flag needs a decision** before it is copied onto DEV (active at production times on a
+   dev server is a real incident).
+5. **Refresh is explicit and recorded** — an action with a list, written into the open change set,
+   never a background sync.
+
+If refresh-to-DEV is chosen, these parts of design 15 are **no longer needed**:
+
+- decisions 2, 3 and 4 — the ownership registry and add-only merge (the small loaded-attribute list
+  survives from them);
+- decision 6 — delta-hash approval;
+- decision 7 — snapshot rebuild without re-approval (replaced by "refresh again", bounded by the
+  stop);
+- the `prod-live` snapshot as a release base.
+
+These parts **stay**, because they are true regardless of which side the merge happens on:
+
+- decision 1 — views and subsets out of the drift gate (**done**);
+- decision 5 — a view or subset changed on both sides is a choice at Review (**built**);
+- decision 8 — attribute values are never copied wholesale;
+- decision 9 — this is still the gate before the first client.
+
+## Decision for James
+
+| # | Decision | Recommendation |
+|---|---|---|
+| A1 | Merge on DEV (refresh) rather than in the release? | **Yes**, with conditions 1–5 above |
+| A2 | Do the copy as an explicit, recorded action in the open change set? | **Yes** — never automatic, never silent |
+| A3 | Copy loaded attribute *values* to DEV? | **Aliases only, plus values for a confirmed list** — element existence is what the deploy needs |
+| A4 | Deletes on refresh: ticked by default, or unticked with a warning? | Ticked by default, with the count shown before running |
+| A5 | Chore active flag: copy it, or force inactive on DEV? | Force inactive on DEV; keep PROD's own file out of the deploy's way |
+
+Nothing here is built. This appendix stops for James's decision.
