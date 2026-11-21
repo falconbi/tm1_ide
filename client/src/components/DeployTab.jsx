@@ -13,7 +13,7 @@ import DeployBaselines from '@/components/DeployBaselines'
 import DeployRelease from '@/components/DeployRelease'
 
 const NAV = [
-  { id: 'release',   label: 'Release',      icon: Rocket, title: 'Deploy a closed change set' },
+  { id: 'release',   label: 'Ready to ship', icon: Rocket, title: 'Change sets that can be released and deployed' },
   { id: 'history',   label: 'History',      icon: History },
   { id: 'lenses',    label: 'Lenses',       icon: FileCode2, title: 'Ship model-owned Lenses to a target' },
   { id: 'baselines', label: 'Baselines',    icon: HardDriveDownload, title: 'Bootstrap or recover a baseline' },

@@ -18,11 +18,12 @@ export default function DeployRelease({ server }) {
     <div className="flex-1 overflow-auto p-6">
       <div className="max-w-3xl mx-auto flex flex-col gap-4">
         <div>
-          <h2 className="text-sm font-semibold mb-1">Release</h2>
+          <h2 className="text-sm font-semibold mb-1">Ready to ship</h2>
           <p className="text-xs text-muted-foreground">
-            Closed change sets on {server} that are ready to ship. Deploying walks
+            Change sets on {server} that can be released. Each one walks
             Test → Close → Commit → Build release → Review → Approve → Deploy → Verify,
-            starting at the first step this set still needs.
+            starting at the first step it still needs. Nothing reaches the target
+            until you approve and deploy.
           </p>
         </div>
 
