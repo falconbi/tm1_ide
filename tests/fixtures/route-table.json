@@ -178,6 +178,8 @@
   "POST /api/git/setup/first-pull",
   "POST /api/deploy/seed",
   "GET /api/deploy/git/history",
+  "GET /api/deploy/record",
+  "GET /api/deploy/records",
   "GET /api/deploy/archives",
   "GET /api/deploy/archives/:id",
   "GET /api/jobs",

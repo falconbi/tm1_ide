@@ -151,11 +151,35 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
 // The approval gate is non-optional: it cannot be switched off by any caller.
 // The reconcile scope comes from the APPROVAL's recorded change set — never from
 // the client — so a missing or wrong session cannot silently skip or misapply it.
-async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by, session: sessionId } = {}) {
+// A deploy ends by writing a report of what it did (core/deploy-records). Every
+// early `return out` — refused, drifted, plan mismatch, pull failure — is a
+// deployment too, and the ones that stopped are exactly the ones someone will
+// want to read afterwards. So the recording wraps the whole attempt rather than
+// sitting on the success path.
+async function execute(target, opts = {}) {
+    const startedAt = new Date().toISOString()
+    const out = await runDeploy(target, opts)
+    try {
+        const { record } = require('./deploy-records')
+        out.deployReport = await record(out, { ideToken: opts.ideToken, startedAt })
+    } catch (e) {
+        // Never let the report decide the deploy's fate — but never silent either.
+        out.reportError = `The deploy report could not be written: ${e.message}`
+    }
+    return out
+}
+
+async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by, session: sessionId } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
     const lockMod = require('./git-lock')
     const cl = require('./change-log')
+
+    // What the target held BEFORE this deploy — the base the report reads from,
+    // and the base the reconcile/complement steps use. Captured here so a refused
+    // deploy still has it.
+    try { out.baseCommit = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null } catch { /* none */ }
+    out.source = source ?? null
 
     // Release mode: this change set has a built release for this target. Deploy
     // branch release-<target> and gate on the RELEASE commit, not DEV's head.
@@ -203,6 +227,7 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
     out.approvedBy  = approval.approver
     out.approvedAt  = approval.approved_at
     out.approvalSession = approval.session ?? null
+    out.approvalNote = approval.note ?? null
 
     // The approval's linked change set is the authoritative source. If the approval
     // has no linked change set (release mode), the caller must supply the source.
@@ -223,6 +248,21 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
         out.missingSource = true
         out.error = 'source is required when the approval has no linked change set'
         return out
+    }
+    out.source = source
+
+    // What this deployment is FOR, and a first approximation of what it ships —
+    // the change set's own log. The release's object list (below) is authoritative
+    // and replaces this when it can be read; this keeps a refused deploy's report
+    // from saying it shipped nothing.
+    if (linkedSession) {
+        out.changeSetName = linkedSession.name ?? null
+        out.changeSetId = linkedSession.id ?? null
+        try {
+            out.shippedObjects = (cl.getSessionLog(linkedSession.id) ?? [])
+                .filter(e => e.object_type)
+                .map(e => ({ type: e.object_type, name: e.object_name, parent: e.detail ?? null }))
+        } catch { /* report shows none */ }
     }
 
     // Deploy lock — one deploy at a time on this target, held in the target's own
@@ -287,6 +327,8 @@ async function execute(target, { branch = 'dev', token, gitUser = gitIdentity.us
                 const { changedObjects, objectKey, expectedPlanKeys } = require('./git-release')
                 const expected = await changedObjects({ from: base, to: releaseCommit, repoUrl, token, gitUser })
                 const expectedKeys = expectedPlanKeys(expected)
+                // The authoritative "what this release ships" — for the report.
+                out.shippedObjects = expected
 
                 // Views and subsets do not block drift (TM1's pull never touches
                 // them) — but the IDE applies them over REST afterwards, and that

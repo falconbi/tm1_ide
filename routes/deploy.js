@@ -414,6 +414,43 @@ app.get('/api/deploy/git/history', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Deploy reports ──────────────────────────────────────────────────────────
+// The record of one deployment, keyed by (target, commit) — the same pair the
+// change set, the approval and the deploy state already carry, so nothing needs
+// a new link stored anywhere. A deploy from before records existed still
+// answers: commit, time and summary from the deploy state, so the link never
+// dead-ends.
+app.get('/api/deploy/record', async (req, res) => {
+    try {
+        const { target, commit } = req.query
+        if (!target) return res.status(400).json({ error: 'target required' })
+        const { get } = require('../core/deploy-records')
+        const record = commit ? await get(target, commit, { ideToken: req.ideToken }) : null
+        if (record) return res.json({ target, record })
+        const state = require('../core/git-state').load()[target] ?? null
+        let approval = null
+        try {
+            const all = await require('../core/git-approvals').readFor(target, { ideToken: req.ideToken })
+            const want = String(commit ?? '')
+            approval = [...all].reverse().find(a => {
+                const have = String(a.commit ?? '')
+                if (!want || !have) return false
+                return have === want || (have.length >= 7 && want.startsWith(have)) || (want.length >= 7 && have.startsWith(want))
+            }) ?? null
+        } catch { /* no approvals readable */ }
+        res.json({ target, record: null, commit: commit ?? null, deployed: state, approval })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/deploy/records', async (req, res) => {
+    try {
+        const target = req.query.target
+        if (!target) return res.status(400).json({ error: 'target required' })
+        const { list } = require('../core/deploy-records')
+        res.json({ target, records: await list(target, { ideToken: req.ideToken }) })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/deploy/archives', (req, res) => {
     try {
         const dir = path.join(__dirname, '..', 'data', 'archives')

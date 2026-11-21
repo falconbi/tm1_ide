@@ -280,6 +280,7 @@ function ArchiveDetail({ id, approval, _deployStats, onOpenDiff }) {
 
 function GitHistoryPanel() {
   const server = useStore(s => s.server)
+  const openDeployReport = useStore(s => s.openDeployReport)
   const { data: serverData } = useServers()
   const servers = (serverData?.value ?? serverData ?? []).map(s => s?.name ?? s).filter(Boolean)
   const [target, setTarget] = useState(server ?? '')
@@ -338,6 +339,10 @@ function GitHistoryPanel() {
                 <CheckCircle2 size={11} className="text-emerald-400" />
                 <span className="font-mono">{state.deploy.lastDeployedCommit}</span>
                 <span className="text-muted-foreground">{fmt(state.deploy.at)}</span>
+                <button
+                  onClick={() => openDeployReport({ target, commit: state.deploy.lastDeployedCommit })}
+                  className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >Report</button>
               </div>
               {state.deploy.summary && <div className="text-muted-foreground mt-0.5">{state.deploy.summary}</div>}
             </div>
@@ -352,7 +357,11 @@ function GitHistoryPanel() {
                     {a.sessionKind === 'catch-up' && (
                       <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-500 shrink-0">Catch-up</span>
                     )}
-                    <span className="font-mono">{String(a.commit ?? '').slice(0, 10)}</span>
+                    <button
+                      onClick={() => openDeployReport({ target, commit: a.commit })}
+                      title="Deploy report"
+                      className="font-mono underline underline-offset-2 decoration-border hover:decoration-foreground"
+                    >{String(a.commit ?? '').slice(0, 10)}</button>
                     <span className="text-muted-foreground">{a.approver} · {fmt(a.approved_at)}</span>
                     {a.notes && <span className="text-muted-foreground/70 truncate">— {a.notes}</span>}
                     {a.addedByUser?.length > 0 && <span className="text-muted-foreground/70 truncate">· added {a.addedByUser.map(o => `${o.type} ${o.name}`).join(', ')}</span>}

@@ -512,4 +512,11 @@ export const useStore = create((set, get) => ({
   ship: null,
   openShip:  (session) => set({ ship: { session } }),
   closeShip: () => set({ ship: null }),
+
+  // The report of one deployment: what shipped, who approved it, what the checks
+  // said. Opened from anywhere that knows (target, commit) — the change set row,
+  // History, or the ship result. Read-only by design.
+  deployReport: null,
+  openDeployReport: (config = {}) => set({ deployReport: config }),
+  closeDeployReport: () => set({ deployReport: null }),
 }))

@@ -26,7 +26,7 @@ const POST = async (route, body) => {
 }
 
 export default function ShipDialog() {
-  const { ship, closeShip, openDeployWizard, server } = useStore()
+  const { ship, closeShip, openDeployReport, server } = useStore()
   const qc = useQueryClient()
   const { sessions } = useChangeSetSummary(server)
 
@@ -194,7 +194,7 @@ export default function ShipDialog() {
                 <button onClick={closeShip} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 transition-colors">Done</button>
                 <button onClick={() => { setPhase('idle'); setApproved(false); setResult(null) }} className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors">Try again</button>
                 <button
-                  onClick={() => { closeShip(); openDeployWizard({ session }) }}
+                  onClick={() => { closeShip(); openDeployReport({ target, commit: result?.targetCommit ?? result?.releaseCommit ?? session?.release_commit }) }}
                   className="ml-auto text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground flex items-center gap-1"
                 >
                   Details <ExternalLink size={9} />
@@ -217,7 +217,7 @@ export default function ShipDialog() {
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => { setPhase('idle'); setError(null) }} className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors">Try again</button>
-                <button onClick={() => { closeShip(); openDeployWizard({ session }) }} className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground flex items-center gap-1">
+                <button onClick={() => { closeShip(); openDeployReport({ target, commit: result?.targetCommit ?? session?.release_commit }) }} className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground flex items-center gap-1">
                   Details <ExternalLink size={9} />
                 </button>
               </div>

@@ -100,7 +100,7 @@ function LogEntry({ entry, server, openTab, onDiff }) {
 }
 
 function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = false, onDiff }) {
-  const { openShip } = useStore()
+  const { openShip, openDeployReport } = useStore()
   const [open, setOpen]           = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
   // A draft only exists while the user is editing; otherwise the text follows the
@@ -237,6 +237,14 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                     >
                       <Pencil size={11} className="text-muted-foreground" /> {descValue ? 'Edit note' : 'Add a note'}
                     </button>
+                    {session.deployed && (
+                      <button
+                        onClick={() => { setMenuOpen(false); openDeployReport({ target: session.deployed_target ?? null, commit: session.release_commit }) }}
+                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                      >
+                        <FileText size={11} className="text-muted-foreground" /> Deploy report
+                      </button>
+                    )}
                     {!isActive && session.kind !== 'catch-up' && !session.deployed && !session.covered_by && !session.wont_deploy_at && (
                       <button
                         onClick={() => { setMenuOpen(false); resume.mutate({ id: session.id, server }) }}
