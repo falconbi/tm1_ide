@@ -88,6 +88,19 @@ Follow `docs/models/BUILDING_MODELS.md` for the model itself. The data sequence 
 
 5. **Snapshots** (optional, only if you keep the assertions that need them): run
    `Generate Hiring Plan` with `pStage=feb`, then `WFP Snapshot`, then `pStage=now`.
+
+   **A snapshot is stored, never calculated.** Two things make that true and both must hold:
+
+   - the snapshot version lives **under `Non-Calculating`** in `WFP Version` — the Headcount/Cost
+     rules carry `[] = N: IF(ELPAR('WFP Version',1) @= 'Non-Calculating', STET, CONTINUE)`, so a
+     snapshot keeps what was copied into it;
+   - it is taken with **`WFP Snapshot`**, which copies every cube carrying the Version dimension
+     through `}IDE.Version.Copy` (`pType=static`). **Never `WFP Copy Version`** — it copies only
+     `WFP Workforce Input`, so Headcount and Cost come out blank.
+
+   Do **not** recalculate a snapshot afterwards: a recalc is for the calculating versions, and the
+   `STET` guard is what protects the snapshot from it. If a snapshot's values look wrong, retake
+   the snapshot — it is a copy of the source version at that moment, not something to repair.
 6. **Actuals** (optional): `WFP Load Actuals` if its file is still available. Without it, every
    `Actual` assertion must go or be rewritten.
 7. Recalculate. Use the direct REST call — the IDE route gives up at 120 s while TM1 keeps
