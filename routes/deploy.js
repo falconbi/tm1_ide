@@ -181,11 +181,28 @@ app.get('/api/deploy/settings', async (req, res) => {
 
 app.post('/api/deploy/settings', async (req, res) => {
     try {
-        const { server, backupProcess } = req.body
+        const { server, backupProcess, attributeValues } = req.body
         if (!server) return res.status(400).json({ error: 'server required' })
         if (!gateReadOnly(res, server)) return
-        const doc = await require('../core/deploy-settings').set(server, { backupProcess }, { ideToken: req.ideToken })
+        const doc = await require('../core/deploy-settings').set(server, { backupProcess, attributeValues }, { ideToken: req.ideToken })
         res.json({ server, ...doc })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Which attributes the target's own processes write — a SUGGESTION for an admin to
+// confirm into the setting. Read-only.
+app.get('/api/deploy/settings/suggest', async (req, res) => {
+    try {
+        const { server } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const client = makeClient(server, req.ideToken)
+        const names = await client.getProcesses()
+        const procs = []
+        for (const name of names ?? []) {
+            try { procs.push(await client.getProcess(name)) } catch { /* skip unreadable */ }
+        }
+        const { suggestAttributeWrites } = require('../core/refresh-dev')
+        res.json({ server, suggestion: suggestAttributeWrites(procs) })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

@@ -37,17 +37,38 @@ export default function DeployProtection() {
   const loaded = settings.data ? (settings.data.backupProcess ?? '') : null
   const process = draft ?? loaded ?? ''
 
+  // Which attributes PROD's own processes write — suggested, confirmed by a person.
+  const suggest = useQuery({
+    queryKey: ['deploy-settings-suggest', target],
+    enabled: !!target,
+    queryFn: async () => {
+      const r = await request(`/api/deploy/settings/suggest?server=${encodeURIComponent(target)}`, { headers: authHeader() })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      return d.suggestion ?? {}
+    },
+  })
+  const [attrDraft, setAttrDraft] = useState(null)
+  const savedConfirmed = settings.data?.attributeValues ?? {}
+  const confirmed = attrDraft ?? savedConfirmed
+  const dimsOffered = [...new Set([...Object.keys(suggest.data ?? {}), ...Object.keys(savedConfirmed)])].sort()
+  const toggleAttr = (dim, attr) => {
+    const cur = new Set(confirmed[dim] ?? [])
+    cur.has(attr) ? cur.delete(attr) : cur.add(attr)
+    setAttrDraft({ ...confirmed, [dim]: [...cur] })
+  }
+
   const save = async () => {
     setBusy('save'); setError(null)
     try {
       const r = await request('/api/deploy/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
-        body: JSON.stringify({ server: target, backupProcess: process.trim() || null }),
+        body: JSON.stringify({ server: target, backupProcess: process.trim() || null, attributeValues: confirmed }),
       })
       const d = await r.json()
       if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-      setDraft(null)
+      setDraft(null); setAttrDraft(null)
       qc.invalidateQueries({ queryKey: ['deploy-settings', target] })
       toast.success(d.backupProcess ? `Deploys to ${target} will run "${d.backupProcess}" first` : `Deploys to ${target} will ask for the last backup time`)
     } catch (e) { setError(e.message) }
@@ -106,6 +127,31 @@ export default function DeployProtection() {
           {settings.isLoading && <p className="text-[11px] text-muted-foreground">Reading the setting…</p>}
           {settings.error && <p className="text-[11px] text-red-600">{settings.error.message}</p>}
           {error && <p className="text-[11px] text-red-600">{error}</p>}
+          {dimsOffered.length > 0 && (
+            <div className="border border-border rounded-md p-3 space-y-2">
+              <p className="text-[11px] font-semibold">Attribute values PROD's load maintains</p>
+              <p className="text-[11px] text-muted-foreground">
+                Suggested from {target}'s processes (AttrPutS / AttrPutN / ElementAttrPut*). Only these
+                attributes have their <span className="text-foreground">values</span> copied by a refresh —
+                everything else is left alone, so a load's own data is never overwritten by DEV's.
+                Confirm what is true; a suggestion is not a decision.
+              </p>
+              {dimsOffered.map(dim => (
+                <div key={dim} className="space-y-0.5">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{dim}</p>
+                  {[...new Set([...(suggest.data?.[dim] ?? []), ...(savedConfirmed[dim] ?? [])])].map(attr => (
+                    <label key={attr} className="flex items-center gap-2 text-[11px] ml-2">
+                      <input type="checkbox" checked={(confirmed[dim] ?? []).includes(attr)} onChange={() => toggleAttr(dim, attr)} />
+                      <span>{attr}</span>
+                    </label>
+                  ))}
+                </div>
+              ))}
+              {suggest.isLoading && <p className="text-[11px] text-muted-foreground">Reading {target}'s processes…</p>}
+              {suggest.error && <p className="text-[11px] text-red-600">{suggest.error.message}</p>}
+            </div>
+          )}
+
           {!busy && loaded !== null && (
             <p className="text-[11px] text-muted-foreground">
               {loaded

@@ -135,7 +135,7 @@ export default function DeployFlow() {
     try {
       const accept = (refresh?.dimensions ?? [])
         .filter(d => ticked[d.dimension])
-        .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {} }))
+        .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {}, attributeTypes: decisions[d.dimension]?.attributes ?? {} }))
       const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept })
       setRefreshed(r)
       await loadRefresh()
@@ -219,10 +219,14 @@ export default function DeployFlow() {
     .flatMap(d => [
       ...(d.removeElements ?? []).filter(el => !['delete','keep'].includes(decisions[d.dimension]?.deletes?.[el])).map(el => ({ dim: d.dimension, kind: 'delete', element: el })),
       ...(d.moves ?? []).filter(m => !['take','keep'].includes(decisions[d.dimension]?.moves?.[m.child])).map(m => ({ dim: d.dimension, kind: 'move', element: m.child })),
+      ...(d.attributes?.typeChanges ?? []).filter(t => !['take','keep'].includes(decisions[d.dimension]?.attributes?.[t.name])).map(t => ({ dim: d.dimension, kind: 'attribute', element: t.name })),
     ])
   const setDecision = (dim, kind, element, choice) => setDecisions(prev => {
     const cur = prev[dim] ?? { deletes: {}, moves: {} }
-    return { ...prev, [dim]: kind === 'delete' ? { ...cur, deletes: { ...cur.deletes, [element]: choice } } : { ...cur, moves: { ...cur.moves, [element]: choice } } }
+    const next = kind === 'delete' ? { ...cur, deletes: { ...cur.deletes, [element]: choice } }
+      : kind === 'move' ? { ...cur, moves: { ...cur.moves, [element]: choice } }
+      : { ...cur, attributes: { ...(cur.attributes ?? {}), [element]: choice } }
+    return { ...prev, [dim]: next }
   })
 
   const outcome = res ? classifyDeployOutcome(res) : null
@@ -368,10 +372,10 @@ export default function DeployFlow() {
                               </div>
                             )}
 
-                            {(refresh.dimensions ?? []).some(d => (d.removeElements ?? []).length || (d.moves ?? []).length) && (
+                            {(refresh.dimensions ?? []).some(d => (d.removeElements ?? []).length || (d.moves ?? []).length || (d.attributes?.typeChanges ?? []).length) && (
                               <div className="px-3 py-2 border-t border-border/40 space-y-2">
                                 <p className="text-[11px] font-semibold text-foreground">PROD deleted or moved these — decide each one</p>
-                                {(refresh.dimensions ?? []).filter(d => (d.removeElements ?? []).length || (d.moves ?? []).length).map(d => (
+                                {(refresh.dimensions ?? []).filter(d => (d.removeElements ?? []).length || (d.moves ?? []).length || (d.attributes?.typeChanges ?? []).length).map(d => (
                                   <div key={d.dimension} className="space-y-1">
                                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{d.dimension}</p>
                                     {(d.removeElements ?? []).map(el => (
@@ -381,6 +385,14 @@ export default function DeployFlow() {
                                         <span className="text-muted-foreground/60">its DEV values are cleared</span>
                                         <button onClick={() => setDecision(d.dimension, 'delete', el, 'keep')} className={decisions[d.dimension]?.deletes?.[el] === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep — restore on PROD</button>
                                         <span className="text-muted-foreground/60">next deploy puts it back on PROD, no data</span>
+                                      </div>
+                                    ))}
+                                    {(d.attributes?.typeChanges ?? []).map(t => (
+                                      <div key={`attr-${t.name}`} className="flex items-center gap-2 text-[11px] flex-wrap">
+                                        <span className="text-foreground">Attribute {t.name}</span>
+                                        <span className="text-muted-foreground/60">{server} {t.from} · PROD {t.to} — taking PROD's clears its values</span>
+                                        <button onClick={() => setDecision(d.dimension, 'attribute', t.name, 'take')} className={decisions[d.dimension]?.attributes?.[t.name] === 'take' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take PROD's type</button>
+                                        <button onClick={() => setDecision(d.dimension, 'attribute', t.name, 'keep')} className={decisions[d.dimension]?.attributes?.[t.name] === 'keep' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep DEV's</button>
                                       </div>
                                     ))}
                                     {(d.moves ?? []).map(m => (
