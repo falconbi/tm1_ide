@@ -474,7 +474,9 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                     included.push({ ...h, file: h.file ?? h.files?.[0], action: h.action ?? 'A' })
                     excluded.splice(excluded.indexOf(h), 1)
                 }
-                addedByUser.push({ type: hits[0].type, name: hits[0].name, parent: hits[0].parent ?? null, file: files[0], files, by })
+                // `files` only when an object is more than one file, so a single-file
+                // object keeps the record it always had.
+                addedByUser.push({ type: hits[0].type, name: hits[0].name, parent: hits[0].parent ?? null, file: files[0], ...(files.length > 1 ? { files } : {}), by })
             }
         }
 
