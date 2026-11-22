@@ -367,7 +367,7 @@ async function targetOnlyObjects(target, work, commit, { ideToken } = {}) {
 
 // Build the release commit for one change set against the target's recorded base.
 // Returns { ok, ... } — never throws past here.
-async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, addObjects = [], excludeObjects = [], by = null, catchUp = false } = {}) {
+async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, addObjects = [], excludeObjects = [], by = null, catchUp = false, resetIncludes = false } = {}) {
     // Re-read the session so commit_ref / release fields are the live DB values.
     const session = changeSet?.id ? (cl.getSession(changeSet.id) ?? changeSet) : changeSet
     const base = lastDeployed(target)?.lastDeployedCommit
@@ -462,7 +462,18 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         // unowned excluded item may be pulled into this release.
         const addedByUser = []
         if (!catchUp) {
-            for (const a of addObjects) {
+            // What this change set already declared as included. A REBUILD must not
+            // silently drop it: the include was a decision, and the screen that makes
+            // it is one button away from "Build release". Only `resetIncludes` clears
+            // it explicitly.
+            let wanted = Array.isArray(addObjects) ? addObjects : []
+            if (!wanted.length && !resetIncludes) {
+                try {
+                    wanted = (JSON.parse(session?.release_added_by_user ?? '[]') ?? [])
+                        .map(a => ({ type: a.type, name: a.name, parent: a.parent ?? null }))
+                } catch { wanted = [] }
+            }
+            for (const a of wanted) {
                 const label = `${a.type} ${a.name}${a.parent ? ` (${a.parent})` : ''}`
                 const key = objectKey(a.type, a.name, a.parent)
                 // EVERY changed file of the object, not the first one: a dimension is

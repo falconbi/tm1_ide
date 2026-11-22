@@ -391,6 +391,7 @@ app.post('/api/deploy/git/release', async (req, res) => {
         const r = await buildRelease(changeSet, target, {
             token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
             addObjects, excludeObjects, by: req.user ?? null, catchUp,
+            resetIncludes: req.body.resetIncludes === true,
         })
         if (r.refused) return res.status(409).json({ error: r.error })
         // Nothing to deploy: the set is recorded as done (with the reason) and there

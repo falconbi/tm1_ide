@@ -172,3 +172,32 @@ test('a change set that owns nothing names what DEV changed anyway, instead of a
         fs.rmSync(repo.w, { recursive: true, force: true })
     }
 })
+
+test('a rebuild keeps what the change set already includes, unless told to reset', async () => {
+    // The include was a decision, and "Build release" is one button away from
+    // "Rebuild including these" — pressing it must not silently drop the object.
+    const repo = setupRepo({ name: 'D4' })
+    try {
+        fakeBase = repo.base
+        const s = cl.startSession('cut', 'DEV-D', 'admin')
+        cl.setSessionCommit(s.id, repo.devCommit)
+
+        const first = await buildRelease(s, 'TD', {
+            token: 'x', gitUser: 't', repoUrl: repo.bare,
+            addObjects: [{ type: 'dimension', name: 'D4' }],
+        })
+        assert.equal(first.ok, true, JSON.stringify(first))
+        cl.setSessionRelease(s.id, first.releaseCommit, 'TD', { addedByUser: first.addedByUser })
+
+        const rebuilt = await buildRelease(s, 'TD', { token: 'x', gitUser: 't', repoUrl: repo.bare })
+        assert.equal(rebuilt.ok, true, JSON.stringify(rebuilt))
+        assert.ok(rebuilt.included.some(i => i.type === 'dimension' && i.name === 'D4'), 'the include survived a rebuild')
+
+        const cleared = await buildRelease(s, 'TD', { token: 'x', gitUser: 't', repoUrl: repo.bare, resetIncludes: true })
+        assert.equal(cleared.noChange, true, 'resetIncludes drops it — nothing left to ship')
+        assert.ok((cleared.leftOnDev ?? []).some(x => x.type === 'dimension' && x.name === 'D4'))
+    } finally {
+        fs.rmSync(repo.bare, { recursive: true, force: true })
+        fs.rmSync(repo.w, { recursive: true, force: true })
+    }
+})
