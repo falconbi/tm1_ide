@@ -20,7 +20,7 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
     // the target never had (e.g. an object added and removed since the last
     // deploy). Flagging it made a clean deploy look unclean — controlOk false, so
     // the change set was never marked deployed and stayed "ready to ship".
-    const out = { deleted: [], flagged: [], alreadyGone: [] }
+    const out = { deleted: [], flagged: [], alreadyGone: [], failed: [] }
     if (!deletes?.length) return out
     try {
         const [tgtProcs, tgtDims, tgtCubes, tgtChores] = await Promise.all([
@@ -35,7 +35,11 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
             cube: new Set((tgtCubes ?? []).filter(Boolean)),
             chore: new Set((tgtChores ?? []).filter(Boolean)),
         }
-        const order = { view: 0, subset: 1, process: 2, chore: 3, cube: 4, dimension: 5 }
+        // Dependency order, dependencies first: a chore holds processes, a process
+        // and a cube hold dimensions, a view holds a cube, a subset its dimension.
+        // Deleting a process while a chore still uses it is refused by TM1 — that
+        // refusal used to leave the process behind, and the deploy said "skipped".
+        const order = { view: 0, subset: 1, chore: 2, process: 3, cube: 4, dimension: 5 }
         for (const d of [...deletes].sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9))) {
             try {
                 // Already absent on the target: nothing to do, and nothing wrong.
@@ -65,7 +69,11 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
                 }
                 out.deleted.push({ type: d.type, name: d.name })
             } catch (e) {
-                out.flagged.push({ type: d.type, name: d.name, error: e.message })
+                // A delete that failed is a FAILURE (it leaves the target wrong),
+                // reported as such — never merely "skipped".
+                const failure = { type: d.type, name: d.name, error: e.message }
+                out.flagged.push(failure)
+                out.failed = [...(out.failed ?? []), failure]
             }
         }
     } catch (e) { out.error = e.message }

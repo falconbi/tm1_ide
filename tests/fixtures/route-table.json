@@ -166,6 +166,7 @@
   "GET /api/deploy/settings",
   "POST /api/deploy/settings",
   "GET /api/deploy/settings/suggest",
+  "POST /api/deploy/git/reconcile-deletes",
   "POST /api/deploy/git/loss",
   "GET /api/deploy/git/return/preview",
   "POST /api/deploy/git/return",

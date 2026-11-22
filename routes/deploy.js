@@ -207,6 +207,39 @@ app.get('/api/deploy/settings/suggest', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Re-apply a release's recorded DELETES to a target. Admin only, because it edits
+// the target outside a deploy: the case is a deploy whose reconcile left an object
+// behind (e.g. a process a chore still held). It uses the change set's own
+// manifest, so it can never delete anything that release did not delete.
+app.post('/api/deploy/git/reconcile-deletes', async (req, res) => {
+    try {
+        const { target, session } = req.body
+        if (!target || !session) return res.status(400).json({ error: 'target and session required' })
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { getSession, getSessionManifest } = require('../core/change-log')
+        const sess = getSession(session)
+        if (!sess) return res.status(404).json({ error: `No change set ${session}` })
+        const manifest = getSessionManifest(session) ?? { deletes: [] }
+        const lock = require('../core/git-lock')
+        await lock.acquire(target, { by: req.user, ideToken: req.ideToken })
+        try {
+            const { reconcileDeletes } = require('../core/git-reconcile')
+            const r = await reconcileDeletes(sess.server, target, { ideToken: req.ideToken, deletes: manifest.deletes ?? [] })
+            cl.writeLog({
+                server: target, action: 'DELETES_REAPPLIED', objectType: 'deploy', objectName: sess.name ?? session,
+                detail: `re-applied ${manifest.deletes?.length ?? 0} recorded delete(s): ${r.deleted.length} deleted, ${r.alreadyGone.length} already gone, ${r.failed?.length ?? 0} failed`,
+                user: req.user,
+            })
+            res.json({ target, session, deletes: manifest.deletes ?? [], ...r })
+        } finally {
+            await lock.release(target, { ideToken: req.ideToken }).catch(() => {})
+        }
+    } catch (e) {
+        const status = e.refused ? 409 : 500
+        res.status(status).json({ error: e.message })
+    }
+})
+
 // What a built release would remove from the target. Read-only, so the one-button
 // Ship can stop and show the same list Review shows before anything is approved.
 app.post('/api/deploy/git/loss', async (req, res) => {

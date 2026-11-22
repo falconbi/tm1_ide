@@ -662,6 +662,8 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         if (out.reconcile?.error) controlReasons.push(`reconcile: ${out.reconcile.error}`)
         if (out.reconcile?.deletes?.error) controlReasons.push(`reconcile deletes: ${out.reconcile.deletes.error}`)
         for (const x of out.reconcile?.deletes?.flagged ?? []) controlReasons.push(`delete skipped: ${x.type} ${x.name} — ${x.error}`)
+        // A failed delete leaves the target wrong: say so as a failure, not a skip.
+        for (const x of out.reconcile?.deletes?.failed ?? []) controlReasons.push(`delete FAILED: ${x.type} ${x.name} — ${x.error}`)
         if (out.reconcile?.attributeValues?.error) controlReasons.push(`reconcile attribute values: ${out.reconcile.attributeValues.error}`)
         for (const x of out.reconcile?.attributeValues?.errors ?? []) controlReasons.push(`attribute sync ${x.dim}: ${x.error}`)
         for (const x of out.reconcile?.attributeValues?.flagged ?? []) controlReasons.push(`attribute sync ${x.dim}: ${x.error}`)
