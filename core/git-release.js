@@ -590,6 +590,24 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             }
         }
 
+        // What DEV has that this release does NOT carry, one row per object. A
+        // dimension is the dangerous one: the release ships what the change set owns,
+        // so a dimension whose 500 cut was made outside any change set is left on DEV
+        // — and Review then reports a loss of 0, which reads exactly like "no change".
+        // Named in EVERY result (including "nothing to deploy"), so the person
+        // building the release can include it instead of shipping less than they meant.
+        const leftOnDev = []
+        for (const x of excluded) {
+            if (x.owner || !x.type || !x.name) continue
+            const key = objectKey(x.type, x.name, x.parent)
+            const row = leftOnDev.find(r => r.key === key)
+            if (row) { row.files.push(x.file ?? null); continue }
+            leftOnDev.push({ key, type: x.type, name: x.name, parent: x.parent ?? null, files: [x.file ?? null] })
+        }
+        const warnings = leftOnDev
+            .filter(x => x.type === 'dimension')
+            .map(x => `DEV differs from ${target} on ${x.name}, and this release does not carry it — its elements stay as they are on ${target}. A loss of 0 does not mean "no change".`)
+
         // Nothing to ship? An ordinary release whose objects already match the
         // target has nothing to deploy: record it as done, with the reason, so the
         // ordering check lets later sets through. (A catch-up is different — it is
@@ -600,7 +618,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             }
             const reason = `nothing to deploy: this change set's objects already match ${target}`
             try { cl.markSessionNoChange(session.id, { reason, by }) } catch { /* older DB */ }
-            return { ok: true, noChange: true, reason, target, changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null } }
+            return { ok: true, noChange: true, reason, target, leftOnDev, warnings, changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null } }
         }
 
         // Apply: base + only this change set's files.
@@ -785,6 +803,8 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             ok: true, target, base, devCommit, releaseCommit,
             changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null, server: changeSet?.server ?? null },
             included: included.map(i => ({ type: i.type, name: i.name, parent: i.parent, file: i.file, action: i.action })),
+            leftOnDev,
+            warnings,
             excluded: excluded.map(x => ({ type: x.type, name: x.name, parent: x.parent, file: x.file, owner: x.owner ?? null })),
             addedByUser,
             addedAsDependency,

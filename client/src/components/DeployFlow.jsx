@@ -77,6 +77,8 @@ export default function DeployFlow() {
   const [tests, setTests] = useState(null)
   const [closed, setClosed] = useState(false)
   const [release, setRelease] = useState(null)
+  // 'left on DEV' rows the person chose to include in the release (key → true)
+  const [includeLeft, setIncludeLeft] = useState({})
   const [prep, setPrep] = useState(null)
   const [loss, setLoss] = useState(null)        // computed loss for the release
   const [lossOk, setLossOk] = useState(false)
@@ -184,14 +186,20 @@ export default function DeployFlow() {
     finally { setBusy(''); setProg('') }
   }
 
-  const doBuild = async () => {
-    setBusy('release'); setError(null); setProg('Building a release of just this change…')
+  // Build the release, optionally including objects that are already changed on DEV
+  // but that no change set owns (a dimension cut made outside a change set, say).
+  // Without this the release ships only what the change set owns and Review reports
+  // a loss of 0 — which reads like "nothing to change".
+  const buildWith = async (addObjects = []) => {
+    setBusy('release'); setError(null)
+    setProg(addObjects.length ? 'Rebuilding with the objects you included…' : 'Building a release of just this change…')
     try {
-      const rel = await POST('/api/deploy/git/release', { source: server, target, session: session.id })
+      const rel = await POST('/api/deploy/git/release', { source: server, target, session: session.id, addObjects })
       // Already matches the target: recorded as done, nothing to approve.
       if (rel?.noChange) { setRelease({ noChange: true, reason: rel.reason }); setStep(4); return }
       if (!rel?.releaseCommit) throw new Error('The release could not be built.')
       setRelease(rel)
+      setIncludeLeft({})
       setProg('Reading the target…')
       // The loss gate reads via POST; a failure here is shown at Review, never fatal.
       const p = await POST('/api/deploy/git/loss', { target, commit: rel.releaseCommit }).catch(() => null)
@@ -201,6 +209,11 @@ export default function DeployFlow() {
     } catch (e) { setError(e.message) }
     finally { setBusy(''); setProg('') }
   }
+  const doBuild = () => buildWith([])
+  const leftRows = release?.leftOnDev ?? []
+  const rebuildWithIncludes = () => buildWith(leftRows
+    .filter(r => includeLeft[r.key])
+    .map(r => ({ type: r.type, name: r.name, parent: r.parent })))
 
   const doDeploy = async () => {
     setBusy('deploy'); setError(null); setRes(null); setDrift(null)
@@ -555,7 +568,10 @@ export default function DeployFlow() {
               {step === 4 && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">A release is the target's last deployed state plus only this change set's objects. Everything else stays on {server}.</p>
-                  {release?.noChange && (
+                  {release?.noChange && leftRows.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground">Nothing this change set owns has to deploy — but {leftRows.length} object{leftRows.length === 1 ? '' : 's'} differ on {server}. Include them below if they should ship.</p>
+                  )}
+                  {release?.noChange && leftRows.length === 0 && (
                     <div className="border border-border rounded-md p-3 space-y-1">
                       <p className="text-xs font-semibold">Nothing to deploy</p>
                       <p className="text-[11px] text-muted-foreground">{release.reason}</p>
@@ -571,10 +587,30 @@ export default function DeployFlow() {
                       {(release.included ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing to ship.</p>}
                     </div>
                   )}
+                  {release && leftRows.length > 0 && (
+                    <div className="border border-amber-600/40 bg-amber-600/5 rounded-md p-3 space-y-2">
+                      <p className="text-[11px] font-semibold text-amber-700">Changed on {server}, NOT in this release</p>
+                      <p className="text-[10px] text-muted-foreground">A release ships only this change set's objects. These differ on {server} and will stay as they are on {target} — so a loss of 0 does not mean "no change".</p>
+                      {leftRows.map(r => (
+                        <label key={r.key} className="flex items-center gap-2 text-[11px]">
+                          <input type="checkbox" checked={!!includeLeft[r.key]} onChange={e => setIncludeLeft(p => ({ ...p, [r.key]: e.target.checked }))} />
+                          <span className="text-muted-foreground/60">{r.type}</span>
+                          <span className="font-mono">{r.name}</span>
+                          {r.files.length > 1 && <span className="text-muted-foreground/60">{r.files.length} files</span>}
+                        </label>
+                      ))}
+                      <button onClick={rebuildWithIncludes} disabled={!!busy || !leftRows.some(r => includeLeft[r.key])} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                        {busy === 'release' ? 'Rebuilding…' : 'Rebuild including these'}
+                      </button>
+                    </div>
+                  )}
+                  {(release?.warnings ?? []).map((w, i) => (
+                    <p key={i} className="text-[11px] text-amber-700">{w}</p>
+                  ))}
                   {error && <p className="text-[11px] text-red-600">{error}</p>}
                   {busy && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> {prog}</p>}
                   <div className="flex items-center gap-2 pt-1">
-                    <button onClick={doBuild} disabled={!!busy || !!release} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Build release</button>
+                    <button onClick={doBuild} disabled={!!busy} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">{release ? 'Rebuild release' : 'Build release'}</button>
                     {release && !release.noChange && <button onClick={() => setStep(5)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue to Review</button>}
                     <button onClick={() => setStep(3)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>

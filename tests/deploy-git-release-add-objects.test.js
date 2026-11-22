@@ -143,3 +143,32 @@ test('a change set that already deployed the object does not block including it'
         fs.rmSync(repo.w, { recursive: true, force: true })
     }
 })
+
+test('a change set that owns nothing names what DEV changed anyway, instead of a silent 0', async () => {
+    // James's flow: the 500 cut of two dimensions was made outside any change set, so
+    // a new set owned nothing, the release shipped only its one chore, and Review
+    // reported a loss of 0 — which reads exactly like "nothing to change".
+    const repo = setupRepo({ name: 'D3' })
+    try {
+        fakeBase = repo.base
+        const s = cl.startSession('nothing of its own', 'DEV-N', 'admin')
+        cl.setSessionCommit(s.id, repo.devCommit)
+
+        const r = await buildRelease(s, 'TN', { token: 'x', gitUser: 't', repoUrl: repo.bare })
+        assert.equal(r.noChange, true)
+        assert.ok(r.leftOnDev.some(x => x.type === 'dimension' && x.name === 'D3'), JSON.stringify(r.leftOnDev))
+        assert.match(r.warnings.join(' '), /DEV differs from TN on D3/)
+
+        // And including it turns the same set into a real release.
+        const withDim = await buildRelease(s, 'TN', {
+            token: 'x', gitUser: 't', repoUrl: repo.bare,
+            addObjects: [{ type: 'dimension', name: 'D3' }],
+        })
+        assert.equal(withDim.ok, true, JSON.stringify(withDim))
+        assert.ok(withDim.included.some(i => i.type === 'dimension' && i.name === 'D3'))
+        assert.ok(!withDim.leftOnDev.some(x => x.type === 'dimension' && x.name === 'D3'))
+    } finally {
+        fs.rmSync(repo.bare, { recursive: true, force: true })
+        fs.rmSync(repo.w, { recursive: true, force: true })
+    }
+})
