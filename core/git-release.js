@@ -142,6 +142,27 @@ function hierarchyDiffBeyondSubsets(baseJson, devJson) {
     }
 }
 
+// A cube file carried only because of a view may differ from the base's copy in its
+// list of views (`Views@Code.links`) — nothing else. Anything else in it (its
+// dimensions, its rules link) came from DEV, possibly from a newer change set that
+// has not been reviewed or deployed, and would ride along with the view.
+function cubeDiffBeyondViews(baseJson, devJson) {
+    const strip = (j) => {
+        if (!j || typeof j !== 'object') return j
+        const c = { ...j }
+        delete c['Views@Code.links']
+        return c
+    }
+    if (!baseJson || !devJson) return { differs: true, fields: ['cube file unreadable'] }
+    const a = strip(baseJson)
+    const b = strip(devJson)
+    const fields = []
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+        if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) fields.push(k)
+    }
+    return { differs: fields.length > 0, fields }
+}
+
 // A view or subset that changed on the target AND is shipped by this release:
 // TM1's pull does not touch those, but the IDE applies them over REST afterwards,
 // and that REPLACES — so the target's version would be lost. Pure, so both the
@@ -510,6 +531,43 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                     })
                 }
             }
+
+            // A view changes its CUBE's file too: the cube lists its views
+            // (`Views@Code.links`). Without the cube file the release adds the view on
+            // the target and leaves the cube file stale — which drift reports as a
+            // modification and which pauses every later deploy. Same guard as a
+            // hierarchy: the cube may differ from the base only in its view list.
+            const cubes = new Set(included.filter(i => i.type === 'view' && i.parent).map(i => i.parent))
+            for (const cube of cubes) {
+                for (const c of changed) {
+                    const obj = objectFromFile(c.file)
+                    if (!obj || obj.type !== 'cube' || obj.name !== cube) continue
+                    if (included.some(x => x.file === c.file)) continue
+
+                    if (c.action !== 'D') {
+                        let baseJson = null
+                        let devJson = null
+                        try {
+                            baseJson = JSON.parse(git(work, 'show', `${base}:${c.file}`))
+                            devJson = JSON.parse(git(work, 'show', `${devCommit}:${c.file}`))
+                        } catch { baseJson = null; devJson = null }
+                        if (baseJson && devJson) {
+                            const d = cubeDiffBeyondViews(baseJson, devJson)
+                            if (d.differs) {
+                                return {
+                                    ok: false, refused: true,
+                                    error: `Refused: ${cube} has other changes on DEV that aren't in this change set (${d.fields.join(', ')} changed). Deploy those first, or include the cube in this change set.`,
+                                }
+                            }
+                        }
+                    }
+                    included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
+                    addedAsDependency.push({
+                        type: 'cube', name: cube, parent: null, file: c.file,
+                        neededBy: `view in ${cube} (the cube lists its views)`,
+                    })
+                }
+            }
         }
 
         // Nothing to ship? An ordinary release whose objects already match the
@@ -722,7 +780,23 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, sharedObjectOrdering, hierarchyDiffBeyondSubsets, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
+module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, cubeDiffBeyondViews, releasableCovers, sharedObjectOrdering, hierarchyDiffBeyondSubsets, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
+
+// TM1 Git exports an MDX view as TWO files: the .json (which links to its text) and
+// the .mdx (the text). Only the .json is a view definition. Handing the .mdx to the
+// applier or the verifier meant JSON.parse on MDX text — which failed, so every MDX
+// view shipped with an error and was reported incomplete after a clean apply.
+function releasableCovers(changed) {
+    const out = []
+    for (const ch of changed ?? []) {
+        if (ch.action === 'D') continue
+        const obj = objectFromFile(ch.file)
+        if (!obj || (obj.type !== 'subset' && obj.type !== 'view')) continue
+        if (!/\.json$/i.test(ch.file)) continue
+        out.push({ ch, obj })
+    }
+    return out
+}
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
 // never applies them. After the pull, apply every included subset and view to the
@@ -740,10 +814,7 @@ async function applyReleaseComplement(target, { base, releaseCommit, repoUrl, to
         git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
         const changed = changedFilesBetween(work, base, releaseCommit)
         const tm1 = new TM1Client(target, makeClient(target, ideToken))
-        for (const ch of changed) {
-            if (ch.action === 'D') continue
-            const obj = objectFromFile(ch.file)
-            if (!obj || (obj.type !== 'subset' && obj.type !== 'view')) continue
+        for (const { ch, obj } of releasableCovers(changed)) {
             const content = git(work, 'show', `${releaseCommit}:${ch.file}`)
             try {
                 if (obj.type === 'subset') applied.push(await applySubset(tm1, { dim: obj.parent, hierarchy: obj.hierarchy ?? obj.parent, name: obj.name }, content))
@@ -777,8 +848,12 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
         git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
         const changed = changedFilesBetween(work, base, releaseCommit)
         const c = makeClient(target, ideToken)
+        // An MDX view's .mdx sibling is its text, not a second object — it is read by
+        // the .json entry below (and JSON.parsing it used to fail the check).
+        const mdxSibling = new Set(releasableCovers(changed).map(x => x.ch.file.replace(/\.json$/i, '.mdx')))
         for (const ch of changed) {
             if (ch.action === 'D') continue      // a deletion removes — nothing to verify
+            if (mdxSibling.has(ch.file)) continue
             const obj = objectFromFile(ch.file)
             if (!obj) continue
             let ok = false
