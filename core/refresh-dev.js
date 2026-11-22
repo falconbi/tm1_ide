@@ -118,6 +118,33 @@ async function planRefresh(source, target, { ideToken } = {}) {
 // A dimension is applied whole on purpose: adding an edge without its move, or an
 // element without the edge that places it, leaves DEV in a state neither server
 // has. Partial application is not offered.
+// ── Attributes ──────────────────────────────────────────────────────────────
+// Two different things, refreshed differently:
+//   definitions  — the attribute itself (name + type). PROD having one DEV lacks is
+//                  a real gap: a rule or a view reads it. Copied.
+//   values       — the data in it. Only for attributes whose owner has confirmed
+//                  PROD's load maintains them (A3), never wholesale: on a loaded
+//                  dimension, copying every value would overwrite what PROD wrote.
+//
+// Pure: definitions in, difference out. The value side needs a per-element read and
+// is decided by the confirmed list, so it is not part of this.
+function diffAttributeDefinitions(prodDefs = [], devDefs = []) {
+    const norm = (t) => {
+        const x = String(t ?? '').toUpperCase()
+        if (x === 'C' || x === 'CONSOLIDATED') return 'C'
+        if (x === 'N' || x === 'NUMERIC') return 'N'
+        return 'S'   // String is TM1's default for attributes
+    }
+    const prod = new Map((prodDefs ?? []).filter(a => a?.Name).map(a => [a.Name, norm(a.Type)]))
+    const dev = new Map((devDefs ?? []).filter(a => a?.Name).map(a => [a.Name, norm(a.Type)]))
+    const add = [...prod.entries()].filter(([n]) => !dev.has(n)).map(([name, type]) => ({ name, type }))
+    const onlyDev = [...dev.keys()].filter(n => !prod.has(n))
+    const typeChanges = [...prod.entries()]
+        .filter(([n, t]) => dev.has(n) && dev.get(n) !== t)
+        .map(([name, to]) => ({ name, from: dev.get(name), to }))
+    return { add, onlyDev, typeChanges, differs: add.length > 0 || typeChanges.length > 0 }
+}
+
 // Which type changes actually need a PATCH, and which are already settled by the
 // edges. Ordering matters in TM1: a leaf only becomes a consolidation once it has
 // a component, so patching Type=Consolidated before the edge fails with "element
@@ -284,4 +311,4 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
     return { ok: true, source, target, applied, skipped }
 }
 
-module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, planRefresh, applyRefresh }
+module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, diffAttributeDefinitions, planRefresh, applyRefresh }
