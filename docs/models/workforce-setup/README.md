@@ -33,6 +33,9 @@ Based on what each process reads (check its Prolog header before running):
 6. **Seed Workforce Input** — it reads Assignments and Position Map.
 7. **Recalculate:** WFP Assignment Base (or let the WFP Recalculate Cost chore pick it up), then WFP Create Default Subsets.
 
+> Rebuilding the model at a smaller size (for example 500 positions) has its own runbook:
+> `docs/models/WFP_REBUILD_AT_500.md` — including what happens to tests and Lenses.
+
 ## Re-seeding in one command
 
 `tools/reseed-workforce.cjs` puts all nine back, runs them in the order above (with
