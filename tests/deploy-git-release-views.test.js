@@ -120,14 +120,15 @@ test('cubeDiffBeyondViews ignores only the view list', () => {
     assert.deepEqual(cubeDiffBeyondViews(a, { ...b, Dimensions: [2] }).fields, ['Dimensions'])
 })
 
-test('releasableCovers takes the .json of a view, never its .mdx text or a deletion', () => {
+test('a view is applied once, from its .json, whether the .json or the .mdx changed', () => {
     const covers = releasableCovers([
         { action: 'A', file: 'cubes/C.views/V2.json' },
         { action: 'A', file: 'cubes/C.views/V2.mdx' },
+        { action: 'M', file: 'cubes/C.views/V3.mdx' },   // MDX-only change
         { action: 'D', file: 'cubes/C.views/Gone.json' },
         { action: 'A', file: 'dimensions/D.hierarchies/D.subsets/S.json' },
     ])
-    assert.deepEqual(covers.map(x => x.ch.file), ['cubes/C.views/V2.json', 'dimensions/D.hierarchies/D.subsets/S.json'])
+    assert.deepEqual(covers.map(x => x.ch.file), ['cubes/C.views/V2.json', 'cubes/C.views/V3.json', 'dimensions/D.hierarchies/D.subsets/S.json'])
     assert.equal(covers[0].obj.type, 'view')
-    assert.equal(covers[1].obj.type, 'subset')
+    assert.equal(covers[2].obj.type, 'subset')
 })

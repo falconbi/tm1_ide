@@ -788,19 +788,26 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
 module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, cubeDiffBeyondViews, releasableCovers, sharedObjectOrdering, hierarchyDiffBeyondSubsets, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git exports an MDX view as TWO files: the .json (which links to its text) and
-// the .mdx (the text). Only the .json is a view definition. Handing the .mdx to the
-// applier or the verifier meant JSON.parse on MDX text — which failed, so every MDX
-// view shipped with an error and was reported incomplete after a clean apply.
+// the .mdx (the text). Changing the view's MDX changes only the .mdx — its .json is
+// identical. So either file means "this view changed", and applying it needs both:
+// the definition from the .json and the text from the .mdx. One entry per view.
+//
+// (Handing the .mdx straight to the applier — the first attempt — meant JSON.parse on
+// MDX text: an error on every MDX view. Skipping the .mdx — the second — meant an
+// MDX-only change was never applied at all.)
 function releasableCovers(changed) {
-    const out = []
+    const out = new Map()
     for (const ch of changed ?? []) {
         if (ch.action === 'D') continue
         const obj = objectFromFile(ch.file)
         if (!obj || (obj.type !== 'subset' && obj.type !== 'view')) continue
-        if (!/\.json$/i.test(ch.file)) continue
-        out.push({ ch, obj })
+        if (obj.type === 'subset' && !/\.json$/i.test(ch.file)) continue
+        const key = `${obj.type}|${obj.name}|${obj.parent ?? ''}`
+        if (out.has(key)) continue
+        const file = obj.type === 'view' ? ch.file.replace(/\.mdx$/i, '.json') : ch.file
+        out.set(key, { ch: { ...ch, file }, obj })
     }
-    return out
+    return [...out.values()]
 }
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
