@@ -81,3 +81,53 @@ test('an object already gone is a success, not a failure', async () => {
     assert.deepEqual(r.alreadyGone, [{ type: 'process', name: 'Gone' }])
     assert.equal(r.failed.length, 0)
 })
+
+test('a view the pull already removed is alreadyGone, not a failed delete', async () => {
+    // Found live: the pull deletes view/subset files itself, then reconcile tried
+    // again and TM1 answered "can not be found in collection of type 'View'" —
+    // reported as a failure, so a clean deploy showed controlOk false.
+    const calls = []
+    const client = {
+        getProcesses: async () => [], getChores: async () => [], getDimensions: async () => [], getCubes: async () => ['C'],
+        getViews: async () => [{ name: 'Still Here' }],
+        deleteView: async (c, n) => { calls.push(`view ${c}/${n}`) },
+    }
+    stub('core/adapter-registry', { makeClient: () => client })
+    delete require.cache[resolve('core/git-reconcile')]
+    const { reconcileDeletes } = require('../core/git-reconcile')
+    const r = await reconcileDeletes('DEV', 'PROD', { deletes: [{ type: 'view', name: 'Gone', parent: 'C' }] })
+    assert.deepEqual(calls, [])
+    assert.deepEqual(r.alreadyGone, [{ type: 'view', name: 'Gone' }])
+    assert.equal(r.failed.length, 0)
+    assert.equal(r.flagged.length, 0)
+})
+
+test('a subset the pull already removed is alreadyGone too', async () => {
+    const calls = []
+    const client = {
+        getProcesses: async () => [], getChores: async () => [], getDimensions: async () => ['D'], getCubes: async () => [],
+        getSubsets: async () => [],
+        deleteSubset: async (d, n) => { calls.push(`subset ${d}/${n}`) },
+    }
+    stub('core/adapter-registry', { makeClient: () => client })
+    delete require.cache[resolve('core/git-reconcile')]
+    const { reconcileDeletes } = require('../core/git-reconcile')
+    const r = await reconcileDeletes('DEV', 'PROD', { deletes: [{ type: 'subset', name: 'Gone', parent: 'D' }] })
+    assert.deepEqual(calls, [])
+    assert.deepEqual(r.alreadyGone, [{ type: 'subset', name: 'Gone' }])
+})
+
+test('a view that is still there IS deleted', async () => {
+    const calls = []
+    const client = {
+        getProcesses: async () => [], getChores: async () => [], getDimensions: async () => [], getCubes: async () => ['C'],
+        getViews: async () => [{ name: 'V' }],
+        deleteView: async (c, n) => { calls.push(`view ${c}/${n}`) },
+    }
+    stub('core/adapter-registry', { makeClient: () => client })
+    delete require.cache[resolve('core/git-reconcile')]
+    const { reconcileDeletes } = require('../core/git-reconcile')
+    const r = await reconcileDeletes('DEV', 'PROD', { deletes: [{ type: 'view', name: 'V', parent: 'C' }] })
+    assert.deepEqual(calls, ['view C/V'])
+    assert.deepEqual(r.deleted, [{ type: 'view', name: 'V' }])
+})

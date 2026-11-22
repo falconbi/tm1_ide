@@ -35,6 +35,27 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
             cube: new Set((tgtCubes ?? []).filter(Boolean)),
             chore: new Set((tgtChores ?? []).filter(Boolean)),
         }
+        // Views and subsets need their parent to list, so they are checked on demand.
+        // A listing that FAILS is not evidence of absence — only a successful listing
+        // without the name is.
+        const viewCache = new Map()
+        const subsetCache = new Map()
+        const gone = async (type, name, parent, hierarchy) => {
+            if (type === 'view') {
+                if (typeof tc.getViews !== 'function') return false     // cannot tell: try the delete
+                if (!viewCache.has(parent)) viewCache.set(parent, await tc.getViews(parent).then(v => new Set((v ?? []).map(x => x?.name ?? x))).catch(() => null))
+                const set = viewCache.get(parent)
+                return set ? !set.has(name) : false
+            }
+            if (type === 'subset') {
+                if (typeof tc.getSubsets !== 'function') return false   // cannot tell: try the delete
+                const key = `${parent}|${hierarchy ?? parent}`
+                if (!subsetCache.has(key)) subsetCache.set(key, await tc.getSubsets(parent, hierarchy ?? parent).then(v => new Set((v ?? []).map(x => x?.Name ?? x))).catch(() => null))
+                const set = subsetCache.get(key)
+                return set ? !set.has(name) : false
+            }
+            return false
+        }
         // Dependency order, dependencies first: a chore holds processes, a process
         // and a cube hold dimensions, a view holds a cube, a subset its dimension.
         // Deleting a process while a chore still uses it is refused by TM1 — that
@@ -52,10 +73,14 @@ async function reconcileDeletes(source, target, { ideToken, deletes = [] } = {})
                 } else if (d.type === 'subset') {
                     const dim = d.parent ?? d.detail
                     if (!dim) throw new Error('subset delete needs its dimension')
+                    // The pull may have removed it already — that is success, not
+                    // "can not be found" reported as a failed delete.
+                    if (await gone('subset', d.name, dim, d.hierarchy)) { out.alreadyGone.push({ type: d.type, name: d.name }); continue }
                     await tc.deleteSubset(dim, d.name, d.hierarchy ?? dim)
                 } else if (d.type === 'view') {
                     const cube = d.parent ?? d.detail
                     if (!cube) throw new Error('view delete needs its cube')
+                    if (await gone('view', d.name, cube)) { out.alreadyGone.push({ type: d.type, name: d.name }); continue }
                     await tc.deleteView(cube, d.name)
                 } else if (d.type === 'chore') {
                     await tc.deleteChore(d.name)
