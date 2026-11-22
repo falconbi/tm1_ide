@@ -33,6 +33,8 @@ const GET = async (url) => {
 
 const fmt = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return iso } }
 const PRE_STEPS = ['Check PROD', 'Refresh from PROD', 'Tests & close', 'Build release', 'Review']
+// One key per view/subset, matching the server's: type, name, and its parent.
+const coverKey = (c) => `${c.type}:${c.name}:${c.dimension ?? c.cube}`
 
 function StepHeader({ step, phase }) {
   const label = phase === 'deploy' ? 'Deploy' : `Pre-deploy ${step} of ${PRE_STEPS.length}`
@@ -68,6 +70,9 @@ export default function DeployFlow() {
   // No default: an undecided delete or move blocks the refresh.
   const [decisions, setDecisions] = useState({})
   const [choreTicked, setChoreTicked] = useState({})   // chore → copy the target's schedule
+  // 'subset:name:dim' / 'view:name:cube' → 'take' | 'keep'. A view or subset on both
+  // sides with different content has NO default — a choice is required.
+  const [coverChoice, setCoverChoice] = useState({})
   const [refreshed, setRefreshed] = useState(null)  // result of the apply
   const [tests, setTests] = useState(null)
   const [closed, setClosed] = useState(false)
@@ -138,7 +143,13 @@ export default function DeployFlow() {
         .filter(d => ticked[d.dimension])
         .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {}, attributeTypes: decisions[d.dimension]?.attributes ?? {} }))
       const chores = (refresh?.chores ?? []).filter(c => choreTicked[c.name]).map(c => ({ name: c.name, takeSchedule: true }))
-      const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept, chores })
+      const covers = [...(refresh?.subsets ?? []), ...(refresh?.views ?? [])]
+        .map(c => ({
+          type: c.type, name: c.name, dimension: c.dimension, cube: c.cube, hierarchy: c.hierarchy,
+          // An object only PROD has arrives by default; a conflict must be chosen.
+          choice: coverChoice[coverKey(c)] ?? c.choice ?? null,
+        }))
+      const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept, chores, covers })
       setRefreshed(r)
       await loadRefresh()
     } catch (e) { setError(e.message) }
@@ -225,6 +236,11 @@ export default function DeployFlow() {
       ...(d.moves ?? []).filter(m => !['take','keep'].includes(decisions[d.dimension]?.moves?.[m.child])).map(m => ({ dim: d.dimension, kind: 'move', element: m.child })),
       ...(d.attributes?.typeChanges ?? []).filter(t => !['take','keep'].includes(decisions[d.dimension]?.attributes?.[t.name])).map(t => ({ dim: d.dimension, kind: 'attribute', element: t.name })),
     ])
+  // A view or subset on both sides with different content is a conflict, not a gap:
+  // no default, exactly like a delete or a move.
+  const undecidedCovers = [...(refresh?.subsets ?? []), ...(refresh?.views ?? [])]
+    .filter(c => !c.adding && !['take','keep'].includes(coverChoice[coverKey(c)] ?? c.choice))
+    .map(c => ({ dim: c.dimension ?? c.cube, kind: c.type, element: c.name }))
   const setDecision = (dim, kind, element, choice) => setDecisions(prev => {
     const cur = prev[dim] ?? { deletes: {}, moves: {} }
     const next = kind === 'delete' ? { ...cur, deletes: { ...cur.deletes, [element]: choice } }
@@ -337,7 +353,7 @@ export default function DeployFlow() {
                     <>
                       {refreshBusy === 'plan' && <p className="text-[11px] text-muted-foreground">Comparing {target} with {server}…</p>}
                       {refresh && !refreshBusy && (
-                        (refresh.dimensions ?? []).length === 0 ? (
+                        (refresh.dimensions ?? []).length === 0 && (refresh.subsets ?? []).length === 0 && (refresh.views ?? []).length === 0 && (refresh.chores ?? []).length === 0 ? (
                           <p className="text-[11px] text-emerald-700">Nothing to refresh — {server} already has what {target} has.</p>
                         ) : (
                           <div className="border border-border rounded-md overflow-hidden">
@@ -372,6 +388,29 @@ export default function DeployFlow() {
                               </div>
                             )}
 
+                            {((refresh.subsets ?? []).length > 0 || (refresh.views ?? []).length > 0) && (
+                              <div className="px-3 py-2 border-t border-border/40 space-y-2">
+                                <p className="text-[11px] font-semibold text-foreground">Views and subsets that differ on {target}</p>
+                                {[...(refresh.subsets ?? []), ...(refresh.views ?? [])].map(c => (
+                                  <div key={coverKey(c)} className="flex items-center gap-2 text-[11px] flex-wrap">
+                                    <span className="text-foreground">{c.type === 'subset' ? 'Subset' : 'View'} {c.name}</span>
+                                    <span className="text-muted-foreground/60">({c.dimension ?? c.cube}{c.hierarchy && c.hierarchy !== c.dimension ? `/${c.hierarchy}` : ''}) · {c.mode}{c.n != null ? ` · ${c.n} members` : ''} · {(c.parts ?? []).join(', ')}</span>
+                                    {c.adding ? (
+                                      <span className="text-emerald-700">missing on {server} — brought across</span>
+                                    ) : (
+                                      <>
+                                        <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'take' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'take' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take {target}'s</button>
+                                        <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'keep' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep {server}'s</button>
+                                      </>
+                                    )}
+                                    {(c.unreadable ?? []).length > 0 && <span className="text-red-600">can't read {c.unreadable.join(', ')} on {target} — taking it is refused, not guessed</span>}
+                                    {(c.usesSubsets ?? []).length > 0 && <span className="text-muted-foreground/60">uses: {c.usesSubsets.join(', ')}</span>}
+                                  </div>
+                                ))}
+                                <p className="text-[10px] text-muted-foreground">A view or subset on both sides with different content has no default: taking the target's writes it here; keeping {server}'s means the next deploy carries it to {target}. Subsets are applied before views.</p>
+                              </div>
+                            )}
+
                             {(refresh.dimensions ?? []).some(d => (d.attributes?.add ?? []).length || (d.attributes?.typeChanges ?? []).length) && (
                               <div className="px-3 py-2 border-t border-border/40 space-y-1">
                                 <p className="text-[11px] font-semibold text-foreground">Attributes PROD has that {server} does not</p>
@@ -386,7 +425,7 @@ export default function DeployFlow() {
                                     ))}
                                   </div>
                                 ))}
-                                <p className="text-[10px] text-muted-foreground">Reported only for now: attribute definitions and values are not applied by the refresh yet.</p>
+                                <p className="text-[10px] text-muted-foreground">Attribute definitions are created, and values are copied only for the attributes an admin confirmed {target}'s load maintains.</p>
                               </div>
                             )}
 
@@ -423,8 +462,8 @@ export default function DeployFlow() {
                                     ))}
                                   </div>
                                 ))}
-                                {undecided.length > 0 && (
-                                  <p className="text-[11px] text-red-600">Still to decide: {undecided.map(u => `${u.kind} ${u.element} (${u.dim})`).join(', ')}</p>
+                                {undecided.length + undecidedCovers.length > 0 && (
+                                  <p className="text-[11px] text-red-600">Still to decide: {[...undecided, ...undecidedCovers].map(u => `${u.kind} ${u.element} (${u.dim})`).join(', ')}</p>
                                 )}
                               </div>
                             )}
@@ -448,6 +487,9 @@ export default function DeployFlow() {
                           {(refreshed.skipped ?? []).map((k, i) => (
                             <p key={i} className="text-[10px] text-amber-600">{k.dimension}: {k.what} — {k.why}</p>
                           ))}
+                          {(refreshed.errors ?? []).map((k, i) => (
+                            <p key={`e-${i}`} className="text-[10px] text-red-600">FAILED {k.dimension}: {k.why}</p>
+                          ))}
                         </div>
                       )}
                       {error && <p className="text-[11px] text-red-600">{error}</p>}
@@ -455,7 +497,7 @@ export default function DeployFlow() {
                   )}
                   <div className="flex items-center gap-2 pt-1">
                     {!session?.closed_at && (
-                      <button onClick={doRefresh} disabled={refreshBusy || !(refresh?.dimensions ?? []).some(d => ticked[d.dimension]) || undecided.length > 0} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                      <button onClick={doRefresh} disabled={refreshBusy || (!(refresh?.dimensions ?? []).some(d => ticked[d.dimension]) && (refresh?.subsets ?? []).length === 0 && (refresh?.views ?? []).length === 0) || undecided.length + undecidedCovers.length > 0} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
                         {refreshBusy === 'apply' ? 'Refreshing…' : 'Refresh into ' + server}
                       </button>
                     )}

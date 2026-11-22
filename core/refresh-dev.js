@@ -146,7 +146,17 @@ async function planRefresh(source, target, { ideToken } = {}) {
         }
     } catch { /* no chore access — carry on with dimensions */ }
 
-    return { source, target, dimensions: items, chores }
+    // Views and subsets are the last two object types a deploy ships, and their
+    // refresh is its own unit: present on both sides with different content is a
+    // CONFLICT that needs a choice (no default), only on the target is a gap.
+    let coverage = { subsets: [], views: [] }
+    try {
+        const { planCovers } = require('./refresh-covers')
+        const c = await planCovers(source, target, { ideToken })
+        coverage = { subsets: c.subsets, views: c.views, coversSkipped: c.skipped }
+    } catch { /* no view/subset access — dimensions and chores still planned */ }
+
+    return { source, target, dimensions: items, chores, ...coverage }
 }
 
 // Apply the ticked dimensions to DEV and record each one in the open change set.
@@ -337,7 +347,7 @@ async function applyAttributeChanges(dev, prod, dim, { attributeTypes = {}, conf
     return { changed, errors, decisions }
 }
 
-async function applyRefresh(source, target, { ideToken, session, accept = [], chores = [], user } = {}) {
+async function applyRefresh(source, target, { ideToken, session, accept = [], chores = [], covers = [], user } = {}) {
     if (!session) throw Object.assign(new Error('Refused: open a change set first — a refresh must be recorded in one.'), { refused: true })
     const sess = cl.getSession(session)
     if (!sess) throw Object.assign(new Error(`Refused: no change set ${session}.`), { refused: true })
@@ -379,6 +389,31 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
             `an attribute type is "take PROD's type" (its values are cleared) or "keep DEV's".`
         ), { refused: true, undecided })
     }
+
+    // Views and subsets: an object on BOTH sides with different content is a
+    // conflict, not a gap. "Take the target's" and "keep DEV's" are both legitimate
+    // and there is no default — the same rule as a delete or a move. Checked before
+    // any write, so a refresh is never half-done.
+    let coverPlan = { subsets: [], views: [], skipped: [] }
+    try {
+        const { planCovers } = require('./refresh-covers')
+        coverPlan = await planCovers(source, target, { ideToken })
+    } catch { /* no access: the apply below reports it rather than guessing */ }
+    const coverageKey = (x) => `${x.type}:${x.name}:${x.dimension ?? x.cube}`
+    const chosen = new Map((Array.isArray(covers) ? covers : []).map(c => [coverageKey(c), c.choice]))
+    const undecidedCovers = [...(coverPlan.subsets ?? []), ...(coverPlan.views ?? [])]
+        .filter(x => x.differs && !x.adding && !['take', 'keep'].includes(chosen.get(coverageKey(x))))
+    if (undecidedCovers.length) {
+        const names = undecidedCovers.map(u => `${u.type} ${u.name} (${u.dimension ?? u.cube})`)
+        throw Object.assign(new Error(
+            `Refused: decide these before refreshing — ${names.join(', ')}. ` +
+            `Each exists on both servers with different content: "take the target's" or "keep ${source}'s" (the next deploy then carries it).`
+        ), {
+            refused: true,
+            undecided: undecidedCovers.map(u => ({ kind: u.type, element: u.name, dimension: u.dimension ?? u.cube })),
+        })
+    }
+    for (const s of coverPlan.skipped ?? []) skipped.push({ dimension: s.what, what: 'not refreshed', why: s.why })
 
     for (const { want, diff } of planned) {
         const dim = want.dimension
@@ -497,6 +532,19 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
         applied.push({ dimension: `chore ${c.name}`, applied: detail })
         recordDecision(source, `chore ${c.name}`, detail, { kind: 'chore', element: c.name, choice: 'schedule', user })
         cl.writeLog({ server: source, action: 'CHORE_UPDATED', objectType: 'chore', objectName: c.name, detail, user })
+    }
+
+    // Views and subsets last, subsets before views (a view may bind a named subset).
+    try {
+        const { applyCovers } = require('./refresh-covers')
+        const cov = await applyCovers(dev, prod, { covers, source, target, user })
+        for (const c of cov.changed) applied.push({ dimension: c.label, applied: c.text })
+        for (const d of cov.decisions) applied.push({ dimension: d.label, applied: d.text })
+        for (const e of cov.errors) errors.push({ dimension: e.what, what: 'not applied', why: e.why })
+    } catch (e) {
+        // The covers unit failed as a whole (no access, a broken client): an error,
+        // never a silent omission.
+        errors.push({ dimension: 'views and subsets', what: 'not applied', why: e.message })
     }
 
     return { ok: true, source, target, applied, skipped, errors }
