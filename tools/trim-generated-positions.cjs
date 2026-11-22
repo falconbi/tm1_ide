@@ -21,7 +21,7 @@ const GEN = /-\d{4,}$/
 
 ;(async () => {
     const c = makeClient(server, null)
-    const els = (await c.getElements('WFP Position')).value ?? []
+    const els = await c.getElements('WFP Position')   // returns the array, not { value }
     const targets = els.filter(e => e.Type !== 'C' && GEN.test(e.Name)).map(e => e.Name)
     console.log(`${els.length} elements · ${targets.length} generated · ${els.length - targets.length} kept`)
     if (!doDelete) { console.log('report only — pass --delete to remove them'); return }
