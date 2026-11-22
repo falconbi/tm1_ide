@@ -33,6 +33,20 @@ Based on what each process reads (check its Prolog header before running):
 6. **Seed Workforce Input** — it reads Assignments and Position Map.
 7. **Recalculate:** WFP Assignment Base (or let the WFP Recalculate Cost chore pick it up), then WFP Create Default Subsets.
 
+## Re-seeding in one command
+
+`tools/reseed-workforce.cjs` puts all nine back, runs them in the order above (with
+`Generate Hiring Plan` twice: `feb` then `now`), and waits for each to finish on the server:
+
+```bash
+node tools/reseed-workforce.cjs TM1_Test_DEV --run      # create + run
+node tools/reseed-workforce.cjs TM1_Test_DEV --cleanup  # remove all nine again
+```
+
+It uses the admin-host credentials from `config/servers.json` (no IDE session), so nothing is
+recorded in a change set. Run the forced recalculation afterwards:
+`WFP Recalculate If Needed` with `pForce=1`.
+
 ## Putting a process back
 
 Re-create it on the server from its file, inside a change set, then run it from the TI editor:
