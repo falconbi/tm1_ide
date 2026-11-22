@@ -151,6 +151,5 @@ The servers are already linked to GitHub. That setup is one-time and is covered 
 
 ## Related written guides
 
-- Shipping a TM1 change — https://falconbi.github.io/articles/shipping-tm1-changes/
-- When PROD drifts — https://falconbi.github.io/articles/deploy-drift-recovery/
+- How a TM1 deploy works — https://falconbi.github.io/articles/how-tm1-deploys-work/
 - Deploying Lenses — https://falconbi.github.io/articles/deploying-lenses/

@@ -92,7 +92,6 @@ How a change moves from DEV to PROD without carrying anyone else's work, and wit
 PROD changed by itself:
 **[How a TM1 deploy works](https://falconbi.github.io/articles/how-tm1-deploys-work/)** (the whole
 process, step by step, with diagrams) ·
-[When PROD drifts](https://falconbi.github.io/articles/deploy-drift-recovery/) ·
 [Deploying Lenses](https://falconbi.github.io/articles/deploying-lenses/).
 
 > [!NOTE]
@@ -136,8 +135,7 @@ process, step by step, with diagrams) ·
 >   a new DEV is done in TM1: neither has a screen.
 >
 > [Governed TM1 deploys](https://falconbi.github.io/articles/governed-tm1-deploys/) explains why a
-> release ships one change set. [Shipping a TM1 change](https://falconbi.github.io/articles/shipping-tm1-changes/)
-> describes the earlier wizard.
+> release ships one change set.
 
 ### Web applications on TM1 (Lenses)
 Focused HTML screens on live TM1 data, one per job, with governed write-back. They're built in the
