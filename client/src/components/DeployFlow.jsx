@@ -350,6 +350,24 @@ export default function DeployFlow() {
                                 </span>
                               </div>
                             ))}
+                            {(refresh.dimensions ?? []).some(d => (d.attributes?.add ?? []).length || (d.attributes?.typeChanges ?? []).length) && (
+                              <div className="px-3 py-2 border-t border-border/40 space-y-1">
+                                <p className="text-[11px] font-semibold text-foreground">Attributes PROD has that {server} does not</p>
+                                {(refresh.dimensions ?? []).filter(d => (d.attributes?.add ?? []).length || (d.attributes?.typeChanges ?? []).length).map(d => (
+                                  <div key={d.dimension} className="text-[11px]">
+                                    <span className="text-muted-foreground">{d.dimension}: </span>
+                                    {(d.attributes.add ?? []).map(a => (
+                                      <span key={a.name} className="mr-2">{a.name} <span className="text-muted-foreground/60">({a.type})</span></span>
+                                    ))}
+                                    {(d.attributes.typeChanges ?? []).map(t => (
+                                      <span key={t.name} className="mr-2 text-amber-600">{t.name}: {t.from} → {t.to} <span className="text-muted-foreground/60">(type differs — decided separately)</span></span>
+                                    ))}
+                                  </div>
+                                ))}
+                                <p className="text-[10px] text-muted-foreground">Reported only for now: attribute definitions and values are not applied by the refresh yet.</p>
+                              </div>
+                            )}
+
                             {(refresh.dimensions ?? []).some(d => (d.removeElements ?? []).length || (d.moves ?? []).length) && (
                               <div className="px-3 py-2 border-t border-border/40 space-y-2">
                                 <p className="text-[11px] font-semibold text-foreground">PROD deleted or moved these — decide each one</p>

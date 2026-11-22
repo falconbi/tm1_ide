@@ -94,7 +94,17 @@ async function planRefresh(source, target, { ideToken } = {}) {
         ])
         if (!a.elements.length && !a.edges.length) continue
         const d = diffDimension(a, b)
-        if (!d.differs) continue
+
+        // Attribute definitions: a dimension can be identical in elements and still
+        // be missing an attribute PROD has.
+        let attributes = { add: [], onlyDev: [], typeChanges: [], confirmedValues: [] }
+        try {
+            const [pa, da] = await Promise.all([prod.getElementAttributes(dim), dev.getElementAttributes(dim)])
+            const defs = diffAttributeDefinitions(pa, da)
+            attributes = { ...defs, confirmedValues: [] }
+        } catch { /* no attribute access — carry on with elements */ }
+
+        if (!d.differs && !attributes.add.length && !attributes.typeChanges.length) continue
         // Giving a leaf element children turns it into a consolidation, and TM1
         // clears the values stored against it. PROD already made that choice; on
         // DEV it is still a destructive step that must be named before it happens.
@@ -104,7 +114,7 @@ async function planRefresh(source, target, { ideToken } = {}) {
         const typeRisk = [...parents]
             .filter(p => p && devType.get(p) === 'Numeric' && prodType.get(p) === 'Consolidated')
             .map(p => ({ element: p, from: 'Numeric', to: 'Consolidated' }))
-        items.push({ dimension: dim, ...d, typeRisk })
+        items.push({ dimension: dim, ...d, typeRisk, attributes })
     }
     return { source, target, dimensions: items }
 }
@@ -143,6 +153,30 @@ function diffAttributeDefinitions(prodDefs = [], devDefs = []) {
         .filter(([n, t]) => dev.has(n) && dev.get(n) !== t)
         .map(([name, to]) => ({ name, from: dev.get(name), to }))
     return { add, onlyDev, typeChanges, differs: add.length > 0 || typeChanges.length > 0 }
+}
+
+// Which attributes PROD's own processes write, read from their text. This is a
+// SUGGESTION for the admin to confirm — never applied on its own. Only literal
+// arguments can be read; a process that passes variables falls back to nothing,
+// which is honest: a guess is worse than a gap.
+function suggestAttributeWrites(processes = []) {
+    const out = new Map()   // dimension → Set(attribute)
+    const call = /(AttrPutS|AttrPutN|ElementAttrPutS|ElementAttrPutN)\s*\(([^)]*)\)/g
+    const lit = /^\s*(['"])(.*?)\1\s*$/
+    for (const p of processes ?? []) {
+        const text = String(p?.PrologProcedure ?? p?.text ?? '')
+        let m
+        while ((m = call.exec(text))) {
+            const args = m[2].split(',').map(a => a.trim())
+            // AttrPut*(value, dim, element, attr [, …])
+            const dim = (args[1] ?? '').match(lit)?.[2]
+            const attr = (args[3] ?? '').match(lit)?.[2]
+            if (!dim || !attr) continue
+            if (!out.has(dim)) out.set(dim, new Set())
+            out.get(dim).add(attr)
+        }
+    }
+    return Object.fromEntries([...out].map(([d, set]) => [d, [...set].sort()]))
 }
 
 // Which type changes actually need a PATCH, and which are already settled by the
@@ -311,4 +345,4 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
     return { ok: true, source, target, applied, skipped }
 }
 
-module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, diffAttributeDefinitions, planRefresh, applyRefresh }
+module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, diffAttributeDefinitions, suggestAttributeWrites, planRefresh, applyRefresh }

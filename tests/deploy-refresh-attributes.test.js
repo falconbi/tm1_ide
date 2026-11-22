@@ -37,3 +37,32 @@ test('nothing on either side is not a difference', () => {
     assert.equal(diffAttributeDefinitions([], []).differs, false)
     assert.equal(diffAttributeDefinitions(undefined, undefined).differs, false)
 })
+
+// Which attributes PROD's own processes write — a SUGGESTION for an admin to
+// confirm, never applied on its own. A process passing variables yields nothing,
+// which is honest: a guess is worse than a gap.
+
+const { suggestAttributeWrites } = require('../core/refresh-dev')
+
+test('literal AttrPutS/AttrPutN calls name the dimension and the attribute', () => {
+    const s = suggestAttributeWrites([
+        { PrologProcedure: "AttrPutS('Loaded', 'WFP Employee', vEl, 'Source');" },
+        { PrologProcedure: "AttrPutN(1, 'WFP Position', vPos, 'Budgeted');" },
+    ])
+    assert.deepEqual(s, { 'WFP Employee': ['Source'], 'WFP Position': ['Budgeted'] })
+})
+
+test('ElementAttrPut* is read too', () => {
+    const s = suggestAttributeWrites([{ PrologProcedure: "ElementAttrPutS('x', 'WFP Cost Centre', vEl, 'Owner');" }])
+    assert.deepEqual(s, { 'WFP Cost Centre': ['Owner'] })
+})
+
+test('a call with variables instead of literals suggests nothing', () => {
+    const s = suggestAttributeWrites([{ PrologProcedure: "AttrPutS(vVal, cDim, vEl, vAttr);" }])
+    assert.deepEqual(s, {})
+})
+
+test('the same attribute written twice is listed once', () => {
+    const s = suggestAttributeWrites([{ PrologProcedure: "AttrPutS('a','D',vEl,'X'); AttrPutS('b','D',vEl,'X');" }])
+    assert.deepEqual(s, { D: ['X'] })
+})

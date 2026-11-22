@@ -15,7 +15,7 @@ const path = require('path')
 const FILE = path.join(__dirname, '..', 'data', 'deploy-settings.json')
 const AREA = 'lock'          // the Deployments folder, no fixed document name
 const DOC = 'settings.json'
-const EMPTY = { backupProcess: null }
+const EMPTY = { backupProcess: null, attributeValues: {} }
 
 function loadLocal() {
     try { return JSON.parse(fs.readFileSync(FILE, 'utf8')) } catch { return {} }
@@ -30,7 +30,15 @@ async function modelOwned(server, { ideToken } = {}) {
 }
 
 function normalise(doc) {
-    return { backupProcess: doc?.backupProcess ? String(doc.backupProcess) : null }
+    return {
+        backupProcess: doc?.backupProcess ? String(doc.backupProcess) : null,
+        // Per dimension: the attributes whose VALUES PROD's load maintains, and
+        // therefore the only ones a refresh may copy. Confirmed by an admin, never
+        // inferred at copy time.
+        attributeValues: doc?.attributeValues && typeof doc.attributeValues === 'object' && !Array.isArray(doc.attributeValues)
+            ? Object.fromEntries(Object.entries(doc.attributeValues).map(([d, list]) => [d, Array.isArray(list) ? list.map(String) : []]))
+            : {},
+    }
 }
 
 async function get(server, { ideToken } = {}) {
@@ -43,9 +51,10 @@ async function get(server, { ideToken } = {}) {
     return normalise(loadLocal()[server])
 }
 
-async function set(server, { backupProcess }, { ideToken } = {}) {
+async function set(server, { backupProcess, attributeValues }, { ideToken } = {}) {
     if (!server) throw new Error('server required')
-    const doc = normalise({ backupProcess })
+    const current = await get(server, { ideToken })
+    const doc = normalise({ backupProcess, attributeValues: attributeValues === undefined ? current.attributeValues : attributeValues })
     const d = loadLocal()
     d[server] = { ...(d[server] ?? {}), ...doc }
     saveLocal(d)
