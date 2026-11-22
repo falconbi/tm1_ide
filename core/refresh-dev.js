@@ -283,7 +283,7 @@ function undecidedDecisions(diff, want = {}) {
     return open
 }
 
-async function applyRefresh(source, target, { ideToken, session, accept = [], user } = {}) {
+async function applyRefresh(source, target, { ideToken, session, accept = [], chores = [], user } = {}) {
     if (!session) throw Object.assign(new Error('Refused: open a change set first — a refresh must be recorded in one.'), { refused: true })
     const sess = cl.getSession(session)
     if (!sess) throw Object.assign(new Error(`Refused: no change set ${session}.`), { refused: true })
@@ -448,6 +448,31 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
             applied.push({ dimension: dim, applied: changed })
         }
     }
+    // Chores: copy the target's SCHEDULE onto DEV; never its flag. A DEV chore that
+    // is on is switched off and that is recorded — it is a safety action, not a
+    // preference.
+    for (const c of chores) {
+        if (!c?.name || c.takeSchedule === false) continue
+        const pc = await prod.getChore(c.name).catch(() => null)
+        const dc = await dev.getChore(c.name).catch(() => null)
+        if (!pc || !dc) { skipped.push({ dimension: c.name, what: 'chore', why: !pc ? 'not on the target' : 'not on DEV' }); continue }
+        const d = diffChore(pc, dc)
+        const patch = {}
+        if (d.fields.includes('StartTime')) patch.StartTime = pc.StartTime
+        if (d.fields.includes('Frequency')) patch.Frequency = pc.Frequency
+        if (d.fields.includes('ExecutionMode')) patch.ExecutionMode = pc.ExecutionMode
+        if (dc.Active) patch.Active = false
+        if (!Object.keys(patch).length) continue
+        await dev.updateChore(c.name, patch)
+        const detail = [
+            d.fields.length ? `schedule from target: ${d.fields.join(', ')}` : null,
+            dc.Active ? 'switched OFF on DEV (a chore on a dev server is an incident)' : null,
+        ].filter(Boolean).join('; ')
+        applied.push({ dimension: `chore ${c.name}`, applied: detail })
+        recordDecision(source, `chore ${c.name}`, detail, { kind: 'chore', element: c.name, choice: 'schedule', user })
+        cl.writeLog({ server: source, action: 'CHORE_UPDATED', objectType: 'chore', objectName: c.name, detail, user })
+    }
+
     return { ok: true, source, target, applied, skipped }
 }
 
