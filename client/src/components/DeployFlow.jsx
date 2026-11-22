@@ -32,7 +32,7 @@ const GET = async (url) => {
 }
 
 const fmt = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return iso } }
-const PRE_STEPS = ['Check PROD', 'Tests & close', 'Build release', 'Review']
+const PRE_STEPS = ['Check PROD', 'Refresh from PROD', 'Tests & close', 'Build release', 'Review']
 
 function StepHeader({ step, phase }) {
   const label = phase === 'deploy' ? 'Deploy' : `Pre-deploy ${step} of ${PRE_STEPS.length}`
@@ -61,6 +61,11 @@ export default function DeployFlow() {
 
   const [idle, setIdle] = useState(null)
   const [idleConfirmed, setIdleConfirmed] = useState(false)
+  const [refresh, setRefresh] = useState(null)      // { dimensions: [...] }
+  const [refreshBusy, setRefreshBusy] = useState('')
+  const [ticked, setTicked] = useState({})          // dimension → true
+  const [delTicked, setDelTicked] = useState({})    // dimension → include deletes
+  const [refreshed, setRefreshed] = useState(null)  // result of the apply
   const [tests, setTests] = useState(null)
   const [closed, setClosed] = useState(false)
   const [release, setRelease] = useState(null)
@@ -80,6 +85,7 @@ export default function DeployFlow() {
     setPhase('start'); setStep(1); setError(null); setProg('')
     setIdle(null); setIdleConfirmed(false); setTests(null); setClosed(false)
     setRelease(null); setPrep(null); setLoss(null); setLossOk(false)
+    setRefresh(null); setRefreshed(null); setTicked({}); setDelTicked({})
     setApproved(false); setSettings(null); setBackupAt(''); setRes(null); setDrift(null)
   }, [ship?.session?.id])
 
@@ -113,6 +119,42 @@ export default function DeployFlow() {
     await checkIdle()
   }
 
+  // Refresh runs BEFORE tests and close: it writes to DEV and records each object
+  // in the open change set, which a closed set cannot do.
+  const loadRefresh = async () => {
+    setRefreshBusy('plan'); setError(null)
+    try {
+      const d = await GET(`/api/deploy/refresh/plan?source=${encodeURIComponent(server)}&target=${encodeURIComponent(target)}`)
+      setRefresh(d)
+      const all = {}
+      for (const it of d.dimensions ?? []) all[it.dimension] = true
+      setTicked(all)
+    } catch (e) { setError(e.message); setRefresh({ dimensions: [], error: e.message }) }
+    finally { setRefreshBusy('') }
+  }
+
+  const doRefresh = async () => {
+    setRefreshBusy('apply'); setError(null)
+    try {
+      const accept = (refresh?.dimensions ?? [])
+        .filter(d => ticked[d.dimension])
+        .map(d => ({ dimension: d.dimension, includeDeletes: !!delTicked[d.dimension] }))
+      const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept })
+      setRefreshed(r)
+      await loadRefresh()
+    } catch (e) { setError(e.message) }
+    finally { setRefreshBusy('') }
+  }
+
+  const resumeChangeSet = async () => {
+    setBusy('resume'); setError(null)
+    try {
+      await POST('/api/sessions/resume', { id: session.id })
+      window.location.reload()
+    } catch (e) { setError(e.message) }
+    finally { setBusy('') }
+  }
+
   const doTestsAndClose = async () => {
     setBusy('close'); setError(null); setProg('Running the model tests…')
     try {
@@ -123,7 +165,7 @@ export default function DeployFlow() {
       setTests(t); setClosed(true)
       setProg('Filing DEV in Git…')
       await POST('/api/deploy/git/push', { source: server, message: `Deploy ${session?.name ?? 'change set'}`, session: session.id })
-      setStep(3)
+      setStep(4)
     } catch (e) { setError(e.message) }
     finally { setBusy(''); setProg('') }
   }
@@ -235,6 +277,11 @@ export default function DeployFlow() {
                               : 'Nobody signed in.')
                           : 'Sign-ins could not be read — check manually.'}
                       </p>
+                      {idle.sessionsReadable && idle.ownAccount && (
+                        <p className="text-[10px] text-muted-foreground/80">
+                          Matched by account name: someone else signed in as <span className="font-mono">{idle.ownAccount}</span> is not listed separately.
+                        </p>
+                      )}
                       {(idle.errors ?? []).length > 0 && <p className="text-[11px] text-amber-600">Could not read: {idle.errors.join('; ')}</p>}
                     </div>
                   )}
@@ -248,13 +295,83 @@ export default function DeployFlow() {
                     </label>
                   )}
                   <div className="flex items-center gap-2 pt-1">
-                    <button onClick={() => setStep(2)} disabled={!idle || blockIdle || needIdleConfirm} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue</button>
+                    <button onClick={() => { setStep(2); loadRefresh() }} disabled={!idle || blockIdle || needIdleConfirm} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue</button>
                     <button onClick={checkIdle} disabled={busy === 'idle'} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Check again</button>
                   </div>
                 </div>
               )}
 
               {step === 2 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Bring what PROD changed into {server}, recorded in this change set. It must happen
+                    before the tests and close: a closed change set cannot record it.
+                  </p>
+                  {session?.closed_at ? (
+                    <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-2">
+                      <p className="text-xs font-semibold text-amber-700">This change set is closed</p>
+                      <p className="text-[11px]">Reopen <span className="font-semibold">{session.name}</span> to bring PROD's changes into {server} — then run the tests and close it again.</p>
+                      <button onClick={resumeChangeSet} disabled={busy === 'resume'} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                        {busy === 'resume' ? 'Reopening…' : 'Reopen the change set'}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {refreshBusy === 'plan' && <p className="text-[11px] text-muted-foreground">Comparing {target} with {server}…</p>}
+                      {refresh && !refreshBusy && (
+                        (refresh.dimensions ?? []).length === 0 ? (
+                          <p className="text-[11px] text-emerald-700">Nothing to refresh — {server} already has what {target} has.</p>
+                        ) : (
+                          <div className="border border-border rounded-md overflow-hidden">
+                            <div className="grid grid-cols-[1fr_90px_120px] text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/30 px-3 py-1 border-b border-border gap-2">
+                              <span>Dimension</span><span>Bring across</span><span>Deletes</span>
+                            </div>
+                            {(refresh.dimensions ?? []).map((d, i) => (
+                              <div key={i} className="grid grid-cols-[1fr_90px_120px] px-3 py-1 text-[11px] border-b border-border/40 last:border-0 gap-2 items-center">
+                                <label className="flex items-center gap-2">
+                                  <input type="checkbox" checked={!!ticked[d.dimension]} onChange={e => setTicked(t => ({ ...t, [d.dimension]: e.target.checked }))} />
+                                  <span>{d.dimension}</span>
+                                </label>
+                                <span className="text-muted-foreground">
+                                  {[d.addElements.length ? `+${d.addElements.length} el` : '', d.addEdges.length || d.moves.length ? `+${d.addEdges.length + d.moves.length} edge` : ''].filter(Boolean).join(' · ') || '—'}
+                                </span>
+                                <label className="flex items-center gap-1.5 text-muted-foreground">
+                                  {d.removeElements.length ? (
+                                    <>
+                                      <input type="checkbox" checked={!!delTicked[d.dimension]} onChange={e => setDelTicked(v => ({ ...v, [d.dimension]: e.target.checked }))} />
+                                      <span>remove {d.removeElements.length}</span>
+                                    </>
+                                  ) : <span>—</span>}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      )}
+                      {refreshed && (
+                        <div className="border border-emerald-600/30 bg-emerald-600/5 rounded-md p-3 space-y-1">
+                          <p className="text-[11px] text-emerald-700">Refreshed: {(refreshed.applied ?? []).map(a => a.dimension).join(', ') || 'nothing'}</p>
+                          {(refreshed.skipped ?? []).map((k, i) => (
+                            <p key={i} className="text-[10px] text-amber-600">{k.dimension}: {k.what} — {k.why}</p>
+                          ))}
+                        </div>
+                      )}
+                      {error && <p className="text-[11px] text-red-600">{error}</p>}
+                    </>
+                  )}
+                  <div className="flex items-center gap-2 pt-1">
+                    {!session?.closed_at && (
+                      <button onClick={doRefresh} disabled={refreshBusy || !(refresh?.dimensions ?? []).some(d => ticked[d.dimension])} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                        {refreshBusy === 'apply' ? 'Refreshing…' : 'Refresh into ' + server}
+                      </button>
+                    )}
+                    <button onClick={() => setStep(3)} disabled={session?.closed_at} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue</button>
+                    <button onClick={() => setStep(1)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
+                  </div>
+                </div>
+              )}
+
+              {step === 3 && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">The model's tests run first; a block-severity failure stops here. Then DEV is filed in Git so a release can be built from it.</p>
                   {tests && <p className="text-[11px]">Tests: <span className={tests.blocking ? 'text-red-600' : 'text-emerald-700'}>{tests.passed}/{tests.total} passed</span>{tests.blocking ? ` · ${tests.blocking} blocking` : ''}</p>}
@@ -264,13 +381,13 @@ export default function DeployFlow() {
                     <button onClick={doTestsAndClose} disabled={!!busy || closed} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
                       {closed ? 'Closed' : 'Run tests and close'}
                     </button>
-                    {closed && <button onClick={() => setStep(3)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue</button>}
-                    <button onClick={() => setStep(1)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
+                    {closed && <button onClick={() => setStep(4)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue</button>}
+                    <button onClick={() => setStep(2)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>
                 </div>
               )}
 
-              {step === 3 && (
+              {step === 4 && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">A release is the target's last deployed state plus only this change set's objects. Everything else stays on {server}.</p>
                   {release && (
@@ -286,13 +403,13 @@ export default function DeployFlow() {
                   {busy && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> {prog}</p>}
                   <div className="flex items-center gap-2 pt-1">
                     <button onClick={doBuild} disabled={!!busy || !!release} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Build release</button>
-                    {release && <button onClick={() => setStep(4)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue to Review</button>}
-                    <button onClick={() => setStep(2)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
+                    {release && <button onClick={() => setStep(5)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue to Review</button>}
+                    <button onClick={() => setStep(3)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>
                 </div>
               )}
 
-              {step === 4 && (
+              {step === 5 && (
                 <div className="space-y-2">
                   {prep?.error && <p className="text-[11px] text-red-600">{prep.error}</p>}
                   <p className="text-xs">On <span className="font-semibold">{target}</span>: <span className="font-semibold">{prep?.plan?.total ?? 0}</span> plan operation{(prep?.plan?.total ?? 0) === 1 ? '' : 's'}{prep?.plan?.targetCommit ? `, moving to ${String(prep.plan.targetCommit).slice(0, 10)}` : ''}.</p>
@@ -317,7 +434,7 @@ export default function DeployFlow() {
                   )}
                   <div className="flex items-center gap-2 pt-1">
                     <button onClick={() => setPhase('deploy')} disabled={!prep || !!prep.error || lossNeedsConfirm} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue to Deploy</button>
-                    <button onClick={() => setStep(3)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
+                    <button onClick={() => setStep(4)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>
                 </div>
               )}

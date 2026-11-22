@@ -128,6 +128,32 @@ app.post('/api/deploy/git/execute', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Refresh DEV from PROD, dimensions first. The plan compares both servers live;
+// the apply writes to DEV and records each dimension in the open change set, so a
+// closed change set is refused rather than silently unrecorded.
+app.get('/api/deploy/refresh/plan', async (req, res) => {
+    try {
+        const { source, target } = req.query
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        const { planRefresh } = require('../core/refresh-dev')
+        res.json(await planRefresh(source, target, { ideToken: req.ideToken }))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/deploy/refresh/apply', async (req, res) => {
+    try {
+        const { source, target, session, accept } = req.body
+        if (!source || !target || !session) return res.status(400).json({ error: 'source, target and session required' })
+        if (!gateWrite(res, source)) return
+        const { applyRefresh } = require('../core/refresh-dev')
+        res.json(await applyRefresh(source, target, {
+            ideToken: req.ideToken, session, accept: Array.isArray(accept) ? accept : [], user: req.user,
+        }))
+    } catch (e) {
+        res.status(e.refused ? 409 : 500).json({ error: e.message })
+    }
+})
+
 // Is the target idle? Read-only. Three answers: running work (refuse), chores due
 // soon (warn), people signed in (confirm).
 app.get('/api/deploy/idle', async (req, res) => {

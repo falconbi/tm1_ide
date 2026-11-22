@@ -532,3 +532,19 @@ differs, naming the dimension and what changed:
 
 Proved on the lab by adding an element with a direct TM1 REST call (invisible to the change log) and
 then building a subset-only release.
+
+---
+
+## Refresh DEV from PROD — dimensions first (22 Nov 2026)
+
+`core/refresh-dev.js` compares PROD with DEV live and brings PROD's dimension changes into DEV:
+missing elements (with their type), missing edges, and **moves** (a re-parent — archiving — is
+applied as a move, so the element keeps its data). Deletes are listed and applied only when ticked.
+
+Every write is recorded in the **open** change set (`DIMENSION_UPDATED` per dimension), which is why
+the refresh runs before tests and close: a closed change set cannot record it, and the API refuses
+with "Reopen <name> to bring PROD's changes into DEV". The screen says the same and offers the
+button.
+
+Not yet in this step: hierarchies (alternate), attributes and their values, chores, views and
+subsets. Element **type** changes cannot be done over REST and are reported as skipped.
