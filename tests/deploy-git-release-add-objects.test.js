@@ -39,26 +39,26 @@ require.cache[gitStatePath] = { id: gitStatePath, filename: gitStatePath, loaded
 const cl = require(path.join(__dirname, '..', 'core', 'change-log'))
 const { buildRelease } = require(path.join(__dirname, '..', 'core', 'git-release'))
 
-const dimJson = (note = '') => JSON.stringify({ '@type': 'Dimension', Name: 'D', Description: note }, null, '\t') + '\n'
-const hierJson = (names) => JSON.stringify({
-    '@type': 'Hierarchy', Name: 'D',
-    Elements: names.map(n => ({ '@id': `Dimensions('D')/Hierarchies('D')/Elements('${n}')`, Name: n, Type: 'Numeric' })),
+const dimJson = (note = '', name = 'D') => JSON.stringify({ '@type': 'Dimension', Name: name, Description: note }, null, '\t') + '\n'
+const hierJson = (names, name = 'D') => JSON.stringify({
+    '@type': 'Hierarchy', Name: name,
+    Elements: names.map(n => ({ '@id': `Dimensions('${name}')/Hierarchies('${name}')/Elements('${n}')`, Name: n, Type: 'Numeric' })),
 }, null, '\t') + '\n'
 
-function setupRepo() {
+function setupRepo({ name = 'D' } = {}) {
     const bare = BARE()
     execFileSync('git', ['init', '-q', '--bare', bare])
     const w = W()
     g(w, 'init', '-q')
     g(w, 'remote', 'add', 'origin', bare)
     write(w, 'cubes/Keep.rules', '# base\n[] = N:1;\n')
-    write(w, 'dimensions/D.json', dimJson('full'))
-    write(w, 'dimensions/D.hierarchies/D.json', hierJson(['A', 'B', 'C']))
+    write(w, `dimensions/${name}.json`, dimJson('full', name))
+    write(w, `dimensions/${name}.hierarchies/${name}.json`, hierJson(['A', 'B', 'C'], name))
     const base = commitAll(w, 'base')
 
     // DEV cut the dimension to one element and also changed a rule it owns.
-    write(w, 'dimensions/D.hierarchies/D.json', hierJson(['A']))
-    write(w, 'dimensions/D.json', dimJson('cut'))
+    write(w, `dimensions/${name}.hierarchies/${name}.json`, hierJson(['A'], name))
+    write(w, `dimensions/${name}.json`, dimJson('cut', name))
     write(w, 'cubes/Keep.rules', '# dev\n[] = N:2;\n')
     const devCommit = commitAll(w, 'dev')
     g(w, 'branch', '-M', 'dev')
@@ -70,9 +70,9 @@ test('including a dimension includes its hierarchy file too', async () => {
     const repo = setupRepo()
     try {
         fakeBase = repo.base
-        const s = cl.startSession('cut', 'DEV1', 'admin')
+        const s = cl.startSession('cut', 'DEV-A', 'admin')
         cl.setSessionCommit(s.id, repo.devCommit)
-        cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'Keep', user: 'admin' })
+        cl.writeLog({ server: 'DEV-A', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'Keep', user: 'admin' })
 
         // Without the include: the dimension is left on DEV, listed as unowned.
         const without = await buildRelease(s, 'T1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
@@ -98,11 +98,11 @@ test('including an object owned by another change set is still refused', async (
     const repo = setupRepo()
     try {
         fakeBase = repo.base
-        const s = cl.startSession('cut', 'DEV1', 'admin')
+        const s = cl.startSession('cut', 'DEV-B', 'admin')
         cl.setSessionCommit(s.id, repo.devCommit)
-        cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'Keep', user: 'admin' })
-        const other = cl.startSession('earlier cut', 'DEV1', 'samtm1')
-        cl.writeLog({ server: 'DEV1', action: 'DIMENSION_UPDATED', objectType: 'dimension', objectName: 'D', user: 'samtm1' })
+        cl.writeLog({ server: 'DEV-B', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'Keep', user: 'admin' })
+        const other = cl.startSession('earlier cut', 'DEV-B', 'samtm1')
+        cl.writeLog({ server: 'DEV-B', action: 'DIMENSION_UPDATED', objectType: 'dimension', objectName: 'D', user: 'samtm1' })
         assert.ok(other.id)
 
         const r = await buildRelease(s, 'T1', {
@@ -111,6 +111,33 @@ test('including an object owned by another change set is still refused', async (
         })
         assert.equal(r.ok, false)
         assert.match(r.error, /belongs to change set "earlier cut"/)
+    } finally {
+        fs.rmSync(repo.bare, { recursive: true, force: true })
+        fs.rmSync(repo.w, { recursive: true, force: true })
+    }
+})
+
+test('a change set that already deployed the object does not block including it', async () => {
+    // "Release "WFP position-level recalculation" first" was the message — for a set
+    // that had already been released. Its version is on the target; the current
+    // difference is later work. A dimension of its own, so another test's open set
+    // on 'D' does not interfere.
+    const repo = setupRepo({ name: 'D2' })
+    try {
+        fakeBase = repo.base
+        const s = cl.startSession('cut', 'DEV-C', 'admin')
+        cl.setSessionCommit(s.id, repo.devCommit)
+        cl.writeLog({ server: 'DEV-C', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'Keep', user: 'admin' })
+        const done = cl.startSession('already released', 'DEV-C', 'samtm1')
+        cl.writeLog({ server: 'DEV-C', action: 'DIMENSION_UPDATED', objectType: 'dimension', objectName: 'D2', user: 'samtm1' })
+        cl.markSessionDeployed(done.id, 'T1')
+
+        const r = await buildRelease(s, 'T1', {
+            token: 'x', gitUser: 't', repoUrl: repo.bare,
+            addObjects: [{ type: 'dimension', name: 'D2' }],
+        })
+        assert.equal(r.ok, true, JSON.stringify(r))
+        assert.ok(r.included.some(i => i.type === 'dimension' && i.name === 'D2'))
     } finally {
         fs.rmSync(repo.bare, { recursive: true, force: true })
         fs.rmSync(repo.w, { recursive: true, force: true })

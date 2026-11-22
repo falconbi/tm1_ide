@@ -288,7 +288,12 @@ function linkClosure(files, read) {
 function ownerOf(logsBySession, obj) {
     const wanted = objectKey(obj.type, obj.name, obj.parent)
     for (const s of logsBySession) {
-        if (s.wont_deploy_at || s.covered_by) continue
+        // A retired set, one covered by a catch-up, and one that has ALREADY been
+        // deployed all own nothing that is still waiting to go: their version is on
+        // the target, so a later change to the same object is not theirs. Treating a
+        // deployed set as the owner refused every later release of that object with
+        // "release it first" — after it had been released.
+        if (s.wont_deploy_at || s.covered_by || s.deployed_target) continue
         for (const e of s.entries) {
             const type = ENTRY_TO_OBJECT[e.object_type]
             if (!type) continue
