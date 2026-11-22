@@ -85,6 +85,14 @@ async function readDimension(tm1, dim, hierarchy = dim) {
     return { elements, edges }
 }
 
+// The APPLY side must not read leniently: a failed read comes back as an empty
+// dimension, which looks exactly like "nothing to refresh" — a hidden failure. Here
+// the error is raised, so the caller reports it.
+async function readDimensionStrict(tm1, dim, hierarchy = dim) {
+    const [elements, edges] = await Promise.all([tm1.getElements(dim, hierarchy), tm1.getEdges(dim, hierarchy)])
+    return { elements, edges }
+}
+
 // Read both servers and return one entry per dimension that differs. Control
 // objects (}…) are skipped: they are not model changes a deploy ships.
 async function planRefresh(source, target, { ideToken } = {}) {
@@ -364,7 +372,7 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
     const undecided = []
     const planned = []
     for (const want of accept) {
-        const [p, d] = await Promise.all([readDimension(prod, want.dimension), readDimension(dev, want.dimension)])
+        const [p, d] = await Promise.all([readDimensionStrict(prod, want.dimension), readDimensionStrict(dev, want.dimension)])
         const diff = diffDimension(p, d)
         planned.push({ want, diff })
         undecided.push(...undecidedDecisions(diff, want))
@@ -417,101 +425,107 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
 
     for (const { want, diff } of planned) {
         const dim = want.dimension
-        const [p, d] = await Promise.all([readDimension(prod, dim), readDimension(dev, dim)])
-        const changed = []
+        try {
+            const [p, d] = await Promise.all([readDimensionStrict(prod, dim), readDimensionStrict(dev, dim)])
+            const changed = []
 
-        // A move or edge can turn a leaf on DEV into a consolidation, clearing the
-        // values stored against it. Never do that silently.
-        const devType = new Map((d.elements ?? []).map(e => [elName(e), elType(e)]))
-        const prodType = new Map((p.elements ?? []).map(e => [elName(e), elType(e)]))
-        const parents = new Set([...diff.addEdges.map(e => e.parent), ...diff.moves.map(m => m.toParent)])
-        const risky = [...parents].filter(x => x && devType.get(x) === 'Numeric' && prodType.get(x) === 'Consolidated')
-        if (risky.length && !want.allowTypeChanges) {
-            throw Object.assign(new Error(
-                `Refused: refreshing ${dim} would turn ${risky.join(', ')} into consolidation${risky.length === 1 ? '' : 's'} on ${source}, ` +
-                `and TM1 clears the values stored against ${risky.length === 1 ? 'it' : 'them'}. ` +
-                `Tick "allow element type changes" if that is intended, or make the change in the model.`
-            ), { refused: true })
-        }
-
-        for (const e of diff.addElements) {
-            await dev.addElementAt(dim, e.name, e.type, dim)
-            changed.push(`element ${e.name}`)
-        }
-        // Moves before plain additions: a move creates the edge that a plain add of
-        // the same child would otherwise duplicate.
-        const moved = new Set()
-        for (const m of diff.moves) {
-            if (want.moves?.[m.child] === 'keep') {
-                // Deliberate: DEV keeps its parent, so the next deploy puts DEV's
-                // parent back on PROD — no data is affected by an edge either way.
-                recordDecision(source, dim, `move ${m.child}: kept DEV's parent ${m.fromParent ?? '(none)'} — the next deploy restores it on the target`, { kind: 'move', element: m.child, choice: 'keep', user })
-                continue
+            // A move or edge can turn a leaf on DEV into a consolidation, clearing the
+            // values stored against it. Never do that silently.
+            const devType = new Map((d.elements ?? []).map(e => [elName(e), elType(e)]))
+            const prodType = new Map((p.elements ?? []).map(e => [elName(e), elType(e)]))
+            const parents = new Set([...diff.addEdges.map(e => e.parent), ...diff.moves.map(m => m.toParent)])
+            const risky = [...parents].filter(x => x && devType.get(x) === 'Numeric' && prodType.get(x) === 'Consolidated')
+            if (risky.length && !want.allowTypeChanges) {
+                throw Object.assign(new Error(
+                    `Refused: refreshing ${dim} would turn ${risky.join(', ')} into consolidation${risky.length === 1 ? '' : 's'} on ${source}, ` +
+                    `and TM1 clears the values stored against ${risky.length === 1 ? 'it' : 'them'}. ` +
+                    `Tick "allow element type changes" if that is intended, or make the change in the model.`
+                ), { refused: true })
             }
-            if (m.fromParent) await dev.deleteEdge(dim, m.fromParent, m.child, dim).catch(() => {})
-            await dev.addEdge(dim, m.toParent, m.child, m.toWeight ?? 1, dim)
-            moved.add(m.child)
-            changed.push(`move ${m.child}: ${m.fromParent ?? '(none)'} → ${m.toParent}`)
-            recordDecision(source, dim, `move ${m.child}: took the target's parent ${m.toParent}`, { kind: 'move', element: m.child, choice: 'take', user })
-        }
-        for (const e of diff.addEdges) {
-            if (moved.has(e.child)) continue
-            await dev.addEdge(dim, e.parent, e.child, e.weight ?? 1, dim)
-            changed.push(`edge ${e.parent} → ${e.child}`)
-        }
-        // Type changes LAST: the edges above must land first (a leaf becomes a
-        // consolidation only once it has a component), and an element the edge
-        // already made a rollup is not patched at all.
-        const { patch, skip: skipTypes } = typeChangesToApply(diff, want)
-        for (const t of skipTypes) {
-            skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
-        }
-        for (const t of patch) {
-            try {
-                await dev.patch(
-                    `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(t.name)}')`,
-                    { Type: t.to }
-                )
-                changed.push(`type ${t.name}: ${t.from} → ${t.to}`)
-            } catch (e) {
-                skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: e.message })
+
+            for (const e of diff.addElements) {
+                await dev.addElementAt(dim, e.name, e.type, dim)
+                changed.push(`element ${e.name}`)
             }
-        }
-
-        for (const name of diff.removeElements) {
-            if (want.deletes?.[name] === 'keep') {
-                // Deliberate: DEV keeps it, so the deploy restores it on the target
-                // with no values (the element itself comes back, its data does not).
-                recordDecision(source, dim, `delete ${name}: kept on DEV — the next deploy restores it on the target with no data`, { kind: 'delete', element: name, choice: 'keep', user })
-                continue
+            // Moves before plain additions: a move creates the edge that a plain add of
+            // the same child would otherwise duplicate.
+            const moved = new Set()
+            for (const m of diff.moves) {
+                if (want.moves?.[m.child] === 'keep') {
+                    // Deliberate: DEV keeps its parent, so the next deploy puts DEV's
+                    // parent back on PROD — no data is affected by an edge either way.
+                    recordDecision(source, dim, `move ${m.child}: kept DEV's parent ${m.fromParent ?? '(none)'} — the next deploy restores it on the target`, { kind: 'move', element: m.child, choice: 'keep', user })
+                    continue
+                }
+                if (m.fromParent) await dev.deleteEdge(dim, m.fromParent, m.child, dim).catch(() => {})
+                await dev.addEdge(dim, m.toParent, m.child, m.toWeight ?? 1, dim)
+                moved.add(m.child)
+                changed.push(`move ${m.child}: ${m.fromParent ?? '(none)'} → ${m.toParent}`)
+                recordDecision(source, dim, `move ${m.child}: took the target's parent ${m.toParent}`, { kind: 'move', element: m.child, choice: 'take', user })
             }
-            await dev.deleteElement(dim, name, dim)
-            changed.push(`removed ${name}`)
-            recordDecision(source, dim, `delete ${name}: deleted on DEV too (its values are gone)`, { kind: 'delete', element: name, choice: 'delete', user })
-        }
+            for (const e of diff.addEdges) {
+                if (moved.has(e.child)) continue
+                await dev.addEdge(dim, e.parent, e.child, e.weight ?? 1, dim)
+                changed.push(`edge ${e.parent} → ${e.child}`)
+            }
+            // Type changes LAST: the edges above must land first (a leaf becomes a
+            // consolidation only once it has a component), and an element the edge
+            // already made a rollup is not patched at all.
+            const { patch, skip: skipTypes } = typeChangesToApply(diff, want)
+            for (const t of skipTypes) {
+                skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
+            }
+            for (const t of patch) {
+                try {
+                    await dev.patch(
+                        `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(t.name)}')`,
+                        { Type: t.to }
+                    )
+                    changed.push(`type ${t.name}: ${t.from} → ${t.to}`)
+                } catch (e) {
+                    errors.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: e.message })
+                }
+            }
 
-        // Attributes, in their own function so a failure is an ERROR, not a "skip":
-        // not chosen and failed must never read the same.
-        const wantConfirmed = want.confirmedAttributes ?? []
-        const attrRes = await applyAttributeChanges(dev, prod, dim, {
-            attributeTypes: want.attributeTypes ?? {},
-            confirmed: wantConfirmed,
-            devElements: (d.elements ?? []).map(elName).filter(Boolean),
-        })
-        changed.push(...attrRes.changed)
-        errors.push(...attrRes.errors)
-        for (const dec of attrRes.decisions) {
-            recordDecision(source, dim, `attribute ${dec.element}: ${dec.choice === 'take' ? "took the target's type (its values are cleared)" : `${source}'s type kept`}`, { ...dec, user })
-        }
+            for (const name of diff.removeElements) {
+                if (want.deletes?.[name] === 'keep') {
+                    // Deliberate: DEV keeps it, so the deploy restores it on the target
+                    // with no values (the element itself comes back, its data does not).
+                    recordDecision(source, dim, `delete ${name}: kept on DEV — the next deploy restores it on the target with no data`, { kind: 'delete', element: name, choice: 'keep', user })
+                    continue
+                }
+                await dev.deleteElement(dim, name, dim)
+                changed.push(`removed ${name}`)
+                recordDecision(source, dim, `delete ${name}: deleted on DEV too (its values are gone)`, { kind: 'delete', element: name, choice: 'delete', user })
+            }
 
-        if (changed.length) {
-            cl.writeLog({ server: source, action: 'DIMENSION_UPDATED', objectType: 'dimension', objectName: dim, detail: changed.join('; '), user })
-            applied.push({ dimension: dim, applied: changed })
+            // Attributes, in their own function so a failure is an ERROR, not a "skip":
+            // not chosen and failed must never read the same.
+            const wantConfirmed = want.confirmedAttributes ?? []
+            const attrRes = await applyAttributeChanges(dev, prod, dim, {
+                attributeTypes: want.attributeTypes ?? {},
+                confirmed: wantConfirmed,
+                devElements: (d.elements ?? []).map(elName).filter(Boolean),
+            })
+            changed.push(...attrRes.changed)
+            errors.push(...attrRes.errors)
+            for (const dec of attrRes.decisions) {
+                recordDecision(source, dim, `attribute ${dec.element}: ${dec.choice === 'take' ? "took the target's type (its values are cleared)" : `${source}'s type kept`}`, { ...dec, user })
+            }
+
+            if (changed.length) {
+                cl.writeLog({ server: source, action: 'DIMENSION_UPDATED', objectType: 'dimension', objectName: dim, detail: changed.join('; '), user })
+                applied.push({ dimension: dim, applied: changed })
+            }
+        } catch (e) {
+            // A dimension that could not be refreshed is an ERROR with TM1's message,
+            // never a silent omission or a "skip".
+            errors.push({ dimension: dim, what: 'not refreshed', why: e.message })
         }
     }
-    // Chores: copy the target's SCHEDULE onto DEV; never its flag. A DEV chore that
-    // is on is switched off and that is recorded — it is a safety action, not a
-    // preference.
+// Chores: copy the target's SCHEDULE onto DEV; never its flag. A DEV chore that
+// is on is switched off and that is recorded — it is a safety action, not a
+// preference.
     for (const c of chores) {
         if (!c?.name || c.takeSchedule === false) continue
         const pc = await prod.getChore(c.name).catch(() => null)
