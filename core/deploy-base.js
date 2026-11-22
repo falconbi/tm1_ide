@@ -72,12 +72,21 @@ async function resolveBase(target, { ideToken } = {}) {
         try { branch = git(work, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${releaseBranch(target)}`).trim() || null } catch { branch = null }
 
         if (branch && local && !sameCommit(branch, local)) {
-            return {
-                ok: false, target, repoUrl, branch, local, mismatch: true,
-                reason: `The release branch for ${target} is at ${branch.slice(0, 10)}, but this IDE recorded ${local.slice(0, 10)} as the last deploy. ` +
-                    `A deploy from another IDE (or a history change) has moved it, so "what PROD changed since the last deploy" has two answers. ` +
-                    `Nothing can be compared safely until that is settled — refresh is refused rather than guessing.`,
+            // The release branch is a STAGING pointer: a build moves it before anyone
+            // deploys, so it legitimately runs ahead of the last deploy. What matters
+            // is whether it descends from the recorded deploy (a build waiting) or has
+            // DIVERGED (history moved / another line). Only divergence is refused.
+            let descended = false
+            try { git(work, 'merge-base', '--is-ancestor', local, branch); descended = true } catch { descended = false }
+            if (!descended) {
+                return {
+                    ok: false, target, repoUrl, branch, local, mismatch: true,
+                    reason: `The release branch for ${target} is at ${branch.slice(0, 10)}, which does not descend from this IDE's recorded deploy ${local.slice(0, 10)}. ` +
+                        `History has moved, so "what PROD changed since the last deploy" has two answers. Nothing can be compared safely until that is settled — refresh is refused rather than guessing.`,
+                }
             }
+            // A built release is waiting: the baseline is still what the target HAS.
+            return { ok: true, target, repoUrl, commit: local, local, branch, source: 'local-record', ahead: branch }
         }
         if (!branch && !local) {
             return { ok: false, target, repoUrl, missing: true, reason: `${target} has never received a release, so there is no baseline: every difference is shown with nothing selected.` }
