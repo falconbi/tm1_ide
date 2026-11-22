@@ -93,6 +93,42 @@ How a change moves from DEV to PROD without carrying anyone else’s work:
 [When PROD drifts](https://falconbi.github.io/articles/deploy-drift-recovery/) ·
 [Deploying Lenses](https://falconbi.github.io/articles/deploying-lenses/).
 
+> [!NOTE]
+> **The deploy is being reworked (November 2026).** Testing it against real working patterns
+> showed that PROD is rarely static: nightly loads add elements, users save views, and operators
+> switch chores on and off. Those changes must survive a deploy instead of blocking it. The
+> guides above describe the current version.
+>
+> **The challenges, found by testing on live servers:**
+>
+> - **TM1 Git makes the target match the release, object by object.** Any dimension, cube, process
+>   or chore whose live copy differs is replaced, even when the release doesn't mention it. So a
+>   GL code loaded on PROD overnight would be wiped by the next deploy.
+> - **Git can't simply be told to leave an object alone.** TM1 Git accepts a per-server ignore
+>   setting, but the pull doesn't use it. The project-wide ignore breaks the links between files,
+>   so no release can be built at all.
+> - **Not everything travels through Git.** Views, subsets, deletes and attribute values have to
+>   be applied separately, and each of those steps can overwrite PROD's own version.
+> - **Some changes clear data with no warning.** When a deploy gives a leaf element children, TM1
+>   turns it into a consolidation and clears every value stored against it.
+> - **Order matters across change sets.** If two change sets touch the same object, deploying the
+>   older one last can bring back something the newer one removed.
+> - **Tests that read today's data can't tell a broken calculation from changed data.**
+>
+> What's coming:
+>
+> - **Two clear phases.** *Pre-deploy* is where you look and decide; *Deploy* is one button.
+> - **Refresh DEV from PROD.** Before a release is built, the changes PROD made itself are listed
+>   and brought into DEV, so a deploy carries them instead of overwriting them.
+> - **No silent data loss.** A deploy stops and asks before it removes elements or changes an
+>   element's type (which clears its stored values).
+> - **Safer timing.** Deploy only when PROD is idle, with Save Data and a recorded backup first.
+> - **Order is enforced.** Change sets that touch the same object deploy in the order the changes
+>   were made, so an older release can't undo a newer one.
+> - **Return to the last release.** A failed deploy can put PROD's design back the way it was.
+> - **Tests that stay true.** Structure checks run on any data, calculation checks bring their own
+>   test data, and data-quality checks warn without blocking.
+
 ### Web applications on TM1 (Lenses)
 Focused HTML screens on live TM1 data, one per job, with governed write-back. They're built in the
 IDE, live in the TM1 model, and open in the separate Lens app — people sign in as themselves, and
