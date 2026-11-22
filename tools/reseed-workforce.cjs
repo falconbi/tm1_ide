@@ -30,8 +30,11 @@ const ORDER = [
     'seed-assignments.json',
     'seed-workforce-input.json',
 ]
+// pCount is settable so a smaller, faster model can be rebuilt deliberately:
+//   RESEED_POSITIONS=500 node tools/reseed-workforce.cjs TM1_Test_DEV --run
+const POSITIONS = Number(process.env.RESEED_POSITIONS || 3000)
 const PARAMS = {
-    'WFP Generate Positions': { pCount: 3000, pSeed: 20261020 },
+    'WFP Generate Positions': { pCount: POSITIONS, pSeed: 20261020 },
     'WFP Generate Hiring Plan': { pStage: 'feb' },
     'WFP Seed Assignments': { pClear: 1 },
 }
