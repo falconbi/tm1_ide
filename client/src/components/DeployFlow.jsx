@@ -67,6 +67,7 @@ export default function DeployFlow() {
   // dimension → { deletes: { element: 'delete'|'keep' }, moves: { child: 'take'|'keep' } }
   // No default: an undecided delete or move blocks the refresh.
   const [decisions, setDecisions] = useState({})
+  const [choreTicked, setChoreTicked] = useState({})   // chore → copy the target's schedule
   const [refreshed, setRefreshed] = useState(null)  // result of the apply
   const [tests, setTests] = useState(null)
   const [closed, setClosed] = useState(false)
@@ -136,7 +137,8 @@ export default function DeployFlow() {
       const accept = (refresh?.dimensions ?? [])
         .filter(d => ticked[d.dimension])
         .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {}, attributeTypes: decisions[d.dimension]?.attributes ?? {} }))
-      const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept })
+      const chores = (refresh?.chores ?? []).filter(c => choreTicked[c.name]).map(c => ({ name: c.name, takeSchedule: true }))
+      const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept, chores })
       setRefreshed(r)
       await loadRefresh()
     } catch (e) { setError(e.message) }
@@ -358,12 +360,13 @@ export default function DeployFlow() {
                               <div className="px-3 py-2 border-t border-border/40 space-y-1">
                                 <p className="text-[11px] font-semibold text-foreground">Chore schedules on {target} that differ from {server}</p>
                                 {(refresh.chores ?? []).map(c => (
-                                  <p key={c.name} className="text-[11px]">
-                                    {c.name} <span className="text-muted-foreground">— {c.fields.length ? `differs: ${c.fields.join(', ')}` : 'schedule matches'}</span>
-                                    {c.devActive && <span className="text-amber-600"> · DEV has it ON (a refresh leaves it off)</span>}
-                                  </p>
+                                  <label key={c.name} className="flex items-start gap-2 text-[11px]">
+                                    <input type="checkbox" checked={!!choreTicked[c.name]} onChange={e => setChoreTicked(t => ({ ...t, [c.name]: e.target.checked }))} className="mt-0.5" />
+                                    <span>{c.name} <span className="text-muted-foreground">— {c.fields.length ? `differs: ${c.fields.join(', ')}` : 'schedule matches'}</span>
+                                    {c.devActive && <span className="text-amber-600"> · DEV has it ON (the refresh leaves it off)</span>}</span>
+                                  </label>
                                 ))}
-                                <p className="text-[10px] text-muted-foreground">Reported only for now: the refresh does not change a chore's schedule yet. The on/off flag is the deploy's job — DEV stays off, the target's own flag is restored around the pull.</p>
+                                <p className="text-[10px] text-muted-foreground">Ticked chores take {target}'s schedule; DEV is always left off. The on/off flag itself is the deploy's job — the target's own flag is restored around the pull.</p>
                               </div>
                             )}
 
