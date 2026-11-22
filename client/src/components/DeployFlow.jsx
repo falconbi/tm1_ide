@@ -64,7 +64,9 @@ export default function DeployFlow() {
   const [refresh, setRefresh] = useState(null)      // { dimensions: [...] }
   const [refreshBusy, setRefreshBusy] = useState('')
   const [ticked, setTicked] = useState({})          // dimension → true
-  const [delTicked, setDelTicked] = useState({})    // dimension → include deletes
+  // dimension → { deletes: { element: 'delete'|'keep' }, moves: { child: 'take'|'keep' } }
+  // No default: an undecided delete or move blocks the refresh.
+  const [decisions, setDecisions] = useState({})
   const [refreshed, setRefreshed] = useState(null)  // result of the apply
   const [tests, setTests] = useState(null)
   const [closed, setClosed] = useState(false)
@@ -133,7 +135,7 @@ export default function DeployFlow() {
     try {
       const accept = (refresh?.dimensions ?? [])
         .filter(d => ticked[d.dimension])
-        .map(d => ({ dimension: d.dimension, includeDeletes: !!delTicked[d.dimension], allowTypeChanges: !!typeAllow[d.dimension] }))
+        .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {} }))
       const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept })
       setRefreshed(r)
       await loadRefresh()
@@ -210,6 +212,18 @@ export default function DeployFlow() {
   }
 
   if (!ship) return null
+
+  // Deletes and moves the target made must each be decided, with no default.
+  const undecided = (refresh?.dimensions ?? [])
+    .filter(d => ticked[d.dimension])
+    .flatMap(d => [
+      ...(d.removeElements ?? []).filter(el => !['delete','keep'].includes(decisions[d.dimension]?.deletes?.[el])).map(el => ({ dim: d.dimension, kind: 'delete', element: el })),
+      ...(d.moves ?? []).filter(m => !['take','keep'].includes(decisions[d.dimension]?.moves?.[m.child])).map(m => ({ dim: d.dimension, kind: 'move', element: m.child })),
+    ])
+  const setDecision = (dim, kind, element, choice) => setDecisions(prev => {
+    const cur = prev[dim] ?? { deletes: {}, moves: {} }
+    return { ...prev, [dim]: kind === 'delete' ? { ...cur, deletes: { ...cur.deletes, [element]: choice } } : { ...cur, moves: { ...cur.moves, [element]: choice } } }
+  })
 
   const outcome = res ? classifyDeployOutcome(res) : null
   const doneOk = res?.executed && res?.controlOk !== false && (drift?.entries ?? []).length === 0
@@ -331,16 +345,41 @@ export default function DeployFlow() {
                                 <span className="text-muted-foreground">
                                   {[d.addElements.length ? `+${d.addElements.length} el` : '', d.addEdges.length || d.moves.length ? `+${d.addEdges.length + d.moves.length} edge` : ''].filter(Boolean).join(' · ') || '—'}
                                 </span>
-                                <label className="flex items-center gap-1.5 text-muted-foreground">
-                                  {d.removeElements.length ? (
-                                    <>
-                                      <input type="checkbox" checked={!!delTicked[d.dimension]} onChange={e => setDelTicked(v => ({ ...v, [d.dimension]: e.target.checked }))} />
-                                      <span>remove {d.removeElements.length}</span>
-                                    </>
-                                  ) : <span>—</span>}
-                                </label>
+                                <span className="text-muted-foreground">
+                                  {d.removeElements.length ? `${d.removeElements.length} to decide` : '—'}
+                                </span>
                               </div>
                             ))}
+                            {(refresh.dimensions ?? []).some(d => (d.removeElements ?? []).length || (d.moves ?? []).length) && (
+                              <div className="px-3 py-2 border-t border-border/40 space-y-2">
+                                <p className="text-[11px] font-semibold text-foreground">PROD deleted or moved these — decide each one</p>
+                                {(refresh.dimensions ?? []).filter(d => (d.removeElements ?? []).length || (d.moves ?? []).length).map(d => (
+                                  <div key={d.dimension} className="space-y-1">
+                                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{d.dimension}</p>
+                                    {(d.removeElements ?? []).map(el => (
+                                      <div key={`del-${el}`} className="flex items-center gap-2 text-[11px] flex-wrap">
+                                        <span className="text-foreground">Delete {el}</span>
+                                        <button onClick={() => setDecision(d.dimension, 'delete', el, 'delete')} className={decisions[d.dimension]?.deletes?.[el] === 'delete' ? 'px-2 py-0.5 rounded bg-red-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Delete on DEV too</button>
+                                        <span className="text-muted-foreground/60">its DEV values are cleared</span>
+                                        <button onClick={() => setDecision(d.dimension, 'delete', el, 'keep')} className={decisions[d.dimension]?.deletes?.[el] === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep — restore on PROD</button>
+                                        <span className="text-muted-foreground/60">next deploy puts it back on PROD, no data</span>
+                                      </div>
+                                    ))}
+                                    {(d.moves ?? []).map(m => (
+                                      <div key={`mv-${m.child}`} className="flex items-center gap-2 text-[11px] flex-wrap">
+                                        <span className="text-foreground">Move {m.child}</span>
+                                        <span className="text-muted-foreground/60">DEV under {m.fromParent ?? '(none)'} · PROD under {m.toParent}</span>
+                                        <button onClick={() => setDecision(d.dimension, 'move', m.child, 'take')} className={decisions[d.dimension]?.moves?.[m.child] === 'take' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take PROD's</button>
+                                        <button onClick={() => setDecision(d.dimension, 'move', m.child, 'keep')} className={decisions[d.dimension]?.moves?.[m.child] === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep DEV's</button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ))}
+                                {undecided.length > 0 && (
+                                  <p className="text-[11px] text-red-600">Still to decide: {undecided.map(u => `${u.kind} ${u.element} (${u.dim})`).join(', ')}</p>
+                                )}
+                              </div>
+                            )}
                             {(refresh.dimensions ?? []).some(d => (d.typeRisk ?? []).length) && (
                               <div className="px-3 py-2 border-t border-border/40 space-y-1">
                                 <p className="text-[11px] text-red-600">Bringing these across changes element types — their values on {server} are cleared:</p>
@@ -368,7 +407,7 @@ export default function DeployFlow() {
                   )}
                   <div className="flex items-center gap-2 pt-1">
                     {!session?.closed_at && (
-                      <button onClick={doRefresh} disabled={refreshBusy || !(refresh?.dimensions ?? []).some(d => ticked[d.dimension])} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                      <button onClick={doRefresh} disabled={refreshBusy || !(refresh?.dimensions ?? []).some(d => ticked[d.dimension]) || undecided.length > 0} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
                         {refreshBusy === 'apply' ? 'Refreshing…' : 'Refresh into ' + server}
                       </button>
                     )}
