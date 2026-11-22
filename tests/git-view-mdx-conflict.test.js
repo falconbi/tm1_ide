@@ -42,3 +42,9 @@ test('the key covers the parent, so an MDX change matches its own view only', ()
     assert.ok(keys.has(objectKey('view', 'V', 'Cube A')))
     assert.ok(keys.has(objectKey('cube', 'Cube A')))
 })
+
+test('a cube file that differs only in its view list is not a conflict — shipping it is the fix', () => {
+    const releaseKeys = expectedPlanKeys([{ type: 'view', name: 'V', parent: 'Cube A' }])
+    const conflicts = viewSubsetConflicts([{ file: 'cubes/Cube A.json', blocking: false, kind: 'cube-views' }], releaseKeys)
+    assert.equal(conflicts.length, 0)
+})

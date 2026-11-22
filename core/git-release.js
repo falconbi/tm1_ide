@@ -169,6 +169,11 @@ function cubeDiffBeyondViews(baseJson, devJson) {
 // Review check and the final deploy guard use exactly the same rule.
 function viewSubsetConflicts(nonBlockingEntries, releaseKeys) {
     return (nonBlockingEntries ?? []).filter(e => {
+        // A cube file whose ONLY difference is its list of views is not a conflict:
+        // the drift check proved nothing else changed, the list is a consequence of
+        // the views themselves, and a pull does not delete a view the list omits (it
+        // only applies views the IDE hands it). Shipping it IS the fix.
+        if (e?.kind === 'cube-views') return false
         const o = objectFromFile(e.file)
         return o?.type && releaseKeys?.has(objectKey(o.type, o.name, o.parent))
     })
