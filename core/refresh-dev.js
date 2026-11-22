@@ -118,6 +118,28 @@ async function planRefresh(source, target, { ideToken } = {}) {
 // A dimension is applied whole on purpose: adding an edge without its move, or an
 // element without the edge that places it, leaves DEV in a state neither server
 // has. Partial application is not offered.
+// Which type changes actually need a PATCH, and which are already settled by the
+// edges. Ordering matters in TM1: a leaf only becomes a consolidation once it has
+// a component, so patching Type=Consolidated before the edge fails with "element
+// has no components". An element the move or edge just made a rollup therefore
+// needs no patch at all.
+//
+// Pure, so the rule is testable without a server.
+function typeChangesToApply(diff, want = {}) {
+    const gainsComponents = new Set([
+        ...(diff?.moves ?? []).filter(m => want?.moves?.[m.child] !== 'keep').map(m => m.toParent),
+        ...(diff?.addEdges ?? []).map(e => e.parent),
+    ])
+    const patch = []
+    const skip = []
+    for (const t of diff?.typeChanges ?? []) {
+        if (t.to === 'Consolidated' && gainsComponents.has(t.name)) continue   // the edge did it
+        if (!want?.allowTypeChanges) { skip.push({ ...t, why: 'not allowed' }); continue }
+        patch.push(t)
+    }
+    return { patch, skip }
+}
+
 // A decision is part of the record: it goes into the open change set, so Review
 // and the deploy report can show who chose what.
 function recordDecision(server, dimension, text, { kind, element, choice, user }) {
@@ -223,16 +245,14 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
             await dev.addEdge(dim, e.parent, e.child, e.weight ?? 1, dim)
             changed.push(`edge ${e.parent} → ${e.child}`)
         }
-        // Type changes LAST: a leaf only becomes a consolidation once it HAS a
-        // component, so the edges above must land first. An element that the move
-        // or edge just made a consolidation needs no patch at all.
-        const nowParent = new Set([...diff.moves.filter(m => want.moves?.[m.child] !== 'keep').map(m => m.toParent), ...diff.addEdges.map(e => e.parent)])
-        for (const t of diff.typeChanges) {
-            if (t.to === 'Consolidated' && nowParent.has(t.name)) continue   // the edge did it
-            if (!want.allowTypeChanges) {
-                skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
-                continue
-            }
+        // Type changes LAST: the edges above must land first (a leaf becomes a
+        // consolidation only once it has a component), and an element the edge
+        // already made a rollup is not patched at all.
+        const { patch, skip: skipTypes } = typeChangesToApply(diff, want)
+        for (const t of skipTypes) {
+            skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
+        }
+        for (const t of patch) {
             try {
                 await dev.patch(
                     `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(t.name)}')`,
@@ -264,4 +284,4 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
     return { ok: true, source, target, applied, skipped }
 }
 
-module.exports = { diffDimension, undecidedDecisions, planRefresh, applyRefresh }
+module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, planRefresh, applyRefresh }
