@@ -202,21 +202,6 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
             await dev.addElementAt(dim, e.name, e.type, dim)
             changed.push(`element ${e.name}`)
         }
-        // A type change is a real change of the element's role: safe to apply only
-        // when the person ticked it, because the leaf → consolidation direction
-        // clears the values stored against the element (the typeRisk guard above
-        // covers the case where an edge causes it).
-        for (const t of diff.typeChanges) {
-            if (!want.allowTypeChanges) {
-                skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
-                continue
-            }
-            await dev.patch(
-                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(t.name)}')`,
-                { Type: t.to }
-            )
-            changed.push(`type ${t.name}: ${t.from} → ${t.to}`)
-        }
         // Moves before plain additions: a move creates the edge that a plain add of
         // the same child would otherwise duplicate.
         const moved = new Set()
@@ -238,6 +223,27 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
             await dev.addEdge(dim, e.parent, e.child, e.weight ?? 1, dim)
             changed.push(`edge ${e.parent} → ${e.child}`)
         }
+        // Type changes LAST: a leaf only becomes a consolidation once it HAS a
+        // component, so the edges above must land first. An element that the move
+        // or edge just made a consolidation needs no patch at all.
+        const nowParent = new Set([...diff.moves.filter(m => want.moves?.[m.child] !== 'keep').map(m => m.toParent), ...diff.addEdges.map(e => e.parent)])
+        for (const t of diff.typeChanges) {
+            if (t.to === 'Consolidated' && nowParent.has(t.name)) continue   // the edge did it
+            if (!want.allowTypeChanges) {
+                skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
+                continue
+            }
+            try {
+                await dev.patch(
+                    `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(t.name)}')`,
+                    { Type: t.to }
+                )
+                changed.push(`type ${t.name}: ${t.from} → ${t.to}`)
+            } catch (e) {
+                skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: e.message })
+            }
+        }
+
         for (const name of diff.removeElements) {
             if (want.deletes?.[name] === 'keep') {
                 // Deliberate: DEV keeps it, so the deploy restores it on the target
