@@ -670,7 +670,16 @@ class TM1Client {
     }
 
     async createChore(data) {
-        return this.post('Chores', data)
+        // One path for every caller (the chore route, the editor, any agent): TM1
+        // wants the task's process as an entity bind and the parameter counts to
+        // match, so the body is normalised here rather than in each caller.
+        const { toCreateChoreBody } = require('./chore-payload')
+        const names = new Set((data?.Tasks ?? []).map(t => t?.Process?.Name ?? t?.ProcessName ?? null).filter(Boolean))
+        const defs = new Map()
+        for (const name of names) {
+            try { defs.set(name, await this.getProcess(name)) } catch { /* let TM1 report it */ }
+        }
+        return this.post('Chores', toCreateChoreBody(data, (n) => defs.get(n) ?? null))
     }
 
     async executeChore(name) {
