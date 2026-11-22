@@ -51,6 +51,8 @@ for (const [col, type] of [
     ['release_added_by_user',       'TEXT'],
     ['release_added_as_dependency', 'TEXT'],
     ['release_excluded_by_user',    'TEXT'],
+    ['no_change_at',                'TEXT'],
+    ['no_change_reason',            'TEXT'],
     ['wont_deploy_at',              'TEXT'],
     ['wont_deploy_by',              'TEXT'],
     ['wont_deploy_reason',          'TEXT'],
@@ -113,6 +115,16 @@ function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency,
             id)
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
+// A change set whose objects already match the target at release time: it has
+// nothing to deploy, so it is recorded as done with the reason. Without this it
+// could never be released ("nothing changed") yet still blocked later sets through
+// the ordering check — a deadlock with no exit in the UI.
+function markSessionNoChange(id, { reason, at } = {}) {
+    db.prepare(`UPDATE sessions SET no_change_at = ?, no_change_reason = ? WHERE id = ?`)
+        .run(at ?? new Date().toISOString(), String(reason ?? '').trim() || null, id)
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
+}
+
 function markSessionDeployed(id, target) {
     db.prepare(`UPDATE sessions SET deployed_target = ?, deployed_at = ? WHERE id = ?`).run(target ?? null, new Date().toISOString(), id)
 }
@@ -353,7 +365,7 @@ function getObjectOrdering(server, sessionId, objects) {
     const out = []
     const stmt = db.prepare(`
         SELECT s.id AS session_id, s.name AS session_name, s.user,
-               s.deployed_target, s.wont_deploy_at, s.covered_by, s.kind, s.closed_at,
+               s.deployed_target, s.wont_deploy_at, s.covered_by, s.kind, s.closed_at, s.no_change_at,
                MAX(l.timestamp) AS at
         FROM log_entries l
         JOIN sessions s ON s.id = l.session_id
@@ -494,4 +506,4 @@ try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch { /* alrea
 // The TM1 login a change was made with (the MCP's builder identity), next to the developer in `user`.
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch { /* already migrated */ }
 
-module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionWontDeploy, unmarkSessionWontDeploy, markSessionCovered, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getObjectOrdering, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionNoChange, markSessionWontDeploy, unmarkSessionWontDeploy, markSessionCovered, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getObjectOrdering, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }

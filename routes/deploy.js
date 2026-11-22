@@ -391,6 +391,9 @@ app.post('/api/deploy/git/release', async (req, res) => {
             addObjects, excludeObjects, by: req.user ?? null, catchUp,
         })
         if (r.refused) return res.status(409).json({ error: r.error })
+        // Nothing to deploy: the set is recorded as done (with the reason) and there
+        // is no release commit to approve.
+        if (r.noChange) return res.json(r)
         if (r.ok === false) return res.status(500).json({ error: r.error })
         cl.setSessionRelease(changeSet.id, r.releaseCommit, target, {
             addedByUser: r.addedByUser,

@@ -98,11 +98,12 @@ test('a PROCESS_RUN never makes the release ship the process file', async () => 
     cl.setSessionCommit(s.id, devCommit)
     cl.writeLog({ server, action: 'PROCESS_RUN', objectType: 'process-run', objectName: 'MyProc', detail: { status: 'completed' }, user: 'james' })
 
-    // Only a run changed nothing this change set owns → nothing to release.
+    // Only a run changed nothing this change set owns → nothing to deploy. That is
+    // recorded as done (with the reason), not refused: a set that can never be
+    // released yet blocks later sets is a deadlock.
     const onlyRun = await buildRelease(s, 'TGR-1', { token: 'x', gitUser: 't', repoUrl: bare })
-    assert.equal(onlyRun.ok, false)
-    assert.equal(onlyRun.refused, true)
-    assert.match(onlyRun.error, /nothing to release/i)
+    assert.equal(onlyRun.noChange, true)
+    assert.match(onlyRun.reason, /nothing to deploy/i)
 
     // Add a real change; the process file is still left on DEV.
     cl.writeLog({ server, action: 'RULES_SAVED', objectType: 'rules', objectName: 'Keep', user: 'james' })

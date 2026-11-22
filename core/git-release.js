@@ -176,7 +176,9 @@ function sharedObjectOrdering(rows, target) {
     const older = []
     const newer = []
     for (const r of rows ?? []) {
-        if (!r?.other || r.other.retired) continue
+        // A retired set owns nothing, and a set recorded as "no change to deploy"
+        // has nothing left to apply — neither may block a later release.
+        if (!r?.other || r.other.retired || r.other.noChange) continue
         const at = r.other.at
         const mine = r.mineAt
         if (!at || !mine) continue
@@ -510,14 +512,17 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             }
         }
 
-        // Nothing to ship?
+        // Nothing to ship? An ordinary release whose objects already match the
+        // target has nothing to deploy: record it as done, with the reason, so the
+        // ordering check lets later sets through. (A catch-up is different — it is
+        // a whole-model reset and a no-op means it was not needed.)
         if (included.length === 0) {
-            return {
-                ok: false, refused: true,
-                error: catchUp
-                    ? `Nothing differs between ${target}'s recorded commit and ${session?.server ?? 'the source'} — there is no catch-up to release.`
-                    : `Nothing from change set "${changeSet?.name ?? ''}" changed files between the base and the pushed commit — nothing to release.`,
+            if (catchUp) {
+                return { ok: false, refused: true, error: `Nothing differs between ${target}'s recorded commit and ${session?.server ?? 'the source'} — there is no catch-up to release.` }
             }
+            const reason = `nothing to deploy: this change set's objects already match ${target}`
+            try { cl.markSessionNoChange(session.id, { reason, by }) } catch { /* older DB */ }
+            return { ok: true, noChange: true, reason, target, changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null } }
         }
 
         // Apply: base + only this change set's files.
@@ -642,7 +647,8 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                             mineAt,
                             other: {
                                 id: other.session_id, name: other.session_name ?? '(unnamed)', at: other.at,
-                                deployed: !!other.deployed_target, covered: !!other.covered_by, retired: !!other.wont_deploy_at,
+                                deployed: !!other.deployed_target, covered: !!other.covered_by,
+                                retired: !!other.wont_deploy_at, noChange: !!other.no_change_at,
                             },
                         })
                     }

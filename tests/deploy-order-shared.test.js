@@ -79,3 +79,10 @@ test('the same change set touching an object twice is judged by its latest time'
     const r2 = sharedObjectOrdering([row({ mineAt: latest, other: { name: '1001', at: T(14) } })], 'T')
     assert.equal(r2, null)
 })
+
+test('a change set recorded as "no change to deploy" does not block, like a retired one', () => {
+    // Its objects already matched the target when it was released, so it owns
+    // nothing left to apply — blocking on it was a deadlock with no exit.
+    const r = sharedObjectOrdering([row({ mineAt: T(11), other: { name: '1001', at: T(10), noChange: true } })], 'T')
+    assert.equal(r, null)
+})

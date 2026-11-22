@@ -173,6 +173,8 @@ export default function DeployFlow() {
     setBusy('release'); setError(null); setProg('Building a release of just this change…')
     try {
       const rel = await POST('/api/deploy/git/release', { source: server, target, session: session.id })
+      // Already matches the target: recorded as done, nothing to approve.
+      if (rel?.noChange) { setRelease({ noChange: true, reason: rel.reason }); setStep(4); return }
       if (!rel?.releaseCommit) throw new Error('The release could not be built.')
       setRelease(rel)
       setProg('Reading the target…')
@@ -482,7 +484,14 @@ export default function DeployFlow() {
               {step === 4 && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">A release is the target's last deployed state plus only this change set's objects. Everything else stays on {server}.</p>
-                  {release && (
+                  {release?.noChange && (
+                    <div className="border border-border rounded-md p-3 space-y-1">
+                      <p className="text-xs font-semibold">Nothing to deploy</p>
+                      <p className="text-[11px] text-muted-foreground">{release.reason}</p>
+                      <p className="text-[11px] text-muted-foreground">Recorded as done with this reason; it no longer blocks other change sets.</p>
+                    </div>
+                  )}
+                  {release && !release.noChange && (
                     <div className="border border-border rounded-md p-3 space-y-1">
                       <p className="text-[11px]">Release <span className="font-mono">{String(release.releaseCommit).slice(0, 10)}</span> · included <span className="font-semibold">{release.included?.length ?? 0}</span></p>
                       {(release.included ?? []).map((o, i) => (
@@ -495,7 +504,7 @@ export default function DeployFlow() {
                   {busy && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> {prog}</p>}
                   <div className="flex items-center gap-2 pt-1">
                     <button onClick={doBuild} disabled={!!busy || !!release} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Build release</button>
-                    {release && <button onClick={() => setStep(5)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue to Review</button>}
+                    {release && !release.noChange && <button onClick={() => setStep(5)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue to Review</button>}
                     <button onClick={() => setStep(3)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>
                 </div>
