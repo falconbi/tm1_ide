@@ -860,12 +860,18 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
         git(work, 'fetch', '-q', 'origin', '+refs/heads/*:refs/remotes/origin/*')
         const changed = changedFilesBetween(work, base, releaseCommit)
         const c = makeClient(target, ideToken)
-        // An MDX view's .mdx sibling is its text, not a second object — it is read by
-        // the .json entry below (and JSON.parsing it used to fail the check).
-        const mdxSibling = new Set(releasableCovers(changed).map(x => x.ch.file.replace(/\.json$/i, '.mdx')))
-        for (const ch of changed) {
+        // Views and subsets are checked through their .json (an MDX-only change keeps
+        // the .json identical, so the .json is what exists in the commit either way).
+        // The .mdx itself is never a second object — it is the view's text, read below.
+        const covers = releasableCovers(changed)
+        const coverFiles = new Set(covers.map(x => x.ch.file))
+        const mdxFiles = new Set((changed ?? []).filter(ch => /\.mdx$/i.test(ch.file)).map(ch => ch.file))
+        const toVerify = [
+            ...(changed ?? []).filter(ch => !mdxFiles.has(ch.file) && !coverFiles.has(ch.file)),
+            ...covers.map(x => x.ch),
+        ]
+        for (const ch of toVerify) {
             if (ch.action === 'D') continue      // a deletion removes — nothing to verify
-            if (mdxSibling.has(ch.file)) continue
             const obj = objectFromFile(ch.file)
             if (!obj) continue
             let ok = false
@@ -894,7 +900,10 @@ async function verifyRelease(target, { base, releaseCommit, repoUrl, token, gitU
                         if (want === null) { ok = false }
                         else {
                             const t = await c.get(vpath, { $select: 'MDX' })
-                            ok = String(t?.MDX ?? '').trim() === String(want).trim().replace(/\n$/, '')
+                            // TM1 reflows MDX on save (spacing, line breaks). Compared
+                            // exactly, a correctly applied view was reported incomplete.
+                            const norm = (x) => String(x ?? '').replace(/\s+/g, ' ').trim()
+                            ok = norm(t?.MDX) === norm(want)
                         }
                     } else {
                         await c.get(vpath, { $select: 'Name' })
