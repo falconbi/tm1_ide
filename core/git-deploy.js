@@ -7,6 +7,7 @@
 // gate is enforced inside execute — it cannot be bypassed by any caller.
 
 const { makeClient } = require('./adapter-registry')
+const { odataKey } = require('./odata-key')
 const { TM1Client } = require('./tm1-client')
 const assertions = require('./assertions')
 const gitIdentity = require('./git-identity')
@@ -67,6 +68,10 @@ function partitionCarriedDrift(entries = [], elementLoss) {
     const carried = []
     for (const e of entries ?? []) {
         if (e?.blocking === false) { carried.push(e); continue }   // views/subsets: already reported
+        // A DELETE on the target is never "carried": the object is absent, so there
+        // are no elements to lose, and having nothing to lose is not the same as
+        // having everything. It blocks, whatever the release says it shipped.
+        if (String(e?.status ?? '').toUpperCase() === 'D') { blocking.push(e); continue }
         const dim = dimOf(e?.file)
         if (lossKnown && dim && !lostDimensions.has(dim.toLowerCase())) {
             carried.push({ ...e, carried: true, reason: 'the release carries what PROD changed here' })
@@ -75,6 +80,30 @@ function partitionCarriedDrift(entries = [], elementLoss) {
         }
     }
     return { blocking, carried }
+}
+
+// The OData path that proves each shipped object exists on the target, deduped by
+// object. A process is two files and a view two, so the change set's object list
+// repeats; the check must not.
+function shippedTargetPaths(objects = []) {
+    const seen = new Set()
+    const out = []
+    for (const o of objects ?? []) {
+        if (!o?.type || !o?.name) continue
+        const key = `${o.type}|${o.name}|${o.parent ?? ''}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const path =
+            o.type === 'dimension' ? `Dimensions('${odataKey(o.name)}')`
+            : o.type === 'cube' ? `Cubes('${odataKey(o.name)}')`
+            : o.type === 'view' ? `Cubes('${odataKey(o.parent)}')/Views('${odataKey(o.name)}')`
+            : o.type === 'subset' ? `Dimensions('${odataKey(o.parent)}')/Hierarchies('${odataKey(o.parent)}')/Subsets('${odataKey(o.name)}')`
+            : o.type === 'process' ? `Processes('${odataKey(o.name)}')`
+            : o.type === 'chore' ? `Chores('${odataKey(o.name)}')`
+            : null
+        if (path) out.push({ label: `${o.type} ${o.name}`, path })
+    }
+    return out
 }
 
 // Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')",
@@ -569,6 +598,20 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                     out.incompleteCheckError = e.message
                     out.incomplete = []
                 }
+
+                // Every object this change set claims must be on the target when the
+                // deploy ends — including one the release inherited from its base and
+                // therefore never listed as "changed". A recorded delivery that is
+                // not there is the state that silently poisons later deploys.
+                const missing = []
+                for (const { label, path } of shippedTargetPaths(out.shippedObjects)) {
+                    try { await c.get(path, { $select: 'Name' }) } catch { missing.push(label) }
+                }
+                if (missing.length) {
+                    out.missingShipped = missing
+                    out.controlOk = false
+                    if (!out.error) out.error = `Deployed, but these are missing on ${target}: ${missing.join(', ')}`
+                }
             }
         } catch (e) {
             out.executed = false
@@ -651,4 +694,4 @@ async function elementLossFor(target, commit, { token, gitUser = gitIdentity.use
     return { loss: cmp.loss, elementLoss: cmp.elementLoss, targetOnly: cmp.targetOnly }
 }
 
-module.exports = { prepare, execute, elementLossFor, partitionCarriedDrift }
+module.exports = { prepare, execute, elementLossFor, partitionCarriedDrift, shippedTargetPaths }

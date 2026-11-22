@@ -118,6 +118,38 @@ async function planRefresh(source, target, { ideToken } = {}) {
 // A dimension is applied whole on purpose: adding an edge without its move, or an
 // element without the edge that places it, leaves DEV in a state neither server
 // has. Partial application is not offered.
+// A decision is part of the record: it goes into the open change set, so Review
+// and the deploy report can show who chose what.
+function recordDecision(server, dimension, text, { kind, element, choice, user }) {
+    try {
+        cl.writeLog({
+            server, action: 'REFRESH_DECISION', objectType: 'dimension', objectName: dimension,
+            detail: text, user,
+            afterState: { kind, element, choice },
+        })
+    } catch { /* the decision still applied; the log is evidence, not the action */ }
+}
+
+// Every delete and every move PROD made must be decided before the refresh can
+// apply. There is no default: an undecided delete left alone would be silently
+// restored on PROD by the next deploy, and an undecided move silently put back.
+// Pure, so the rule is testable without a server.
+//
+//   want.deletes: { [element]: 'delete' | 'keep' }
+//   want.moves:   { [child]:   'take'   | 'keep' }
+function undecidedDecisions(diff, want = {}) {
+    const open = []
+    for (const el of diff?.removeElements ?? []) {
+        const choice = want?.deletes?.[el]
+        if (choice !== 'delete' && choice !== 'keep') open.push({ dimension: want?.dimension ?? null, kind: 'delete', element: el })
+    }
+    for (const m of diff?.moves ?? []) {
+        const choice = want?.moves?.[m.child]
+        if (choice !== 'take' && choice !== 'keep') open.push({ dimension: want?.dimension ?? null, kind: 'move', element: m.child })
+    }
+    return open
+}
+
 async function applyRefresh(source, target, { ideToken, session, accept = [], user } = {}) {
     if (!session) throw Object.assign(new Error('Refused: open a change set first — a refresh must be recorded in one.'), { refused: true })
     const sess = cl.getSession(session)
@@ -130,10 +162,26 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
     const applied = []
     const skipped = []
 
+    // Refuse before anything is written if a delete or move is undecided.
+    const undecided = []
+    const planned = []
     for (const want of accept) {
+        const [p, d] = await Promise.all([readDimension(prod, want.dimension), readDimension(dev, want.dimension)])
+        const diff = diffDimension(p, d)
+        planned.push({ want, diff })
+        undecided.push(...undecidedDecisions(diff, want))
+    }
+    if (undecided.length) {
+        const names = undecided.map(u => `${u.kind === 'delete' ? 'delete' : 'move'} ${u.element} (${u.dimension})`)
+        throw Object.assign(new Error(
+            `Refused: decide these before refreshing — ${names.join(', ')}. ` +
+            `A delete is "delete on DEV too" or "keep it and restore it on PROD"; a move is "take PROD's" or "keep DEV's".`
+        ), { refused: true, undecided })
+    }
+
+    for (const { want, diff } of planned) {
         const dim = want.dimension
         const [p, d] = await Promise.all([readDimension(prod, dim), readDimension(dev, dim)])
-        const diff = diffDimension(p, d)
         const changed = []
 
         // A move or edge can turn a leaf on DEV into a consolidation, clearing the
@@ -173,27 +221,33 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
         // the same child would otherwise duplicate.
         const moved = new Set()
         for (const m of diff.moves) {
+            if (want.moves?.[m.child] === 'keep') {
+                // Deliberate: DEV keeps its parent, so the next deploy puts DEV's
+                // parent back on PROD — no data is affected by an edge either way.
+                recordDecision(source, dim, `move ${m.child}: kept DEV's parent ${m.fromParent ?? '(none)'} — the next deploy restores it on the target`, { kind: 'move', element: m.child, choice: 'keep', user })
+                continue
+            }
             if (m.fromParent) await dev.deleteEdge(dim, m.fromParent, m.child, dim).catch(() => {})
             await dev.addEdge(dim, m.toParent, m.child, m.toWeight ?? 1, dim)
             moved.add(m.child)
             changed.push(`move ${m.child}: ${m.fromParent ?? '(none)'} → ${m.toParent}`)
+            recordDecision(source, dim, `move ${m.child}: took the target's parent ${m.toParent}`, { kind: 'move', element: m.child, choice: 'take', user })
         }
         for (const e of diff.addEdges) {
             if (moved.has(e.child)) continue
             await dev.addEdge(dim, e.parent, e.child, e.weight ?? 1, dim)
             changed.push(`edge ${e.parent} → ${e.child}`)
         }
-        if (want.includeDeletes) {
-            for (const name of diff.removeElements) {
-                await dev.deleteElement(dim, name, dim)
-                changed.push(`removed ${name}`)
+        for (const name of diff.removeElements) {
+            if (want.deletes?.[name] === 'keep') {
+                // Deliberate: DEV keeps it, so the deploy restores it on the target
+                // with no values (the element itself comes back, its data does not).
+                recordDecision(source, dim, `delete ${name}: kept on DEV — the next deploy restores it on the target with no data`, { kind: 'delete', element: name, choice: 'keep', user })
+                continue
             }
-        } else if (diff.removeElements.length) {
-            skipped.push({
-                dimension: dim,
-                what: `${diff.removeElements.length} element${diff.removeElements.length === 1 ? '' : 's'} PROD no longer has`,
-                why: 'kept on DEV, so the next deploy would put them back on PROD',
-            })
+            await dev.deleteElement(dim, name, dim)
+            changed.push(`removed ${name}`)
+            recordDecision(source, dim, `delete ${name}: deleted on DEV too (its values are gone)`, { kind: 'delete', element: name, choice: 'delete', user })
         }
 
         if (changed.length) {
@@ -204,4 +258,4 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
     return { ok: true, source, target, applied, skipped }
 }
 
-module.exports = { diffDimension, planRefresh, applyRefresh }
+module.exports = { diffDimension, undecidedDecisions, planRefresh, applyRefresh }
