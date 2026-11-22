@@ -149,7 +149,11 @@ export default function DeployFlow() {
           // An object only PROD has arrives by default; a conflict must be chosen.
           choice: coverChoice[coverKey(c)] ?? c.choice ?? null,
         }))
-      const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept, chores, covers })
+      const hierarchies = (refresh?.hierarchies ?? []).map(h => ({
+        dimension: h.dimension, name: h.name,
+        choice: coverChoice[`hierarchy:${h.name}:${h.dimension}`] ?? h.choice ?? null,
+      }))
+      const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept, chores, covers, hierarchies })
       setRefreshed(r)
       await loadRefresh()
     } catch (e) { setError(e.message) }
@@ -238,8 +242,8 @@ export default function DeployFlow() {
     ])
   // A view or subset on both sides with different content is a conflict, not a gap:
   // no default, exactly like a delete or a move.
-  const undecidedCovers = [...(refresh?.subsets ?? []), ...(refresh?.views ?? [])]
-    .filter(c => !c.adding && !['take','keep'].includes(coverChoice[coverKey(c)] ?? c.choice))
+  const undecidedCovers = [...(refresh?.subsets ?? []), ...(refresh?.views ?? []), ...(refresh?.hierarchies ?? [])]
+    .filter(c => !c.adding && !['take','keep'].includes(coverChoice[c.type === 'hierarchy' ? `hierarchy:${c.name}:${c.dimension}` : coverKey(c)] ?? c.choice))
     .map(c => ({ dim: c.dimension ?? c.cube, kind: c.type, element: c.name }))
   const setDecision = (dim, kind, element, choice) => setDecisions(prev => {
     const cur = prev[dim] ?? { deletes: {}, moves: {} }
@@ -353,7 +357,7 @@ export default function DeployFlow() {
                     <>
                       {refreshBusy === 'plan' && <p className="text-[11px] text-muted-foreground">Comparing {target} with {server}…</p>}
                       {refresh && !refreshBusy && (
-                        (refresh.dimensions ?? []).length === 0 && (refresh.subsets ?? []).length === 0 && (refresh.views ?? []).length === 0 && (refresh.chores ?? []).length === 0 ? (
+                        (refresh.dimensions ?? []).length === 0 && (refresh.subsets ?? []).length === 0 && (refresh.views ?? []).length === 0 && (refresh.hierarchies ?? []).length === 0 && (refresh.chores ?? []).length === 0 ? (
                           <p className="text-[11px] text-emerald-700">Nothing to refresh — {server} already has what {target} has.</p>
                         ) : (
                           <div className="border border-border rounded-md overflow-hidden">
@@ -388,6 +392,31 @@ export default function DeployFlow() {
                               </div>
                             )}
 
+                            {(refresh.hierarchies ?? []).length > 0 && (
+                              <div className="px-3 py-2 border-t border-border/40 space-y-2">
+                                <p className="text-[11px] font-semibold text-foreground">Alternate hierarchies that differ on {target}</p>
+                                {(refresh.hierarchies ?? []).map(h => {
+                                  const key = `hierarchy:${h.name}:${h.dimension}`
+                                  const choice = coverChoice[key] ?? h.choice
+                                  return (
+                                    <div key={key} className="flex items-center gap-2 text-[11px] flex-wrap">
+                                      <span className="text-foreground">Hierarchy {h.name}</span>
+                                      <span className="text-muted-foreground/60">({h.dimension}) · {(h.parts ?? []).join(', ')}{h.elements != null ? ` · ${h.elements} members, ${h.edges} edges` : ''}</span>
+                                      {h.adding ? (
+                                        <span className="text-emerald-700">missing on {server} — created</span>
+                                      ) : (
+                                        <>
+                                          <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'take' }))} className={choice === 'take' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take {target}'s</button>
+                                          <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'keep' }))} className={choice === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep {server}'s</button>
+                                        </>
+                                      )}
+                                      {h.onlyDev > 0 && <span className="text-amber-600">{h.onlyDev} element(s) only on {server} — kept</span>}
+                                    </div>
+                                  )
+                                })}
+                                <p className="text-[10px] text-muted-foreground">A hierarchy only {target} has is created here with its members and edges. One on both sides with a different shape has no default. Elements are never deleted: they are dimension-wide, so removing one takes its values too.</p>
+                              </div>
+                            )}
                             {((refresh.subsets ?? []).length > 0 || (refresh.views ?? []).length > 0) && (
                               <div className="px-3 py-2 border-t border-border/40 space-y-2">
                                 <p className="text-[11px] font-semibold text-foreground">Views and subsets that differ on {target}</p>
@@ -497,7 +526,7 @@ export default function DeployFlow() {
                   )}
                   <div className="flex items-center gap-2 pt-1">
                     {!session?.closed_at && (
-                      <button onClick={doRefresh} disabled={refreshBusy || (!(refresh?.dimensions ?? []).some(d => ticked[d.dimension]) && (refresh?.subsets ?? []).length === 0 && (refresh?.views ?? []).length === 0) || undecided.length + undecidedCovers.length > 0} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                      <button onClick={doRefresh} disabled={refreshBusy || (!(refresh?.dimensions ?? []).some(d => ticked[d.dimension]) && (refresh?.subsets ?? []).length === 0 && (refresh?.views ?? []).length === 0 && (refresh?.hierarchies ?? []).length === 0) || undecided.length + undecidedCovers.length > 0} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
                         {refreshBusy === 'apply' ? 'Refreshing…' : 'Refresh into ' + server}
                       </button>
                     )}

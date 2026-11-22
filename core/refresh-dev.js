@@ -157,12 +157,17 @@ async function planRefresh(source, target, { ideToken } = {}) {
     // Views and subsets are the last two object types a deploy ships, and their
     // refresh is its own unit: present on both sides with different content is a
     // CONFLICT that needs a choice (no default), only on the target is a gap.
-    let coverage = { subsets: [], views: [] }
+    let coverage = { subsets: [], views: [], hierarchies: [] }
     try {
         const { planCovers } = require('./refresh-covers')
         const c = await planCovers(source, target, { ideToken })
-        coverage = { subsets: c.subsets, views: c.views, coversSkipped: c.skipped }
+        coverage = { ...coverage, subsets: c.subsets, views: c.views, coversSkipped: c.skipped }
     } catch { /* no view/subset access — dimensions and chores still planned */ }
+    // Alternate hierarchies: a gap is created, a difference on both sides is a choice.
+    try {
+        const { planHierarchies } = require('./refresh-hierarchy')
+        coverage.hierarchies = await planHierarchies(source, target, { ideToken })
+    } catch { /* no hierarchy access — the rest still planned */ }
 
     return { source, target, dimensions: items, chores, ...coverage }
 }
@@ -355,7 +360,7 @@ async function applyAttributeChanges(dev, prod, dim, { attributeTypes = {}, conf
     return { changed, errors, decisions }
 }
 
-async function applyRefresh(source, target, { ideToken, session, accept = [], chores = [], covers = [], user } = {}) {
+async function applyRefresh(source, target, { ideToken, session, accept = [], chores = [], covers = [], hierarchies = [], user } = {}) {
     if (!session) throw Object.assign(new Error('Refused: open a change set first — a refresh must be recorded in one.'), { refused: true })
     const sess = cl.getSession(session)
     if (!sess) throw Object.assign(new Error(`Refused: no change set ${session}.`), { refused: true })
@@ -422,6 +427,24 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
         })
     }
     for (const s of coverPlan.skipped ?? []) skipped.push({ dimension: s.what, what: 'not refreshed', why: s.why })
+
+    // Alternate hierarchies: same rule as views and subsets — a hierarchy on both
+    // sides with a different shape needs a choice, and there is no default.
+    let hierarchyPlan = []
+    try {
+        const { planHierarchies } = require('./refresh-hierarchy')
+        hierarchyPlan = await planHierarchies(source, target, { ideToken })
+    } catch { /* reported by the apply below if it cannot run */ }
+    const hKey = (x) => `hierarchy:${x.name}:${x.dimension}`
+    const hChosen = new Map((Array.isArray(hierarchies) ? hierarchies : []).map(h => [hKey(h), h.choice]))
+    const undecidedHiers = hierarchyPlan.filter(x => x.differs && !x.adding && !['take', 'keep'].includes(hChosen.get(hKey(x))))
+    if (undecidedHiers.length) {
+        const names = undecidedHiers.map(u => `hierarchy ${u.name} (${u.dimension})`)
+        throw Object.assign(new Error(
+            `Refused: decide these before refreshing — ${names.join(', ')}. ` +
+            `Each exists on both servers with a different shape: "take the target's" or "keep ${source}'s" (the next deploy then carries it).`
+        ), { refused: true, undecided: undecidedHiers.map(u => ({ kind: 'hierarchy', element: u.name, dimension: u.dimension })) })
+    }
 
     for (const { want, diff } of planned) {
         const dim = want.dimension
@@ -559,6 +582,17 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
         // The covers unit failed as a whole (no access, a broken client): an error,
         // never a silent omission.
         errors.push({ dimension: 'views and subsets', what: 'not applied', why: e.message })
+    }
+
+    // Alternate hierarchies last: a subset or a view can depend on one existing.
+    try {
+        const { applyHierarchies } = require('./refresh-hierarchy')
+        const h = await applyHierarchies(dev, prod, { hierarchies, source, target, user })
+        for (const c of h.changed) applied.push({ dimension: c.label, applied: c.text })
+        for (const d of h.decisions) applied.push({ dimension: d.label, applied: d.text })
+        for (const e of h.errors) errors.push({ dimension: e.what, what: 'not applied', why: e.why })
+    } catch (e) {
+        errors.push({ dimension: 'alternate hierarchies', what: 'not applied', why: e.message })
     }
 
     return { ok: true, source, target, applied, skipped, errors }
