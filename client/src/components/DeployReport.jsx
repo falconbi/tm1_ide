@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { FileText, X, Loader2, Copy, AlertTriangle, CheckCircle2, Ban } from 'lucide-react'
 import { request, authHeader } from '@/lib/api'
 import { useStore } from '@/store'
@@ -92,30 +93,25 @@ function Row({ k, children }) {
 
 export default function DeployReport() {
   const { deployReport, closeDeployReport } = useStore()
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
   const target = deployReport?.target ?? null
   const commit = deployReport?.commit ?? null
 
-  useEffect(() => {
-    if (!deployReport) return
-    let live = true
-    setLoading(true); setError(null); setData(null)
-    const qs = new URLSearchParams({ target: target ?? '' })
-    if (commit) qs.set('commit', commit)
-    request(`/api/deploy/record?${qs.toString()}`, { headers: authHeader() })
-      .then(async r => {
-        const d = await r.json()
-        if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-        return d
-      })
-      .then(d => { if (live) setData(d) })
-      .catch(e => { if (live) setError(e.message) })
-      .finally(() => { if (live) setLoading(false) })
-    return () => { live = false }
-  }, [deployReport, target, commit])
+  // Server state in a query: opening the panel is a read, not a local state machine.
+  const q = useQuery({
+    queryKey: ['deploy-record', target, commit],
+    enabled: !!deployReport && !!target,
+    queryFn: async () => {
+      const qs = new URLSearchParams({ target: target ?? '' })
+      if (commit) qs.set('commit', commit)
+      const r = await request(`/api/deploy/record?${qs.toString()}`, { headers: authHeader() })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      return d
+    },
+  })
+  const data = q.data ?? null
+  const loading = q.isLoading
+  const error = q.error?.message ?? null
 
   useEffect(() => {
     if (!deployReport) return

@@ -1,5 +1,5 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useCallback, useState } from 'react'
+import { useMemo, useCallback, useState } from 'react'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
 import { conflictEntry } from '@/lib/conflict'
@@ -745,12 +745,13 @@ export function useConflictCheck(server, type, name) {
   const { data: history = [], refetch } = useObjectHistory(server, type, name)
   const [baseline, setBaseline] = useState(null)
   const [initialized, setInitialized] = useState(false)
-  useEffect(() => {
-    if (!initialized && history.length > 0) {
-      setBaseline(history[0].id ?? null)
-      setInitialized(true)
-    }
-  }, [history, initialized])
+  // Adjusting state when the query first delivers data: React's documented
+  // pattern is to do it during render, not in an effect (an effect would render
+  // twice and can cascade). It is a one-shot, guarded by `initialized`.
+  if (!initialized && history.length > 0) {
+    setBaseline(history[0].id ?? null)
+    setInitialized(true)
+  }
   const openConflict = useMemo(
     () => initialized ? conflictEntry(history, username, baseline) : null,
     [history, username, baseline, initialized],

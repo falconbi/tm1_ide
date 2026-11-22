@@ -51,6 +51,9 @@ function AdminOnly({ server, children }) {
 export default function App() {
   const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, deployWizard, closeDeployWizard, server, token, clearAuth } = useStore()
   const layout         = useStore(s => s.layout)
+  // Keyed on the change set: opening the flow for another set must start clean
+  // without a reset effect.
+  const shipSessionId  = useStore(s => s.ship?.session?.id ?? 'none')
   const revealTarget   = useStore(s => s.revealTarget)
 
   // Recursive render of the nested-split layout tree.
@@ -387,7 +390,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
         <AdminOnly server={server}>{showUserMgmt && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}</AdminOnly>
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
-        <DeployFlow />
+        <DeployFlow key={shipSessionId} />
         <DeployReport />
         {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} catchUp={!!deployWizard.catchUp} catchUpTarget={deployWizard.catchUpTarget ?? null} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />

@@ -18,6 +18,7 @@
 
 const { makeClient } = require('./adapter-registry')
 const { TM1Client } = require('./tm1-client')
+const { odataKey } = require('./odata-key')
 const cl = require('./change-log')
 
 const TYPE = { N: 'Numeric', S: 'String', A: 'Alias', C: 'Consolidated' }
@@ -56,7 +57,7 @@ function diffDimension(prod, dev) {
     // different parent — archiving is the usual case. Anything else (a child with
     // several parents on one side) is an edge difference to add or report, never a
     // move: guessing there would delete a rollup DEV added.
-    const parentsOf = (map, child, nameKey) => [...map.values()]
+    const parentsOf = (map, child) => [...map.values()]
         .filter(e => (e.ComponentName ?? e.child) === child)
         .map(e => ({ parent: e.ParentName ?? e.parent, weight: Number(e.Weight ?? e.weight ?? 1) }))
     const moves = []
@@ -153,8 +154,20 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
             await dev.addElementAt(dim, e.name, e.type, dim)
             changed.push(`element ${e.name}`)
         }
+        // A type change is a real change of the element's role: safe to apply only
+        // when the person ticked it, because the leaf → consolidation direction
+        // clears the values stored against the element (the typeRisk guard above
+        // covers the case where an edge causes it).
         for (const t of diff.typeChanges) {
-            skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'element types cannot be changed over REST' })
+            if (!want.allowTypeChanges) {
+                skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
+                continue
+            }
+            await dev.patch(
+                `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(t.name)}')`,
+                { Type: t.to }
+            )
+            changed.push(`type ${t.name}: ${t.from} → ${t.to}`)
         }
         // Moves before plain additions: a move creates the edge that a plain add of
         // the same child would otherwise duplicate.

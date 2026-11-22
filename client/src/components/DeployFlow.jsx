@@ -81,15 +81,8 @@ export default function DeployFlow() {
   const [drift, setDrift] = useState(null)
   const [diffEntry, setDiffEntry] = useState(null)
 
-  // Fresh every time it opens for a change set.
-  useEffect(() => {
-    if (!ship) return
-    setPhase('start'); setStep(1); setError(null); setProg('')
-    setIdle(null); setIdleConfirmed(false); setTests(null); setClosed(false)
-    setRelease(null); setPrep(null); setLoss(null); setLossOk(false); setTypeOk(false); setTypeAllow({})
-    setRefresh(null); setRefreshed(null); setTicked({}); setDelTicked({})
-    setApproved(false); setSettings(null); setBackupAt(''); setRes(null); setDrift(null)
-  }, [ship?.session?.id])
+  // No reset effect: App keys this component on the change set, so opening it for
+  // another set mounts a fresh one. A reset effect re-rendered every field twice.
 
   useEffect(() => {
     if (!ship) return

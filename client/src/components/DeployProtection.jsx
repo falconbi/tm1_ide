@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { request, authHeader } from '@/lib/api'
 import { ShieldCheck, Loader2, Save, HelpCircle } from 'lucide-react'
 import { useServers } from '@/hooks/useApi'
@@ -15,28 +16,26 @@ export default function DeployProtection() {
   const server = useStore(s => s.server)
   const { data } = useServers()
   const servers = (data?.value ?? data ?? []).map(s => s?.name ?? s).filter(Boolean)
+  const qc = useQueryClient()
   const [target, setTarget] = useState(server ?? '')
-  const [process, setProcess] = useState('')
-  const [loaded, setLoaded] = useState(null)   // the saved value, to show "unchanged"
+  const [draft, setDraft] = useState(null)     // edits only; the saved value comes from the query
   const [busy, setBusy] = useState('')
   const [error, setError] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
 
-  useEffect(() => {
-    if (!target) return
-    let live = true
-    setBusy('load'); setError(null)
-    request(`/api/deploy/settings?server=${encodeURIComponent(target)}`, { headers: authHeader() })
-      .then(async r => {
-        const d = await r.json()
-        if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-        return d
-      })
-      .then(d => { if (live) { setProcess(d.backupProcess ?? ''); setLoaded(d.backupProcess ?? '') } })
-      .catch(e => { if (live) setError(e.message) })
-      .finally(() => { if (live) setBusy('') })
-    return () => { live = false }
-  }, [target])
+  // Server state lives in the query, not in an effect: no copy, no cascading render.
+  const settings = useQuery({
+    queryKey: ['deploy-settings', target],
+    enabled: !!target,
+    queryFn: async () => {
+      const r = await request(`/api/deploy/settings?server=${encodeURIComponent(target)}`, { headers: authHeader() })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      return d
+    },
+  })
+  const loaded = settings.data ? (settings.data.backupProcess ?? '') : null
+  const process = draft ?? loaded ?? ''
 
   const save = async () => {
     setBusy('save'); setError(null)
@@ -48,7 +47,8 @@ export default function DeployProtection() {
       })
       const d = await r.json()
       if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-      setLoaded(d.backupProcess ?? '')
+      setDraft(null)
+      qc.invalidateQueries({ queryKey: ['deploy-settings', target] })
       toast.success(d.backupProcess ? `Deploys to ${target} will run "${d.backupProcess}" first` : `Deploys to ${target} will ask for the last backup time`)
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
@@ -91,19 +91,20 @@ export default function DeployProtection() {
             <label className="text-xs text-muted-foreground w-16">Process</label>
             <input
               value={process}
-              onChange={e => setProcess(e.target.value)}
+              onChange={e => setDraft(e.target.value)}
               placeholder="(none — ask for the last backup time)"
               className="flex-1 bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <button
               onClick={save}
-              disabled={busy === 'save' || busy === 'load' || process.trim() === (loaded ?? '')}
+              disabled={busy === 'save' || settings.isLoading || process.trim() === (loaded ?? '')}
               className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40"
             >
               {busy === 'save' ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />} Save
             </button>
           </div>
-          {busy === 'load' && <p className="text-[11px] text-muted-foreground">Reading the setting…</p>}
+          {settings.isLoading && <p className="text-[11px] text-muted-foreground">Reading the setting…</p>}
+          {settings.error && <p className="text-[11px] text-red-600">{settings.error.message}</p>}
           {error && <p className="text-[11px] text-red-600">{error}</p>}
           {!busy && loaded !== null && (
             <p className="text-[11px] text-muted-foreground">

@@ -62,7 +62,7 @@ async function returnPreview(target, { token, gitUser = gitIdentity.user(), ideT
     const c = makeClient(target, ideToken)
     let st
     try { st = await c.post('GitStatus', { Username: gitUser, Password: token }) }
-    catch (e) { throw new Error(sanitize(e.response?.data?.error?.message ?? e.message, token)) }
+    catch (e) { throw new Error(sanitize(e.response?.data?.error?.message ?? e.message, token), { cause: e }) }
     const repoUrl = st?.URL
     if (!repoUrl) throw refusal(`${target} is not linked to a repo.`)
     const { compareTargetWithRepo } = require('./git-readiness')
@@ -205,7 +205,7 @@ async function returnToLastRelease(target, { token, gitUser = gitIdentity.user()
         return out
     } catch (e) {
         if (e.refused) throw e
-        throw new Error(sanitize(e.response?.data?.error?.message ?? e.message, token))
+        throw new Error(sanitize(e.response?.data?.error?.message ?? e.message, token), { cause: e })
     } finally {
         try { await lockMod.release(target, { ideToken }) } catch { /* surfaced by the caller if it matters */ }
     }
