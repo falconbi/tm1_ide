@@ -283,6 +283,60 @@ function undecidedDecisions(diff, want = {}) {
     return open
 }
 
+// Attribute work for ONE dimension: create the definitions the target has and DEV
+// lacks, take a type only when chosen, and copy VALUES for the confirmed list only.
+// Returns three separate lists, because "not chosen" and "failed" are different
+// things and must never be reported as the same.
+async function applyAttributeChanges(dev, prod, dim, { attributeTypes = {}, confirmed = [], devElements = [] } = {}) {
+    const changed = []
+    const errors = []
+    const decisions = []
+    let defs
+    try {
+        const [pa, da] = await Promise.all([prod.getElementAttributes(dim), dev.getElementAttributes(dim)])
+        defs = { ...diffAttributeDefinitions(pa, da), pa, da }
+    } catch (e) {
+        return { changed, errors: [{ dimension: dim, what: 'attributes', why: e.message }], decisions }
+    }
+    const tm1Type = (t) => (t === 'N' ? 'Numeric' : 'String')
+
+    for (const a of defs.add) {
+        try {
+            await dev.createElementAttribute(dim, a.name, tm1Type(a.type))
+            changed.push(`attribute ${a.name}`)
+        } catch (e) {
+            errors.push({ dimension: dim, what: `attribute ${a.name}`, why: e.message })
+        }
+    }
+    for (const t of defs.typeChanges) {
+        if (attributeTypes?.[t.name] === 'keep') { decisions.push({ kind: 'attribute', element: t.name, choice: 'keep' }); continue }
+        try {
+            await dev.deleteElementAttribute(dim, t.name).catch(() => {})
+            await dev.createElementAttribute(dim, t.name, tm1Type(t.to))
+            changed.push(`attribute ${t.name}: type ${t.from} → ${t.to}`)
+            decisions.push({ kind: 'attribute', element: t.name, choice: 'take' })
+        } catch (e) {
+            errors.push({ dimension: dim, what: `attribute ${t.name} type`, why: e.message })
+        }
+    }
+    if (confirmed.length) {
+        const types = new Map([...(defs.da ?? []), ...(defs.pa ?? [])].map(a => [a.Name, String(a.Type ?? 'S').toUpperCase().startsWith('N') ? 'N' : 'S']))
+        const devNames = new Set(devElements)
+        let copied = 0
+        for (const el of devNames) {
+            const vals = await prod.getElementAttributeValues(dim, el).catch(() => null)
+            if (!vals) continue
+            for (const attr of confirmed) {
+                if (!(attr in vals)) continue
+                try { await dev.writeElementAttribute(dim, el, attr, vals[attr], types.get(attr) ?? 'S'); copied++ }
+                catch (e) { errors.push({ dimension: dim, what: `value of ${attr} on ${el}`, why: e.message }) }
+            }
+        }
+        if (copied) changed.push(`values for ${confirmed.join(', ')} (${copied} cells)`)
+    }
+    return { changed, errors, decisions }
+}
+
 async function applyRefresh(source, target, { ideToken, session, accept = [], chores = [], user } = {}) {
     if (!session) throw Object.assign(new Error('Refused: open a change set first — a refresh must be recorded in one.'), { refused: true })
     const sess = cl.getSession(session)
@@ -294,6 +348,7 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
     const prod = new TM1Client(target, makeClient(target, ideToken))
     const applied = []
     const skipped = []
+    const errors = []
 
     // Refuse before anything is written if a delete or move is undecided.
     const undecided = []
@@ -400,47 +455,18 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
             recordDecision(source, dim, `delete ${name}: deleted on DEV too (its values are gone)`, { kind: 'delete', element: name, choice: 'delete', user })
         }
 
-        // Attributes: create what PROD has and DEV does not; take a type only when
-        // it was decided (a type change clears the attribute's values); copy VALUES
-        // only for the confirmed list, and only for elements on both sides.
-        try {
-            const [pa, da] = await Promise.all([prod.getElementAttributes(dim), dev.getElementAttributes(dim)])
-            const defs = diffAttributeDefinitions(pa, da)
-            const tm1Type = (t) => (t === 'N' ? 'Numeric' : 'String')
-            for (const a of defs.add) {
-                await dev.createElementAttribute(dim, a.name, tm1Type(a.type))
-                changed.push(`attribute ${a.name}`)
-            }
-            for (const t of defs.typeChanges) {
-                if (want.attributeTypes?.[t.name] === 'keep') {
-                    recordDecision(source, dim, `attribute ${t.name}: kept ${source}'s type ${t.fromMap ?? t.from}`, { kind: 'attribute', element: t.name, choice: 'keep', user })
-                    continue
-                }
-                // take PROD's: delete and recreate — this is why values are cleared.
-                await dev.deleteElementAttribute(dim, t.name).catch(() => {})
-                await dev.createElementAttribute(dim, t.name, tm1Type(t.to))
-                changed.push(`attribute ${t.name}: type ${t.from} → ${t.to}`)
-                recordDecision(source, dim, `attribute ${t.name}: took the target's type ${t.to} (its values are cleared)`, { kind: 'attribute', element: t.name, choice: 'take', user })
-            }
-            const confirmed = (await settings.get(target, { ideToken }).catch(() => ({})))?.attributeValues?.[dim] ?? []
-            if (confirmed.length) {
-                const types = new Map([...da ?? [], ...pa ?? []].map(a => [a.Name, String(a.Type ?? 'S').toUpperCase().startsWith('N') ? 'N' : 'S']))
-                const devNames = new Set((d.elements ?? []).map(elName).filter(Boolean))
-                let copied = 0
-                for (const el of (p.elements ?? []).map(elName).filter(Boolean)) {
-                    if (!devNames.has(el)) continue
-                    let vals = {}
-                    try { vals = await prod.getElementAttributeValues(dim, el) } catch { continue }
-                    for (const attr of confirmed) {
-                        if (!(attr in vals)) continue
-                        await dev.writeElementAttribute(dim, el, attr, vals[attr], types.get(attr) ?? 'S')
-                        copied++
-                    }
-                }
-                if (copied) changed.push(`values for ${confirmed.join(', ')} (${copied} cells)`)
-            }
-        } catch (e) {
-            skipped.push({ dimension: dim, what: 'attributes', why: e.message })
+        // Attributes, in their own function so a failure is an ERROR, not a "skip":
+        // not chosen and failed must never read the same.
+        const wantConfirmed = want.confirmedAttributes ?? []
+        const attrRes = await applyAttributeChanges(dev, prod, dim, {
+            attributeTypes: want.attributeTypes ?? {},
+            confirmed: wantConfirmed,
+            devElements: (d.elements ?? []).map(elName).filter(Boolean),
+        })
+        changed.push(...attrRes.changed)
+        errors.push(...attrRes.errors)
+        for (const dec of attrRes.decisions) {
+            recordDecision(source, dim, `attribute ${dec.element}: ${dec.choice === 'take' ? "took the target's type (its values are cleared)" : `${source}'s type kept`}`, { ...dec, user })
         }
 
         if (changed.length) {
@@ -473,7 +499,7 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
         cl.writeLog({ server: source, action: 'CHORE_UPDATED', objectType: 'chore', objectName: c.name, detail, user })
     }
 
-    return { ok: true, source, target, applied, skipped }
+    return { ok: true, source, target, applied, skipped, errors }
 }
 
-module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, diffAttributeDefinitions, diffChore, suggestAttributeWrites, planRefresh, applyRefresh }
+module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, diffAttributeDefinitions, diffChore, suggestAttributeWrites, applyAttributeChanges, planRefresh, applyRefresh }
