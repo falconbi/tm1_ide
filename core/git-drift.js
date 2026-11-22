@@ -90,12 +90,36 @@ async function driftCheckUnlocked(server, { token, gitUser = gitIdentity.user(),
             if (full) {
                 const blocks = full.split(/^diff --git /m).filter(Boolean)
                 for (const b of blocks) {
-                    const f = b.match(/^a\/(\S+)/)?.[1]
+                    // A path can contain spaces ("cubes/WFP Headcount.json"), so the
+                    // match cannot stop at the first space — take the line's tail.
+                    const f = b.match(/^a\/(.+?)(?: b\/.+)?\n/)?.[1]
                     if (f) {
                         const e = entries.find(x => x.file === f)
                         if (e) e.diff = 'diff --git ' + b.slice(0, 400)
                     }
                 }
+            }
+
+            // A cube file also lists its views (`Views@Code.links`). If that list is
+            // the ONLY difference, the drift belongs to the view family: TM1's pull
+            // never applies views, the IDE applies them over REST, and the release
+            // that carries the cube file replaces the list with one that already has
+            // the target's views. Blocking on it made a target whose cube file was
+            // out of date permanently undeployable — the fix deploy was exactly what
+            // the gate refused.
+            for (const e of entries) {
+                if (e.blocking === false) continue
+                if (!/^cubes\/[^/]+\.json$/i.test(e.file)) continue
+                try {
+                    const { cubeDiffBeyondViews } = require('./git-release')
+                    const before = JSON.parse(git(work, 'show', `${deployed}:${e.file}`))
+                    const after = JSON.parse(git(work, 'show', `origin/prod-live:${e.file}`))
+                    if (!cubeDiffBeyondViews(before, after).differs) {
+                        e.blocking = false
+                        e.kind = 'cube-views'
+                        e.note = 'only its list of views differs — the deploy applies views over REST'
+                    }
+                } catch { /* unreadable: it stays blocking */ }
             }
         }
         return { server, deployed, prodLive: 'origin/prod-live', pushed, entries }
