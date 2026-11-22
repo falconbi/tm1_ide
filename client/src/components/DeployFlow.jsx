@@ -176,7 +176,8 @@ export default function DeployFlow() {
   const outcome = res ? classifyDeployOutcome(res) : null
   const doneOk = res?.executed && res?.controlOk !== false && (drift?.entries ?? []).length === 0
   const blockIdle = (idle?.running ?? []).length > 0
-  const needIdleConfirm = (idle?.sessions ?? []).length > 0 && !idleConfirmed
+  // Our own deployment connection is always signed in; it is reported, not confirmed.
+  const needIdleConfirm = idle?.needsConfirm !== false && (idle?.sessions ?? []).length > 0 && !idleConfirmed
   const lossNeedsConfirm = decideLossGate({ loss: loss?.loss }) === 'confirm' && !lossOk
   const canDeploy = approved && settings && (settings.backupProcess || backupAt) && !busy
 
@@ -229,7 +230,9 @@ export default function DeployFlow() {
                       </p>
                       <p className="text-[11px] text-muted-foreground">
                         {idle.sessionsReadable
-                          ? (idle.sessions.length ? `${idle.sessions.length} signed in: ${idle.sessions.join(', ')}` : 'Nobody signed in.')
+                          ? (idle.sessions.length
+                              ? `${idle.sessions.length} signed in: ${idle.sessions.join(', ')}${idle.needsConfirm ? '' : ' (this deployment\'s own connection)'}`
+                              : 'Nobody signed in.')
                           : 'Sign-ins could not be read — check manually.'}
                       </p>
                       {(idle.errors ?? []).length > 0 && <p className="text-[11px] text-amber-600">Could not read: {idle.errors.join('; ')}</p>}

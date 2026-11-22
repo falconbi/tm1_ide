@@ -27,3 +27,21 @@ test('once confirmed, the same release proceeds', () => {
 test('a missing count is treated as no loss, never as a silent block', () => {
     assert.equal(decideLossGate({ loss: { dimensions: 2 } }), 'pass')
 })
+
+// The idle check must not ask about the deployment's own connection.
+const { needsConfirm } = require('../core/idle-check')
+
+test('idle: only our own connection — no confirmation needed', () => {
+    assert.equal(needsConfirm(['admin'], 'admin'), false)
+    assert.equal(needsConfirm(['Admin'], 'admin'), false)
+})
+
+test('idle: anyone else signed in needs a confirmation', () => {
+    assert.equal(needsConfirm(['admin', 'jdoe'], 'admin'), true)
+    assert.equal(needsConfirm(['jdoe'], 'admin'), true)
+})
+
+test('idle: if the account is unknown, every session needs a confirmation', () => {
+    assert.equal(needsConfirm(['admin'], null), true)
+    assert.equal(needsConfirm([], 'admin'), false)
+})

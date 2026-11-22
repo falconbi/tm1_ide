@@ -40,7 +40,15 @@ function nextRun(chore, now = new Date()) {
     return { at: new Date(at).toISOString(), inMinutes: Math.round((at - t) / 60000) }
 }
 
-async function idleCheck(server, { ideToken, windowMinutes = 30 } = {}) {
+// Does a signed-in list need a confirmation? Our own deployment connection always
+// shows up, and asking every time is noise. Only sessions other than the account
+// the IDE itself uses require a confirm — and if that account is the only one, the
+// check says so rather than pretending nobody is there.
+function needsConfirm(sessions = [], ownAccount = null) {
+    return (sessions ?? []).some(name => !ownAccount || String(name).toLowerCase() !== String(ownAccount).toLowerCase())
+}
+
+async function idleCheck(server, { ideToken, windowMinutes = 30, ownAccount = null } = {}) {
     const tm1 = new TM1Client(server, makeClient(server, ideToken))
     const out = {
         server,
@@ -96,7 +104,9 @@ async function idleCheck(server, { ideToken, windowMinutes = 30 } = {}) {
     }
 
     out.idle = out.running.length === 0
+    out.ownAccount = ownAccount
+    out.needsConfirm = needsConfirm(out.sessions, ownAccount)
     return out
 }
 
-module.exports = { idleCheck, nextRun, durationMs }
+module.exports = { idleCheck, needsConfirm, nextRun, durationMs }

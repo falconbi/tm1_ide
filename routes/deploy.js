@@ -135,7 +135,11 @@ app.get('/api/deploy/idle', async (req, res) => {
         const { server, window = '30' } = req.query
         if (!server) return res.status(400).json({ error: 'server required' })
         const { idleCheck } = require('../core/idle-check')
-        res.json(await idleCheck(server, { ideToken: req.ideToken, windowMinutes: Number(window) || 30 }))
+        // The IDE's own connection is signed in by definition; tell the check which
+        // account that is so it does not ask for a confirmation about itself.
+        let ownAccount = null
+        try { ownAccount = require('../core/paw-connect').getServerCredentials(req.ideToken, server)?.username ?? null } catch { /* unknown */ }
+        res.json(await idleCheck(server, { ideToken: req.ideToken, windowMinutes: Number(window) || 30, ownAccount }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
