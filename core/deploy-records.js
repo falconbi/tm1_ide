@@ -23,7 +23,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const FILE = path.join(__dirname, '..', 'data', 'deploy-records.json')
+const FILE = path.join(require('./data-dir').DATA_DIR, 'deploy-records.json')
 const PREFIX = 'record-'
 const KEEP_PER_TARGET = 100
 

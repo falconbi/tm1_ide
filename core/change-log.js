@@ -3,7 +3,7 @@ const path      = require('path')
 const { randomUUID } = require('crypto')
 
 // data/ is git-ignored runtime state, so a fresh clone doesn't have it yet.
-const DATA_DIR = path.join(__dirname, '..', 'data')
+const { DATA_DIR } = require('./data-dir')
 require('fs').mkdirSync(DATA_DIR, { recursive: true })
 const db = new Database(path.join(DATA_DIR, 'change_log.db'))
 

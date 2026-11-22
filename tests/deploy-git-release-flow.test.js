@@ -87,9 +87,11 @@ test('release contains only the change set\'s objects; deleted object removed; e
     assert.ok(r.releaseCommit)
 
     const inc = r.included.map(i => `${i.type}:${i.name}:${i.action}`)
+    // 'M' = the file exists in the base, so the deploy CHANGES it — 'A' read as
+    // "created", which is wrong for a rule/dimension the target already has.
     assert.deepEqual(inc.sort(), [
       'cube:WFP Delete:D',
-      'cube:WFP Workforce Cost:A',
+      'cube:WFP Workforce Cost:M',
     ].sort(), 'only A\'s rule objects ship')
 
     const excNames = r.excluded.map(x => `${x.type}:${x.name}`)

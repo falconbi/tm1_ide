@@ -9,7 +9,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const FILE = path.join(__dirname, '..', 'data', 'git-secrets.json')
+const FILE = path.join(require('./data-dir').DATA_DIR, 'git-secrets.json')
 
 function read(file = FILE) {
     try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return {} }

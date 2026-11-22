@@ -601,19 +601,46 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             }
         }
 
+        // "Added" or "changed"? The diff says only A or D; for an object the target
+        // already has, "a · dimension WFP Employee" read as if it were being created
+        // — when the deploy REPLACES it (and, in the WFP cut, removes 2,295 elements
+        // from it). A file that exists in the base is a change, not an addition.
+        const existsInBase = (file) => {
+            try { git(work, 'cat-file', '-e', `${base}:${file}`); return true } catch { return false }
+        }
+        for (const i of included) {
+            if (i.action === 'D') continue
+            i.action = existsInBase(i.file) ? 'M' : 'A'
+        }
+
         // What DEV has that this release does NOT carry, one row per object. A
         // dimension is the dangerous one: the release ships what the change set owns,
         // so a dimension whose 500 cut was made outside any change set is left on DEV
         // — and Review then reports a loss of 0, which reads exactly like "no change".
         // Named in EVERY result (including "nothing to deploy"), so the person
         // building the release can include it instead of shipping less than they meant.
+        // Element counts for a dimension that is not in the release: what DEV has and
+        // what the target has, so Review can say "DEV 489, PROD 2,782" instead of
+        // leaving the difference unnamed.
+        const dimensionCounts = (name) => {
+            const count = (ref) => {
+                try {
+                    const doc = JSON.parse(git(work, 'show', `${ref}:dimensions/${name}.hierarchies/${name}.json`))
+                    const els = Array.isArray(doc?.Elements) ? doc.Elements : []
+                    return els.filter(e => String(e?.Type ?? '').toLowerCase() !== 'consolidated').length
+                } catch { return null }
+            }
+            return { devCount: count(devCommit), targetCount: count(base) }
+        }
+
         const leftOnDev = []
         for (const x of excluded) {
             if (x.owner || !x.type || !x.name) continue
             const key = objectKey(x.type, x.name, x.parent)
             const row = leftOnDev.find(r => r.key === key)
             if (row) { row.files.push(x.file ?? null); continue }
-            leftOnDev.push({ key, type: x.type, name: x.name, parent: x.parent ?? null, files: [x.file ?? null] })
+            const counts = x.type === 'dimension' ? dimensionCounts(x.name) : {}
+            leftOnDev.push({ key, type: x.type, name: x.name, parent: x.parent ?? null, files: [x.file ?? null], ...counts })
         }
         const warnings = leftOnDev
             .filter(x => x.type === 'dimension')

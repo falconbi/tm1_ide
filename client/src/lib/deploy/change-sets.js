@@ -28,6 +28,9 @@ export function readyToRelease(sessions) {
       // A phantom's objects no longer exist, so there is nothing to ship even
       // when it still has log entries (oldets sets can carry dozens).
       !s.phantom &&
+      // Recorded "nothing to deploy, done": it is finished. Leaving it on the list
+      // asks the person to ship something that has already been decided.
+      !s.no_change_at &&
       hasObjects(s))
     .sort((a, b) => (String(a.closed_at) < String(b.closed_at) ? 1 : -1))
 }

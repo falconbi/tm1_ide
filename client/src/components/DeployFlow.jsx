@@ -33,6 +33,15 @@ const GET = async (url) => {
 
 const fmt = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return iso } }
 const PRE_STEPS = ['Check PROD', 'Refresh from PROD', 'Tests & close', 'Build release', 'Review']
+// What the deploy does to an object, in a word a person reads. 'M' means the
+// target already has it; a dimension is REPLACED (the pull recreates it).
+const actionWord = (o) => o.action === 'D' ? 'deleted' : o.action === 'A' ? 'added' : (o.type === 'dimension' ? 'replaced' : 'changed')
+// "Replace Dimensions('WFP Employee')" → "replace dimension WFP Employee".
+const planOpWords = (op) => {
+  const m = String(op ?? '').match(/^(\w+)\s+(\w+)\('([^']+)'\)/)
+  if (!m) return String(op ?? '')
+  return `${m[1].toLowerCase()} ${m[2].toLowerCase().replace(/s$/, '')} ${m[3]}`
+}
 // One key per view/subset, matching the server's: type, name, and its parent.
 const coverKey = (c) => `${c.type}:${c.name}:${c.dimension ?? c.cube}`
 
@@ -63,6 +72,8 @@ export default function DeployFlow() {
 
   const [idle, setIdle] = useState(null)
   const [idleConfirmed, setIdleConfirmed] = useState(false)
+  // A chore due inside the deploy window: the person must say "deploy anyway".
+  const [choreAck, setChoreAck] = useState(false)
   const [refresh, setRefresh] = useState(null)      // { dimensions: [...] }
   const [refreshBusy, setRefreshBusy] = useState('')
   const [ticked, setTicked] = useState({})          // dimension → true
@@ -112,7 +123,7 @@ export default function DeployFlow() {
   }, [target])
 
   const checkIdle = async () => {
-    setBusy('idle'); setError(null); setIdleConfirmed(false)
+    setBusy('idle'); setError(null); setChoreAck(false); setIdleConfirmed(false)
     try { setIdle(await GET(`/api/deploy/idle?server=${encodeURIComponent(target)}`)) }
     catch (e) { setError(e.message); setIdle(null) }
     finally { setBusy('') }
@@ -337,7 +348,17 @@ export default function DeployFlow() {
                     </div>
                   )}
                   {idle?.choresDue?.length > 0 && !blockIdle && (
-                    <p className="text-[11px] text-amber-600">A chore is due during the deploy window — it may start mid-deploy.</p>
+                    <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-2">
+                      <p className="text-xs font-semibold text-amber-700">A chore is due during the deploy window</p>
+                      <p className="text-[11px]">{idle.choresDue.map(c => `${c.name} at ${fmt(c.at)}`).join(', ')} — it can start mid-deploy and change the model while the release is landing.</p>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setChoreAck(true)} className={cn('px-2.5 py-1 text-[11px] rounded', choreAck ? 'bg-amber-700 text-white' : 'border border-border hover:bg-muted')}>Deploy anyway</button>
+                        <button onClick={() => setChoreAck(false)} className={cn('px-2.5 py-1 text-[11px] rounded', !choreAck ? 'bg-muted text-foreground' : 'border border-border hover:bg-muted')}>Wait</button>
+                      </div>
+                      {choreAck
+                        ? <p className="text-[11px] text-amber-700">Recorded: deploying into a chore window.</p>
+                        : <p className="text-[11px] text-muted-foreground">Wait until the chore has run, then press <em>Check again</em>.</p>}
+                    </div>
                   )}
                   {needIdleConfirm && (
                     <label className="flex items-start gap-2 text-[11px]">
@@ -346,7 +367,7 @@ export default function DeployFlow() {
                     </label>
                   )}
                   <div className="flex items-center gap-2 pt-1">
-                    <button onClick={() => { setStep(2); loadRefresh() }} disabled={!idle || blockIdle || needIdleConfirm} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue</button>
+                    <button onClick={() => { setStep(2); loadRefresh() }} disabled={!idle || blockIdle || needIdleConfirm || ((idle?.choresDue ?? []).length > 0 && !choreAck)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue</button>
                     <button onClick={checkIdle} disabled={busy === 'idle'} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Check again</button>
                   </div>
                 </div>
@@ -582,7 +603,7 @@ export default function DeployFlow() {
                     <div className="border border-border rounded-md p-3 space-y-1">
                       <p className="text-[11px]">Release <span className="font-mono">{String(release.releaseCommit).slice(0, 10)}</span> · included <span className="font-semibold">{release.included?.length ?? 0}</span></p>
                       {(release.included ?? []).map((o, i) => (
-                        <p key={i} className="text-[11px] text-muted-foreground">{o.action} · {o.type} <span className="font-mono text-foreground">{o.name}</span></p>
+                        <p key={i} className="text-[11px] text-muted-foreground">{actionWord(o)} · {o.type} <span className="font-mono text-foreground">{o.name}</span></p>
                       ))}
                       {(release.included ?? []).length === 0 && <p className="text-[11px] text-muted-foreground">Nothing to ship.</p>}
                     </div>
@@ -620,14 +641,40 @@ export default function DeployFlow() {
               {step === 5 && (
                 <div className="space-y-2">
                   {prep?.error && <p className="text-[11px] text-red-600">{prep.error}</p>}
-                  <p className="text-xs">On <span className="font-semibold">{target}</span>: <span className="font-semibold">{prep?.plan?.total ?? 0}</span> plan operation{(prep?.plan?.total ?? 0) === 1 ? '' : 's'}{prep?.plan?.targetCommit ? `, moving to ${String(prep.plan.targetCommit).slice(0, 10)}` : ''}.</p>
+                  {(() => {
+                    const ops = prep?.plan?.ops ?? []
+                    const changes = ops.filter(o => !/^skip\b/i.test(String(o)))
+                    const same = ops.length - changes.length
+                    if (!ops.length) return <p className="text-xs">On <span className="font-semibold">{target}</span>: nothing changes.</p>
+                    if (!changes.length) return <p className="text-xs">On <span className="font-semibold">{target}</span>: nothing changes — all {same} objects are already identical.</p>
+                    return (
+                      <div className="space-y-0.5">
+                        <p className="text-xs">On <span className="font-semibold">{target}</span>: <span className="font-semibold">{changes.length}</span> object{changes.length === 1 ? '' : 's'} change{same ? `, ${same} already identical` : ''}.</p>
+                        {changes.map((o, i) => <p key={i} className="text-[11px] text-muted-foreground">— {planOpWords(o)}</p>)}
+                      </div>
+                    )
+                  })()}
                   {(release?.included ?? []).map((o, i) => (
                     <div key={i} className="flex items-baseline gap-2 text-[11px] px-2 py-1 rounded bg-muted/30">
-                      <span className="text-muted-foreground">{o.action.toLowerCase()}</span>
+                      <span className="text-muted-foreground">{actionWord(o)}</span>
                       <span className="text-muted-foreground/60">{o.type}</span>
-                      <span className="font-mono">{o.name}</span>
+                      <span className="font-mono">{o.name}{o.parent ? ` (${o.parent})` : ''}</span>
                     </div>
                   ))}
+                  {(release?.leftOnDev ?? []).some(x => x.type === 'dimension') && (
+                    <div className="border border-amber-600/40 bg-amber-600/5 rounded-md p-3 space-y-1">
+                      <p className="text-xs font-semibold text-amber-700">Not in this deploy</p>
+                      <p className="text-[11px] text-muted-foreground">These differ on {server} and stay as they are on {target}:</p>
+                      {(release.leftOnDev ?? []).filter(x => x.type === 'dimension').map(x => (
+                        <p key={x.key} className="text-[11px]">
+                          <span className="font-mono">{x.name}</span>{' '}
+                          <span className="text-muted-foreground">
+                            (DEV {x.devCount ?? '?'}{x.targetCount != null ? `, ${target} ${x.targetCount}` : ''} elements)
+                          </span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
                   {(prep?.typeChanges ?? []).length > 0 && (
                     <div className="border border-red-600/40 bg-red-500/5 rounded-md p-3 space-y-1">
                       <p className="text-xs font-semibold text-red-600">
@@ -666,7 +713,11 @@ export default function DeployFlow() {
           {phase === 'deploy' && !res && (
             <>
               <StepHeader phase="deploy" />
-              <p className="text-xs">Ships <span className="font-semibold">{release?.included?.length ?? 0}</span> object{(release?.included?.length ?? 0) === 1 ? '' : 's'} · release <span className="font-mono">{String(release?.releaseCommit ?? '').slice(0, 10)}</span>. There is no rollback.</p>
+              <p className="text-xs">Ships <span className="font-semibold">{release?.included?.length ?? 0}</span> object{(release?.included?.length ?? 0) === 1 ? '' : 's'} · release <span className="font-mono">{String(release?.releaseCommit ?? '').slice(0, 10)}</span>.</p>
+              <p className="text-[11px] text-muted-foreground">
+                <span className="text-foreground font-medium">If it goes wrong:</span> <em>Return to last release</em> (Deploy → Drift, admin only) puts
+                {' '}{target} back to the release it last received — model objects only; it does not restore data that was cleared or values written since.
+              </p>
               <label className="flex items-start gap-2 text-xs">
                 <input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)} className="mt-0.5" />
                 <span>I approve sending <span className="font-semibold">{session?.name}</span> to <span className="font-semibold">{target}</span>.</span>

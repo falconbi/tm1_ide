@@ -20,10 +20,15 @@ export default function DeployRelease({ server }) {
         <div>
           <h2 className="text-sm font-semibold mb-1">Ready to ship</h2>
           <p className="text-xs text-muted-foreground">
-            Change sets on {server} that can be shipped. One action: the model's tests run
-            first, you approve it, and only this change set goes — nothing else from {server}.
-            The step-by-step view (Test → Close → Commit → Build release → Review → Approve →
-            Deploy → Verify) is still there behind <em>Step by step instead</em>.
+            Change sets on {server} that can be shipped. One action, two phases.
+          </p>
+          <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+            <li><span className="text-foreground font-medium">Pre-deploy</span> — Check PROD · Refresh from PROD · Tests &amp; close · Build release · Review</li>
+            <li><span className="text-foreground font-medium">Deploy</span> — approve · idle check · Save Data · backup · send · verify</li>
+          </ul>
+          <p className="mt-2 text-[11px] text-muted-foreground/80">
+            Only this change set goes; nothing else from {server}. Review stops for element
+            loss and element type changes before anything is sent.
           </p>
         </div>
 

@@ -12,7 +12,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const FILE = path.join(__dirname, '..', 'data', 'deploy-settings.json')
+const FILE = path.join(require('./data-dir').DATA_DIR, 'deploy-settings.json')
 const AREA = 'lock'          // the Deployments folder, no fixed document name
 const DOC = 'settings.json'
 const EMPTY = { backupProcess: null, attributeValues: {} }

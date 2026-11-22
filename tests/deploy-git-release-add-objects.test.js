@@ -241,3 +241,40 @@ test('a static subset that still lists a removed element is named before the pul
         fs.rmSync(repo.w, { recursive: true, force: true })
     }
 })
+
+test('an object the target already has is a CHANGE, not an addition', async () => {
+    // Review said "a · dimension WFP Employee" while the deploy was REPLACING it and
+    // removing 2,295 elements from it.
+    const repo = setupRepo({ name: 'D6' })
+    try {
+        fakeBase = repo.base
+        const s = cl.startSession('cut', 'DEV-F', 'admin')
+        cl.setSessionCommit(s.id, repo.devCommit)
+        const r = await buildRelease(s, 'TF', {
+            token: 'x', gitUser: 't', repoUrl: repo.bare,
+            addObjects: [{ type: 'dimension', name: 'D6' }],
+        })
+        assert.equal(r.ok, true, JSON.stringify(r))
+        assert.equal(r.included.find(i => i.type === 'dimension').action, 'M')
+    } finally {
+        fs.rmSync(repo.bare, { recursive: true, force: true })
+        fs.rmSync(repo.w, { recursive: true, force: true })
+    }
+})
+
+test('a dimension left on DEV carries its element counts, so Review can name the gap', async () => {
+    const repo = setupRepo({ name: 'D7' })
+    try {
+        fakeBase = repo.base
+        const s = cl.startSession('cut', 'DEV-G', 'admin')
+        cl.setSessionCommit(s.id, repo.devCommit)
+        const r = await buildRelease(s, 'TG', { token: 'x', gitUser: 't', repoUrl: repo.bare })
+        const row = (r.leftOnDev ?? []).find(x => x.type === 'dimension' && x.name === 'D7')
+        assert.ok(row, JSON.stringify(r.leftOnDev))
+        assert.equal(row.devCount, 1)       // A
+        assert.equal(row.targetCount, 3)    // A, B, C
+    } finally {
+        fs.rmSync(repo.bare, { recursive: true, force: true })
+        fs.rmSync(repo.w, { recursive: true, force: true })
+    }
+})
