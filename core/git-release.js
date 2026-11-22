@@ -616,8 +616,15 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             if (catchUp) {
                 return { ok: false, refused: true, error: `Nothing differs between ${target}'s recorded commit and ${session?.server ?? 'the source'} — there is no catch-up to release.` }
             }
-            const reason = `nothing to deploy: this change set's objects already match ${target}`
-            try { cl.markSessionNoChange(session.id, { reason, by }) } catch { /* older DB */ }
+            const reason = leftOnDev.length
+                ? `nothing this change set owns has to deploy (${leftOnDev.length} object${leftOnDev.length === 1 ? '' : 's'} changed on DEV are not in it)`
+                : `nothing to deploy: this change set's objects already match ${target}`
+            // Only record "done" when there is genuinely nothing left to decide. With
+            // objects named below, the person may still include them — calling the set
+            // done would say otherwise.
+            if (!leftOnDev.length) {
+                try { cl.markSessionNoChange(session.id, { reason, by }) } catch { /* older DB */ }
+            }
             return { ok: true, noChange: true, reason, target, leftOnDev, warnings, changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null } }
         }
 
