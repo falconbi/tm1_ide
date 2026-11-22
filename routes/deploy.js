@@ -144,7 +144,7 @@ app.post('/api/deploy/refresh/apply', async (req, res) => {
     try {
         const { source, target, session, accept } = req.body
         if (!source || !target || !session) return res.status(400).json({ error: 'source, target and session required' })
-        if (!gateWrite(res, source)) return
+        if (!gateReadOnly(res, source)) return
         const { applyRefresh } = require('../core/refresh-dev')
         res.json(await applyRefresh(source, target, {
             ideToken: req.ideToken, session, accept: Array.isArray(accept) ? accept : [], user: req.user,

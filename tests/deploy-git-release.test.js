@@ -242,10 +242,12 @@ test('deploy is refused when the target has drifted (snapshot refreshed first)',
     const s = cl.startSession('Drift', 'DEV1', 'admin')
     cl.setSessionCommit(s.id, r.releaseCommit)
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
-    driftEntries = [{ status: 'M', file: 'dimensions/WFP Version.hierarchies/WFP Version.json' }]
+    // A non-dimension object still blocks outright: the carried rule applies only
+    // to a dimension the release already has every element of.
+    driftEntries = [{ status: 'M', file: 'cubes/WFP Assumptions.rules' }]
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
     const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
-    assert.equal(out.refused, true)
+    assert.equal(out.refused, true, JSON.stringify(out).slice(0, 800))
     assert.equal(out.executed, false)
     assert.equal(out.drift, 'drifted')
     assert.match(out.error, /drifted/i)

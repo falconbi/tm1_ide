@@ -46,6 +46,37 @@ const driftRefusal = (target, drift) => {
     return `PROD drift could not be checked (${drift.error ?? 'unknown error'}). Deploys to this server are paused until drift is clean.${soft}`
 }
 
+// A dimension that changed on the target no longer blocks if this release already
+// carries everything the target has for it — i.e. the element-loss check finds
+// nothing to lose. That is the refresh's payoff: PROD's own changes are in DEV and
+// therefore in the release, so deploying replaces them with themselves.
+//
+// Anything else still blocks: a non-dimension object, or a dimension with elements
+// the release does not have (which is also what a PROD change made *after* the
+// refresh looks like).
+function partitionCarriedDrift(entries = [], elementLoss) {
+    // 'carried' is only knowable when the comparison actually ran. A failed
+    // comparison must never be read as "nothing to lose".
+    const lossKnown = Array.isArray(elementLoss)
+    const lostDimensions = new Set((lossKnown ? elementLoss : []).map(l => String(l.dimension).toLowerCase()))
+    const dimOf = (file) => {
+        const m = String(file ?? '').match(/^dimensions\/([^/]+?)(?:\.hierarchies\/.*)?\.json$/)
+        return m ? m[1] : null
+    }
+    const blocking = []
+    const carried = []
+    for (const e of entries ?? []) {
+        if (e?.blocking === false) { carried.push(e); continue }   // views/subsets: already reported
+        const dim = dimOf(e?.file)
+        if (lossKnown && dim && !lostDimensions.has(dim.toLowerCase())) {
+            carried.push({ ...e, carried: true, reason: 'the release carries what PROD changed here' })
+        } else {
+            blocking.push(e)
+        }
+    }
+    return { blocking, carried }
+}
+
 // Parse a GitPull plan operation ("Update Cubes('WFP Workforce Cost')",
 // "Replace Dimensions('WFP Version')", "Skip Processes('X')", …) into the TM1
 // object it refers to, so it can be checked against a release's objects.
@@ -107,7 +138,7 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
     // anyone approves. A view or subset this change set ships that ALSO changed on
     // the target would be replaced by the REST complement after the pull. The
     // change set's own log is enough to know what it ships; no extra git fetch.
-    if (out.drift === 'clean' && session && (out.driftNonBlocking ?? []).length) {
+    if ((out.driftEntries ?? []).length === 0 && session && (out.driftNonBlocking ?? []).length) {
         try {
             const { viewSubsetConflicts, expectedPlanKeys, objectFromFile, objectKey } = require('./git-release')
             const log = require('./change-log').getSessionLog(session)
@@ -162,6 +193,24 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
                 out.loss = cmp.loss
             } catch (e) {
                 out.elementLossError = e.message
+            }
+        }
+
+        // Drift on a dimension the release already carries does not block here any
+        // more — report it instead. Anything else still blocks.
+        if ((out.driftEntries ?? []).length) {
+            const { blocking, carried } = partitionCarriedDrift(out.driftEntries, out.elementLoss ?? [])
+            out.driftEntries = blocking
+            if (carried.length) {
+                out.driftCarried = carried
+                out.driftNonBlocking = [...(out.driftNonBlocking ?? []), ...carried]
+            }
+            if (blocking.length === 0) {
+                out.blocked = false
+                out.error = null
+            } else if (out.drift === 'drifted') {
+                out.blocked = true
+                out.error = driftRefusal(target, { entries: blocking, nonBlocking: out.driftNonBlocking })
             }
         }
     } catch (e) {
@@ -321,12 +370,8 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         out.driftEntries = drift.entries ?? []
         // Reported, never blocking: a pull cannot touch a view or a subset.
         out.driftNonBlocking = drift.nonBlocking ?? []
-        if (!drift.clean) {
-            out.executed = false
-            out.refused = true
-            out.error = driftRefusal(target, drift)
-            return out
-        }
+        // Refusal waits until the release's own element-loss is known: a dimension
+        // the release carries does not block.
 
         let plan
         try {
@@ -401,7 +446,8 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         }
         // The same loss figure the Review showed, captured with the deployment so
         // the report can say what was removed — computed here because Review may
-        // never have run (the one-button path skips it).
+        // never have run (the two-phase flow always shows it, the old one-button
+        // path did not).
         try {
             const { compareTargetWithRepo } = require('./git-readiness')
             // repoUrl is scoped to the release block above; read it again here.
@@ -414,6 +460,23 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                 out.loss = cmp.loss
             }
         } catch (e) { out.elementLossError = e.message }
+
+        // Now that this release's own loss is known: a dimension whose elements the
+        // release carries does not block; anything else still does.
+        if ((out.driftEntries ?? []).length) {
+            const { blocking, carried } = partitionCarriedDrift(out.driftEntries, out.elementLoss ?? [])
+            out.driftEntries = blocking
+            if (carried.length) {
+                out.driftCarried = carried
+                out.driftNonBlocking = [...(out.driftNonBlocking ?? []), ...carried]
+            }
+            if (blocking.length) {
+                out.executed = false
+                out.refused = true
+                out.error = driftRefusal(target, { entries: blocking, nonBlocking: out.driftNonBlocking })
+                return out
+            }
+        }
 
         // ── Protect what the deploy is about to overwrite ───────────────────
         // Under the lock, immediately before the pull: write the target's data to
@@ -571,4 +634,4 @@ async function elementLossFor(target, commit, { token, gitUser = gitIdentity.use
     return { loss: cmp.loss, elementLoss: cmp.elementLoss, targetOnly: cmp.targetOnly }
 }
 
-module.exports = { prepare, execute, elementLossFor }
+module.exports = { prepare, execute, elementLossFor, partitionCarriedDrift }

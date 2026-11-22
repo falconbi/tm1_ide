@@ -52,22 +52,22 @@ function diffDimension(prod, dev) {
     const removeEdges = [...dEdges.entries()]
         .filter(([k]) => !pEdges.has(k))
         .map(([, e]) => ({ parent: e.ParentName ?? e.parent, child: e.ComponentName ?? e.child }))
-    // A child that sits under a different parent (or a different weight) on PROD is
-    // a MOVE — archiving is exactly this, and it is applied as a move, not a delete
-    // plus an add, so the element keeps its data.
+    // A MOVE is a child both sides have, with exactly one parent on each side, and a
+    // different parent — archiving is the usual case. Anything else (a child with
+    // several parents on one side) is an edge difference to add or report, never a
+    // move: guessing there would delete a rollup DEV added.
+    const parentsOf = (map, child, nameKey) => [...map.values()]
+        .filter(e => (e.ComponentName ?? e.child) === child)
+        .map(e => ({ parent: e.ParentName ?? e.parent, weight: Number(e.Weight ?? e.weight ?? 1) }))
     const moves = []
-    for (const [k, e] of pEdges) {
-        const child = e.ComponentName ?? e.child
-        const parent = e.ParentName ?? e.parent
-        const weight = e.Weight ?? e.weight ?? 1
-        for (const [dk, de] of dEdges) {
-            if ((de.ComponentName ?? de.child) !== child) continue
-            const dParent = de.ParentName ?? de.parent
-            const dWeight = de.Weight ?? de.weight ?? 1
-            if (dParent === parent && Number(dWeight) === Number(weight)) continue
-            // Only a differing parent or weight for the same child counts once.
-            if (!moves.some(m => m.child === child)) moves.push({ child, toParent: parent, toWeight: weight, fromParent: dParent, fromWeight: dWeight })
-        }
+    const bothChildren = new Set([...pEdges.values()].map(e => e.ComponentName ?? e.child))
+    for (const child of bothChildren) {
+        if (!dEdges.size && !pEdges.size) continue
+        const onProd = parentsOf(pEdges, child)
+        const onDev = parentsOf(dEdges, child)
+        if (onProd.length !== 1 || onDev.length !== 1) continue
+        if (onProd[0].parent === onDev[0].parent && onProd[0].weight === onDev[0].weight) continue
+        moves.push({ child, toParent: onProd[0].parent, toWeight: onProd[0].weight, fromParent: onDev[0].parent, fromWeight: onDev[0].weight })
     }
     const differs = addElements.length || typeChanges.length || removeElements.length || addEdges.length || removeEdges.length || moves.length
     return { differs: !!differs, addElements, typeChanges, removeElements, addEdges, removeEdges, moves }
