@@ -619,6 +619,39 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             .filter(x => x.type === 'dimension')
             .map(x => `DEV differs from ${target} on ${x.name}, and this release does not carry it — its elements stay as they are on ${target}. A loss of 0 does not mean "no change".`)
 
+        // Replacing a dimension also recreates that dimension's SUBSETS from the
+        // release tree. A STATIC subset still listing an element this deploy removes
+        // makes the whole pull fail — TM1 answers "'E10490' can not be found in
+        // collection of type 'Element'" and rolls everything back (seen live: the WFP
+        // 500 cut). Named here, before anything is approved.
+        const subsetBlockers = []
+        for (const dim of new Set(included.filter(i => i.type === 'dimension' && i.name).map(i => i.name))) {
+            try {
+                // What the RELEASE tree will hold for a file: DEV's version when the
+                // file is in the release, the base's otherwise.
+                const blob = (f) => git(work, 'show', `${included.some(i => i.file === f) ? devCommit : base}:${f}`)
+                const hierFile = `dimensions/${dim}.hierarchies/${dim}.json`
+                const elementName = (e) => e?.Name ?? String(e?.['@id'] ?? '').match(/Elements\('([^']+)'\)/)?.[1] ?? null
+                const els = new Set((JSON.parse(blob(hierFile))?.Elements ?? []).map(elementName).filter(Boolean))
+                const prefix = `dimensions/${dim}.hierarchies/${dim}.subsets/`
+                const files = git(work, 'ls-tree', '-r', '--name-only', devCommit).split('\n')
+                    .filter(f => f.startsWith(prefix) && f.endsWith('.json'))
+                for (const f of files) {
+                    const sub = JSON.parse(blob(f))
+                    if (sub.Expression) continue                    // MDX: no member list to break
+                    const members = (sub.Elements ?? []).map(elementName).filter(Boolean)
+                    const missing = members.filter(m => !els.has(m))
+                    if (!missing.length) continue
+                    const name = f.slice(prefix.length).replace(/\.json$/i, '')
+                    if (included.some(i => i.type === 'subset' && i.name === name && (i.parent ?? null) === dim)) continue
+                    subsetBlockers.push({ type: 'subset', name, parent: dim, missing: missing.length, sample: missing.slice(0, 3) })
+                }
+            } catch { /* unreadable: the pull will say so itself */ }
+        }
+        for (const b of subsetBlockers) {
+            warnings.push(`subset ${b.name} (${b.parent}) lists ${b.missing} element(s) this release removes and is not in it (${b.sample.join(', ')}) — the pull will fail until its DEV version is included.`)
+        }
+
         // Nothing to ship? An ordinary release whose objects already match the
         // target has nothing to deploy: record it as done, with the reason, so the
         // ordering check lets later sets through. (A catch-up is different — it is

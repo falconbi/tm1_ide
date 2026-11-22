@@ -40,6 +40,11 @@ const cl = require(path.join(__dirname, '..', 'core', 'change-log'))
 const { buildRelease } = require(path.join(__dirname, '..', 'core', 'git-release'))
 
 const dimJson = (note = '', name = 'D') => JSON.stringify({ '@type': 'Dimension', Name: name, Description: note }, null, '\t') + '\n'
+const subsetJson = (names, name = 'D', sub = 'Default') => JSON.stringify({
+    '@type': 'Subset', Name: sub,
+    Elements: names.map(n => ({ '@id': `Dimensions('${name}')/Hierarchies('${name}')/Elements('${n}')` })),
+}, null, '\t') + '\n'
+
 const hierJson = (names, name = 'D') => JSON.stringify({
     '@type': 'Hierarchy', Name: name,
     Elements: names.map(n => ({ '@id': `Dimensions('${name}')/Hierarchies('${name}')/Elements('${n}')`, Name: n, Type: 'Numeric' })),
@@ -54,10 +59,12 @@ function setupRepo({ name = 'D' } = {}) {
     write(w, 'cubes/Keep.rules', '# base\n[] = N:1;\n')
     write(w, `dimensions/${name}.json`, dimJson('full', name))
     write(w, `dimensions/${name}.hierarchies/${name}.json`, hierJson(['A', 'B', 'C'], name))
+    write(w, `dimensions/${name}.hierarchies/${name}.subsets/Default.json`, subsetJson(['A', 'B', 'C'], name))
     const base = commitAll(w, 'base')
 
     // DEV cut the dimension to one element and also changed a rule it owns.
     write(w, `dimensions/${name}.hierarchies/${name}.json`, hierJson(['A'], name))
+    write(w, `dimensions/${name}.hierarchies/${name}.subsets/Default.json`, subsetJson(['A'], name))
     write(w, `dimensions/${name}.json`, dimJson('cut', name))
     write(w, 'cubes/Keep.rules', '# dev\n[] = N:2;\n')
     const devCommit = commitAll(w, 'dev')
@@ -196,6 +203,39 @@ test('a rebuild keeps what the change set already includes, unless told to reset
         const cleared = await buildRelease(s, 'TD', { token: 'x', gitUser: 't', repoUrl: repo.bare, resetIncludes: true })
         assert.equal(cleared.noChange, true, 'resetIncludes drops it — nothing left to ship')
         assert.ok((cleared.leftOnDev ?? []).some(x => x.type === 'dimension' && x.name === 'D4'))
+    } finally {
+        fs.rmSync(repo.bare, { recursive: true, force: true })
+        fs.rmSync(repo.w, { recursive: true, force: true })
+    }
+})
+
+test('a static subset that still lists a removed element is named before the pull fails', async () => {
+    // Live failure in the WFP 500 cut: the dimension was replaced, TM1 then recreated
+    // its static `Default` subset from the tree, found E10490 gone, and rolled the
+    // whole deploy back. The subset has to be in the release (DEV's trimmed version).
+    const repo = setupRepo({ name: 'D5' })
+    try {
+        fakeBase = repo.base
+        const s = cl.startSession('cut', 'DEV-E', 'admin')
+        cl.setSessionCommit(s.id, repo.devCommit)
+
+        const without = await buildRelease(s, 'TE', {
+            token: 'x', gitUser: 't', repoUrl: repo.bare,
+            addObjects: [{ type: 'dimension', name: 'D5' }],
+        })
+        assert.equal(without.ok, true, JSON.stringify(without))
+        assert.match(without.warnings.join(' '), /subset Default \(D5\) lists 2 element\(s\).*pull will fail/, JSON.stringify(without.warnings))
+        assert.ok((without.leftOnDev ?? []).some(x => x.type === 'subset' && x.name === 'Default' && x.parent === 'D5'))
+
+        const withSubset = await buildRelease(s, 'TE', {
+            token: 'x', gitUser: 't', repoUrl: repo.bare,
+            addObjects: [
+                { type: 'dimension', name: 'D5' },
+                { type: 'subset', name: 'Default', parent: 'D5' },
+            ],
+        })
+        assert.equal(withSubset.ok, true, JSON.stringify(withSubset))
+        assert.doesNotMatch(withSubset.warnings.join(' '), /pull will fail/)
     } finally {
         fs.rmSync(repo.bare, { recursive: true, force: true })
         fs.rmSync(repo.w, { recursive: true, force: true })
