@@ -354,6 +354,19 @@ export default function DeployFlow() {
                                 </span>
                               </div>
                             ))}
+                            {(refresh.chores ?? []).length > 0 && (
+                              <div className="px-3 py-2 border-t border-border/40 space-y-1">
+                                <p className="text-[11px] font-semibold text-foreground">Chore schedules on {target} that differ from {server}</p>
+                                {(refresh.chores ?? []).map(c => (
+                                  <p key={c.name} className="text-[11px]">
+                                    {c.name} <span className="text-muted-foreground">— {c.fields.length ? `differs: ${c.fields.join(', ')}` : 'schedule matches'}</span>
+                                    {c.devActive && <span className="text-amber-600"> · DEV has it ON (a refresh leaves it off)</span>}
+                                  </p>
+                                ))}
+                                <p className="text-[10px] text-muted-foreground">Reported only for now: the refresh does not change a chore's schedule yet. The on/off flag is the deploy's job — DEV stays off, the target's own flag is restored around the pull.</p>
+                              </div>
+                            )}
+
                             {(refresh.dimensions ?? []).some(d => (d.attributes?.add ?? []).length || (d.attributes?.typeChanges ?? []).length) && (
                               <div className="px-3 py-2 border-t border-border/40 space-y-1">
                                 <p className="text-[11px] font-semibold text-foreground">Attributes PROD has that {server} does not</p>

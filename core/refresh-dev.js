@@ -129,7 +129,24 @@ async function planRefresh(source, target, { ideToken } = {}) {
             .map(p => ({ element: p, from: 'Numeric', to: 'Consolidated' }))
         items.push({ dimension: dim, ...d, typeRisk, attributes })
     }
-    return { source, target, dimensions: items }
+    // Chores: schedule only. The flag is the deploy's business (A5), and DEV's
+    // chore is left off regardless.
+    const chores = []
+    try {
+        const [pn, dn] = await Promise.all([prod.getChores(), dev.getChores()])
+        const names = new Set([...(pn ?? []), ...(dn ?? [])])
+        for (const name of names) {
+            let pc = null, dc = null
+            try { pc = await prod.getChore(name) } catch { pc = null }
+            try { dc = await dev.getChore(name) } catch { dc = null }
+            if (!pc && !dc) continue
+            const d = diffChore(pc ?? {}, dc ?? {})
+            if (!d.scheduleDiffers && !d.devMustStayOff) continue
+            chores.push({ name, onTarget: !!pc, onDev: !!dc, ...d })
+        }
+    } catch { /* no chore access — carry on with dimensions */ }
+
+    return { source, target, dimensions: items, chores }
 }
 
 // Apply the ticked dimensions to DEV and record each one in the open change set.
@@ -190,6 +207,26 @@ function suggestAttributeWrites(processes = []) {
         }
     }
     return Object.fromEntries([...out].map(([d, set]) => [d, [...set].sort()]))
+}
+
+// ── Chores ──────────────────────────────────────────────────────────────────
+// Operations own WHEN a chore runs and whether it is on. A refresh copies the
+// target's schedule onto DEV so the deploy does not move it back, but DEV's chore
+// is left OFF: a dev server running a chore at production times is an incident, not
+// a convenience. The on/off flag itself travels with the deploy, restored around
+// the pull (A5), not with the refresh.
+function diffChore(prodChore, devChore) {
+    const fields = []
+    for (const f of ['StartTime', 'Frequency', 'ExecutionMode']) {
+        if (String(prodChore?.[f] ?? '') !== String(devChore?.[f] ?? '')) fields.push(f)
+    }
+    return {
+        scheduleDiffers: fields.length > 0,
+        fields,
+        targetActive: !!prodChore?.Active,
+        devActive: !!devChore?.Active,
+        devMustStayOff: !!devChore?.Active,
+    }
 }
 
 // Which type changes actually need a PATCH, and which are already settled by the
@@ -414,4 +451,4 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
     return { ok: true, source, target, applied, skipped }
 }
 
-module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, diffAttributeDefinitions, suggestAttributeWrites, planRefresh, applyRefresh }
+module.exports = { diffDimension, undecidedDecisions, typeChangesToApply, diffAttributeDefinitions, diffChore, suggestAttributeWrites, planRefresh, applyRefresh }

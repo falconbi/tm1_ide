@@ -51,10 +51,15 @@ async function get(server, { ideToken } = {}) {
     return normalise(loadLocal()[server])
 }
 
-async function set(server, { backupProcess, attributeValues }, { ideToken } = {}) {
+async function set(server, patch = {}, { ideToken } = {}) {
     if (!server) throw new Error('server required')
     const current = await get(server, { ideToken })
-    const doc = normalise({ backupProcess, attributeValues: attributeValues === undefined ? current.attributeValues : attributeValues })
+    // An omitted field keeps its value: saving one setting must not silently wipe
+    // another (clearing attributeValues once nulled the backup process this way).
+    const doc = normalise({
+        backupProcess: patch.backupProcess === undefined ? current.backupProcess : patch.backupProcess,
+        attributeValues: patch.attributeValues === undefined ? current.attributeValues : patch.attributeValues,
+    })
     const d = loadLocal()
     d[server] = { ...(d[server] ?? {}), ...doc }
     saveLocal(d)
