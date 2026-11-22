@@ -280,10 +280,11 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
         } catch { /* no attribute access: nothing to decide */ }
     }
     if (undecided.length) {
-        const names = undecided.map(u => `${u.kind === 'delete' ? 'delete' : 'move'} ${u.element} (${u.dimension})`)
+        const names = undecided.map(u => `${u.kind} ${u.element} (${u.dimension})`)
         throw Object.assign(new Error(
             `Refused: decide these before refreshing — ${names.join(', ')}. ` +
-            `A delete is "delete on DEV too" or "keep it and restore it on PROD"; a move is "take PROD's" or "keep DEV's".`
+            `A delete is "delete on DEV too" or "keep it and restore it on PROD"; a move is "take PROD's" or "keep DEV's"; ` +
+            `an attribute type is "take PROD's type" (its values are cleared) or "keep DEV's".`
         ), { refused: true, undecided })
     }
 
@@ -368,8 +369,9 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
         try {
             const [pa, da] = await Promise.all([prod.getElementAttributes(dim), dev.getElementAttributes(dim)])
             const defs = diffAttributeDefinitions(pa, da)
+            const tm1Type = (t) => (t === 'N' ? 'Numeric' : 'String')
             for (const a of defs.add) {
-                await dev.createElementAttribute(dim, a.name, a.type)
+                await dev.createElementAttribute(dim, a.name, tm1Type(a.type))
                 changed.push(`attribute ${a.name}`)
             }
             for (const t of defs.typeChanges) {
@@ -379,7 +381,7 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
                 }
                 // take PROD's: delete and recreate — this is why values are cleared.
                 await dev.deleteElementAttribute(dim, t.name).catch(() => {})
-                await dev.createElementAttribute(dim, t.name, t.to)
+                await dev.createElementAttribute(dim, t.name, tm1Type(t.to))
                 changed.push(`attribute ${t.name}: type ${t.from} → ${t.to}`)
                 recordDecision(source, dim, `attribute ${t.name}: took the target's type ${t.to} (its values are cleared)`, { kind: 'attribute', element: t.name, choice: 'take', user })
             }
