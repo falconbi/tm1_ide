@@ -115,6 +115,32 @@ Follow `docs/models/BUILDING_MODELS.md` for the model itself. The data sequence 
    Wait for `CompletedSuccessfully` (minutes on this model). Then remove the nine seed processes
    with `node tools/reseed-workforce.cjs TM1_Test_DEV --cleanup`.
 
+## 4a. Views and subsets: dynamic, not fixed lists
+
+Trimming a dimension **breaks every fixed member list that named a removed element** — and the
+readiness check refuses to push until they are fixed, so it blocks releases, not just tidying.
+
+After trimming:
+
+> **`GET /api/git-readiness?server=…` must report `ok: true` — 0 stale view members, 0 stale subset
+> elements — before anything is pushed.** Views and subsets use **dynamic MDX**, never a fixed list
+> of members.
+
+The case that bit us: `WFP Assignment Detail / Default` had the Position axis as an explicit list of
+1,011 members; the trim removed 2,500 positions and 837 of those references went stale. Fixed by
+replacing the axis with
+
+```
+{TM1FILTERBYLEVEL({TM1SUBSETALL([WFP Position].[WFP Position])}, 0)}
+```
+
+— every leaf position, so it cannot go stale again. A **title** with a single selected member is
+fine (it names one member deliberately); a **rows or columns axis** holding a list is not.
+
+Where to look: for every cube, each view's row/column placements on the trimmed dimensions, and
+every named subset on those dimensions whose `Expression` is not MDX. Convert the lists; leave the
+selections.
+
 ## 5. Re-baseline the assertions
 
 `Deploy → Model health` (or the tests panel):
