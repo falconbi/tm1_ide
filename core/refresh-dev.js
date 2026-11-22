@@ -18,9 +18,11 @@
 
 const { makeClient } = require('./adapter-registry')
 const { TM1Client } = require('./tm1-client')
-const { odataKey } = require('./odata-key')
 const cl = require('./change-log')
 const settings = require('./deploy-settings')
+const { resolveBase, openBase, baseHierarchy, baseChore } = require('./deploy-base')
+const { originOf } = require('./refresh-origins')
+const { classifyDimension, summarise, applyDimension } = require('./refresh-dimension')
 
 const TYPE = { N: 'Numeric', S: 'String', A: 'Alias', C: 'Consolidated' }
 
@@ -95,11 +97,30 @@ async function readDimensionStrict(tm1, dim, hierarchy = dim) {
 
 // Read both servers and return one entry per dimension that differs. Control
 // objects (}…) are skipped: they are not model changes a deploy ships.
-async function planRefresh(source, target, { ideToken } = {}) {
+async function planRefresh(source, target, { ideToken, baseCommit = null } = {}) {
     const dev = new TM1Client(source, makeClient(source, ideToken))
     const prod = new TM1Client(target, makeClient(target, ideToken))
     const dims = (await dev.getModelDimensions()).map(d => d?.Name ?? d).filter(Boolean)
     const approved = (await settings.get(target, { ideToken }).catch(() => ({})))?.attributeValues ?? {}
+
+    // The baseline: what the target was last given. Without it nothing can be
+    // ticked (apply refuses), and every difference is shown as "unknown".
+    let base
+    let reader = null
+    try {
+        if (baseCommit) {
+            const rb = await resolveBase(target, { ideToken })
+            const repoUrl = rb.repoUrl ?? null
+            if (repoUrl) {
+                reader = openBase(repoUrl, baseCommit)
+                base = { ok: true, commit: baseCommit, source: 'override', override: true, branch: rb.branch ?? null, local: rb.local ?? null }
+            } else base = { ok: false, reason: rb.reason }
+        } else {
+            base = await resolveBase(target, { ideToken })
+            if (base.ok) reader = openBase(base.repoUrl, base.commit)
+        }
+    } catch (e) { base = { ok: false, reason: e.message } }
+
     const items = []
     for (const dim of dims) {
         const [a, b] = await Promise.all([
@@ -107,7 +128,10 @@ async function planRefresh(source, target, { ideToken } = {}) {
             readDimension(dev, dim),
         ])
         if (!a.elements.length && !a.edges.length) continue
-        const d = diffDimension(a, b)
+        const d = diffDimension(a, b)                      // the two-way detail, for "differs"
+        const c = classifyDimension(reader ? baseHierarchy(reader, dim, dim) : null, a, b)
+        const offered = c.addElements.length || c.addEdges.length || c.moves.length || c.removeElements.length ||
+            c.removeEdges.length || c.weightChanges.length || c.typeChanges.length || c.typeConflicts.length || c.moveConflicts.length
 
         // Attribute definitions: a dimension can be identical in elements and still
         // be missing an attribute PROD has.
@@ -122,10 +146,20 @@ async function planRefresh(source, target, { ideToken } = {}) {
             const devNames = new Set((b.elements ?? []).map(elName).filter(Boolean))
             let valueElements = 0
             for (const n of prodNames) if (devNames.has(n)) valueElements++
-            attributes = { ...defs, confirmedValues: [...confirmed].filter(x => [...defs.add.map(a => a.name), ...((da ?? []).map(a => a.Name))].includes(x)), valueElements }
+            attributes = {
+                ...defs,
+                confirmedValues: [...confirmed].filter(x => [...defs.add.map(a => a.name), ...((da ?? []).map(a => a.Name))].includes(x)),
+                valueElements,
+                // No baseline exists for attributes (control cubes are not exported),
+                // so a missing definition is reported, never preselected.
+                noBase: true,
+                warning: defs.add.length
+                    ? 'Attributes are not in TM1 Git, so there is no baseline to say who removed one. Nothing is selected; tick an attribute to create it on DEV.'
+                    : null,
+            }
         } catch { /* no attribute access — carry on with elements */ }
 
-        if (!d.differs && !attributes.add.length && !attributes.typeChanges.length) continue
+        if (!offered && !attributes.add.length && !attributes.typeChanges.length) continue
         // Giving a leaf element children turns it into a consolidation, and TM1
         // clears the values stored against it. PROD already made that choice; on
         // DEV it is still a destructive step that must be named before it happens.
@@ -135,7 +169,18 @@ async function planRefresh(source, target, { ideToken } = {}) {
         const typeRisk = [...parents]
             .filter(p => p && devType.get(p) === 'Numeric' && prodType.get(p) === 'Consolidated')
             .map(p => ({ element: p, from: 'Numeric', to: 'Consolidated' }))
-        items.push({ dimension: dim, ...d, typeRisk, attributes })
+        items.push({
+            dimension: dim,
+            differs: d.differs,
+            ...c,
+            // What the person needs to see, one line per kind (2,295 grey rows in a
+            // list help nobody) — the UI expands a count into the elements.
+            summary: summarise(c),
+            typeRisk,
+            attributes,
+            baseKnown: !!reader,
+            origin: c.unknown ? 'unknown' : null,
+        })
     }
     // Chores: schedule only. The flag is the deploy's business (A5), and DEV's
     // chore is left off regardless.
@@ -149,8 +194,18 @@ async function planRefresh(source, target, { ideToken } = {}) {
             try { dc = await dev.getChore(name) } catch { dc = null }
             if (!pc && !dc) continue
             const d = diffChore(pc ?? {}, dc ?? {})
-            if (!d.scheduleDiffers && !d.devMustStayOff) continue
-            chores.push({ name, onTarget: !!pc, onDev: !!dc, ...d })
+            // Three-way on the schedule: only a PROD-side change is offered. A
+            // schedule DEV changed alone is DEV's (it ships); both changed
+            // differently is a conflict with no default.
+            const bc = reader ? baseChore(reader, name) : null
+            const sched = (x) => x ? `${x?.StartTime ?? ''}|${x?.Frequency ?? ''}|${x?.ExecutionMode ?? ''}` : null
+            const origin = reader
+                ? originOf(sched(bc), pc ? sched(pc) : null, dc ? sched(dc) : null,
+                    { value: { base: sched(bc), prod: sched(pc), dev: sched(dc) } })
+                : 'unknown'
+            const offer = origin === 'target-changed' || origin === 'target-added' || origin === 'conflict' || origin === 'dev-added'
+            if (!offer && !d.devMustStayOff) continue
+            chores.push({ name, onTarget: !!pc, onDev: !!dc, origin, choice: origin === 'conflict' || origin === 'unknown' ? null : 'take', ...d })
         }
     } catch { /* no chore access — carry on with dimensions */ }
 
@@ -160,16 +215,20 @@ async function planRefresh(source, target, { ideToken } = {}) {
     let coverage = { subsets: [], views: [], hierarchies: [] }
     try {
         const { planCovers } = require('./refresh-covers')
-        const c = await planCovers(source, target, { ideToken })
+        const c = await planCovers(source, target, { ideToken, reader })
         coverage = { ...coverage, subsets: c.subsets, views: c.views, coversSkipped: c.skipped }
     } catch { /* no view/subset access — dimensions and chores still planned */ }
     // Alternate hierarchies: a gap is created, a difference on both sides is a choice.
     try {
         const { planHierarchies } = require('./refresh-hierarchy')
-        coverage.hierarchies = await planHierarchies(source, target, { ideToken })
+        coverage.hierarchies = await planHierarchies(source, target, { ideToken, reader })
     } catch { /* no hierarchy access — the rest still planned */ }
 
-    return { source, target, dimensions: items, chores, ...coverage }
+    return {
+        source, target,
+        base: { ok: !!reader, commit: base.commit ?? null, source: base.source ?? null, override: !!base.override, reason: base.reason ?? null, branch: base.branch ?? null, local: base.local ?? null },
+        dimensions: items, chores, ...coverage,
+    }
 }
 
 // Apply the ticked dimensions to DEV and record each one in the open change set.
@@ -310,7 +369,7 @@ function undecidedDecisions(diff, want = {}) {
 // lacks, take a type only when chosen, and copy VALUES for the confirmed list only.
 // Returns three separate lists, because "not chosen" and "failed" are different
 // things and must never be reported as the same.
-async function applyAttributeChanges(dev, prod, dim, { attributeTypes = {}, confirmed = [], devElements = [] } = {}) {
+async function applyAttributeChanges(dev, prod, dim, { attributeTypes = {}, confirmed = [], devElements = [], creates = [] } = {}) {
     const changed = []
     const errors = []
     const decisions = []
@@ -324,6 +383,10 @@ async function applyAttributeChanges(dev, prod, dim, { attributeTypes = {}, conf
     const tm1Type = (t) => (t === 'N' ? 'Numeric' : 'String')
 
     for (const a of defs.add) {
+        // Attributes are not in TM1 Git, so there is no baseline to say who removed
+        // one. Creating every missing definition could resurrect one DEV deleted on
+        // purpose, so only an explicitly ticked attribute is created.
+        if (!creates.includes(a.name)) continue
         try {
             await dev.createElementAttribute(dim, a.name, tm1Type(a.type))
             changed.push(`attribute ${a.name}`)
@@ -373,14 +436,41 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
     const skipped = []
     const errors = []
 
-    // Refuse before anything is written if a delete or move is undecided.
+    // The baseline. Apply ALWAYS recomputes against the real one: a screen built
+    // with ?base=, or a plan left open while someone else deployed, can never
+    // authorise a write here.
+    const baseInfo = await resolveBase(target, { ideToken }).catch(e => ({ ok: false, reason: e.message }))
+    if (!baseInfo.ok) {
+        throw Object.assign(new Error(
+            `Refused: no baseline for ${target} — ${baseInfo.reason} Refresh cannot write without knowing what PROD changed since the last deploy.`
+        ), { refused: true, baseMissing: true })
+    }
+    const reader = openBase(baseInfo.repoUrl, baseInfo.commit)
+
+    // Classify every accepted dimension against the baseline. Anything the plan
+    // did not offer (DEV removed it, DEV changed it) is not written, and a choice
+    // that is not in this classification is refused as a stale plan.
     const undecided = []
+    const stale = []
     const planned = []
     for (const want of accept) {
-        const [p, d] = await Promise.all([readDimensionStrict(prod, want.dimension), readDimensionStrict(dev, want.dimension)])
-        const diff = diffDimension(p, d)
-        planned.push({ want, diff })
-        undecided.push(...undecidedDecisions(diff, want))
+        const dim = want.dimension
+        const [p, d] = await Promise.all([readDimensionStrict(prod, dim), readDimensionStrict(dev, dim)])
+        const c = classifyDimension(baseHierarchy(reader, dim, dim), p, d)
+        planned.push({ want, c, p, d })
+        for (const e of c.removeElements) if (!['delete', 'keep'].includes(want.deletes?.[e.name])) undecided.push({ dimension: dim, kind: 'delete', element: e.name })
+        for (const e of c.removeEdges) { const k = `${e.parent}::${e.child}`; if (!['delete', 'keep'].includes(want.deletes?.[k])) undecided.push({ dimension: dim, kind: 'edge', element: k }) }
+        for (const m of c.moveConflicts) if (!['take', 'keep'].includes(want.moves?.[m.child])) undecided.push({ dimension: dim, kind: 'move', element: m.child })
+        const knownRemove = (n) => c.removeElements.some(e => e.name === n) || c.removeEdges.some(e => `${e.parent}::${e.child}` === n)
+        for (const n of Object.keys(want.deletes ?? {})) if (!knownRemove(n)) stale.push(`${dim}: delete ${n}`)
+        const knownMove = (n) => [...c.moves, ...c.moveConflicts].some(m => m.child === n)
+        for (const n of Object.keys(want.moves ?? {})) if (!knownMove(n)) stale.push(`${dim}: move ${n}`)
+    }
+    if (stale.length) {
+        throw Object.assign(new Error(
+            `Refused: this is not the plan against ${target}'s current baseline — ${stale.join(', ')}. ` +
+            `Someone deployed since it was built (or it used a different base). Rebuild the plan and decide again.`
+        ), { refused: true, stale })
     }
     // An attribute whose type differs is a decision too: taking PROD's type clears
     // the values stored in it.
@@ -410,12 +500,13 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
     let coverPlan = { subsets: [], views: [], skipped: [] }
     try {
         const { planCovers } = require('./refresh-covers')
-        coverPlan = await planCovers(source, target, { ideToken })
+        coverPlan = await planCovers(source, target, { ideToken, reader })
     } catch { /* no access: the apply below reports it rather than guessing */ }
     const coverageKey = (x) => `${x.type}:${x.name}:${x.dimension ?? x.cube}`
     const chosen = new Map((Array.isArray(covers) ? covers : []).map(c => [coverageKey(c), c.choice]))
+    const coverChoiceOk = (x) => (x.removing ? ['delete', 'keep'] : ['take', 'keep']).includes(chosen.get(coverageKey(x)))
     const undecidedCovers = [...(coverPlan.subsets ?? []), ...(coverPlan.views ?? [])]
-        .filter(x => x.differs && !x.adding && !['take', 'keep'].includes(chosen.get(coverageKey(x))))
+        .filter(x => x.differs && !x.adding && !coverChoiceOk(x))
     if (undecidedCovers.length) {
         const names = undecidedCovers.map(u => `${u.type} ${u.name} (${u.dimension ?? u.cube})`)
         throw Object.assign(new Error(
@@ -433,11 +524,12 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
     let hierarchyPlan = []
     try {
         const { planHierarchies } = require('./refresh-hierarchy')
-        hierarchyPlan = await planHierarchies(source, target, { ideToken })
+        hierarchyPlan = await planHierarchies(source, target, { ideToken, reader })
     } catch { /* reported by the apply below if it cannot run */ }
     const hKey = (x) => `hierarchy:${x.name}:${x.dimension}`
     const hChosen = new Map((Array.isArray(hierarchies) ? hierarchies : []).map(h => [hKey(h), h.choice]))
-    const undecidedHiers = hierarchyPlan.filter(x => x.differs && !x.adding && !['take', 'keep'].includes(hChosen.get(hKey(x))))
+    const hierChoiceOk = (x) => (x.removing ? ['delete', 'keep'] : ['take', 'keep']).includes(hChosen.get(hKey(x)))
+    const undecidedHiers = hierarchyPlan.filter(x => x.differs && !x.adding && !hierChoiceOk(x))
     if (undecidedHiers.length) {
         const names = undecidedHiers.map(u => `hierarchy ${u.name} (${u.dimension})`)
         throw Object.assign(new Error(
@@ -446,17 +538,16 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
         ), { refused: true, undecided: undecidedHiers.map(u => ({ kind: 'hierarchy', element: u.name, dimension: u.dimension })) })
     }
 
-    for (const { want, diff } of planned) {
+    for (const { want, c, p, d } of planned) {
         const dim = want.dimension
         try {
-            const [p, d] = await Promise.all([readDimensionStrict(prod, dim), readDimensionStrict(dev, dim)])
             const changed = []
 
             // A move or edge can turn a leaf on DEV into a consolidation, clearing the
             // values stored against it. Never do that silently.
             const devType = new Map((d.elements ?? []).map(e => [elName(e), elType(e)]))
             const prodType = new Map((p.elements ?? []).map(e => [elName(e), elType(e)]))
-            const parents = new Set([...diff.addEdges.map(e => e.parent), ...diff.moves.map(m => m.toParent)])
+            const parents = new Set([...c.addEdges.map(e => e.parent), ...c.moves.map(m => m.toParent)])
             const risky = [...parents].filter(x => x && devType.get(x) === 'Numeric' && prodType.get(x) === 'Consolidated')
             if (risky.length && !want.allowTypeChanges) {
                 throw Object.assign(new Error(
@@ -465,68 +556,26 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
                     `Tick "allow element type changes" if that is intended, or make the change in the model.`
                 ), { refused: true })
             }
-
-            for (const e of diff.addElements) {
-                await dev.addElementAt(dim, e.name, e.type, dim)
-                changed.push(`element ${e.name}`)
-            }
-            // Moves before plain additions: a move creates the edge that a plain add of
-            // the same child would otherwise duplicate.
-            const moved = new Set()
-            for (const m of diff.moves) {
-                if (want.moves?.[m.child] === 'keep') {
-                    // Deliberate: DEV keeps its parent, so the next deploy puts DEV's
-                    // parent back on PROD — no data is affected by an edge either way.
-                    recordDecision(source, dim, `move ${m.child}: kept DEV's parent ${m.fromParent ?? '(none)'} — the next deploy restores it on the target`, { kind: 'move', element: m.child, choice: 'keep', user })
-                    continue
-                }
-                if (m.fromParent) await dev.deleteEdge(dim, m.fromParent, m.child, dim).catch(() => {})
-                await dev.addEdge(dim, m.toParent, m.child, m.toWeight ?? 1, dim)
-                moved.add(m.child)
-                changed.push(`move ${m.child}: ${m.fromParent ?? '(none)'} → ${m.toParent}`)
-                recordDecision(source, dim, `move ${m.child}: took the target's parent ${m.toParent}`, { kind: 'move', element: m.child, choice: 'take', user })
-            }
-            for (const e of diff.addEdges) {
-                if (moved.has(e.child)) continue
-                await dev.addEdge(dim, e.parent, e.child, e.weight ?? 1, dim)
-                changed.push(`edge ${e.parent} → ${e.child}`)
-            }
-            // Type changes LAST: the edges above must land first (a leaf becomes a
-            // consolidation only once it has a component), and an element the edge
-            // already made a rollup is not patched at all.
-            const { patch, skip: skipTypes } = typeChangesToApply(diff, want)
-            for (const t of skipTypes) {
-                skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
-            }
-            for (const t of patch) {
-                try {
-                    await dev.patch(
-                        `Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(dim)}')/Elements('${odataKey(t.name)}')`,
-                        { Type: t.to }
-                    )
-                    changed.push(`type ${t.name}: ${t.from} → ${t.to}`)
-                } catch (e) {
-                    errors.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: e.message })
+            for (const t of c.typeChanges) {
+                if (!want.allowTypeChanges) {
+                    skipped.push({ dimension: dim, what: `type of ${t.name} (${t.from} → ${t.to})`, why: 'tick "allow element type changes" — the values stored against it are cleared' })
                 }
             }
 
-            for (const name of diff.removeElements) {
-                if (want.deletes?.[name] === 'keep') {
-                    // Deliberate: DEV keeps it, so the deploy restores it on the target
-                    // with no values (the element itself comes back, its data does not).
-                    recordDecision(source, dim, `delete ${name}: kept on DEV — the next deploy restores it on the target with no data`, { kind: 'delete', element: name, choice: 'keep', user })
-                    continue
-                }
-                await dev.deleteElement(dim, name, dim)
-                changed.push(`removed ${name}`)
-                recordDecision(source, dim, `delete ${name}: deleted on DEV too (its values are gone)`, { kind: 'delete', element: name, choice: 'delete', user })
-            }
+            // The writes: only what the classification offered (target-side changes).
+            const dimRes = await applyDimension(dev, prod, baseHierarchy(reader, dim, dim), dim, want, {
+                source, user,
+                record: (text, meta) => recordDecision(source, dim, text, { ...meta, user }),
+            })
+            changed.push(...dimRes.changed)
+            errors.push(...dimRes.errors)
 
             // Attributes, in their own function so a failure is an ERROR, not a "skip":
             // not chosen and failed must never read the same.
             const wantConfirmed = want.confirmedAttributes ?? []
             const attrRes = await applyAttributeChanges(dev, prod, dim, {
                 attributeTypes: want.attributeTypes ?? {},
+                creates: want.attributeCreates ?? [],
                 confirmed: wantConfirmed,
                 devElements: (d.elements ?? []).map(elName).filter(Boolean),
             })
@@ -574,7 +623,7 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
     // Views and subsets last, subsets before views (a view may bind a named subset).
     try {
         const { applyCovers } = require('./refresh-covers')
-        const cov = await applyCovers(dev, prod, { covers, source, target, user })
+        const cov = await applyCovers(dev, prod, { covers, source, target, user, plan: coverPlan })
         for (const c of cov.changed) applied.push({ dimension: c.label, applied: c.text })
         for (const d of cov.decisions) applied.push({ dimension: d.label, applied: d.text })
         for (const e of cov.errors) errors.push({ dimension: e.what, what: 'not applied', why: e.why })
@@ -587,7 +636,7 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], ch
     // Alternate hierarchies last: a subset or a view can depend on one existing.
     try {
         const { applyHierarchies } = require('./refresh-hierarchy')
-        const h = await applyHierarchies(dev, prod, { hierarchies, source, target, user })
+        const h = await applyHierarchies(dev, prod, { hierarchies, source, target, user, plan: hierarchyPlan })
         for (const c of h.changed) applied.push({ dimension: c.label, applied: c.text })
         for (const d of h.decisions) applied.push({ dimension: d.label, applied: d.text })
         for (const e of h.errors) errors.push({ dimension: e.what, what: 'not applied', why: e.why })

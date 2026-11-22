@@ -18,8 +18,19 @@ const stub = (rel, exportsObj) => {
 }
 
 const clients = {}
+// A baseline that holds element B as Numeric, so PROD's String is a TARGET-side
+// type change (the only kind the refresh may offer).
+const fakeBase = {
+    resolveBase: async () => ({ ok: true, repoUrl: 'https://repo', commit: 'BASE', source: 'release-branch' }),
+    openBase: () => ({ commit: 'BASE', list: () => [], show: () => { throw new Error('no file') }, has: () => false }),
+    baseHierarchy: () => ({ elements: new Map([['B', 'Numeric']]), edges: new Map() }),
+    baseChore: () => null,
+    baseSubset: () => null,
+    baseView: () => null,
+}
 const load = () => {
     stub('core/adapter-registry', { makeClient: (server) => ({ server }) })
+    stub('core/deploy-base', fakeBase)
     stub('core/tm1-client', { TM1Client: class { constructor(server) { return clients[server] } } })
     stub('core/change-log', {
         getSession: () => ({ id: 's1', server: 'DEV', closed_at: null }),

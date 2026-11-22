@@ -125,7 +125,7 @@ test('an axis with no subset and no expression is unreadable — never copied as
 
 // ── Planning ────────────────────────────────────────────────────────────────
 
-test('plan: an object only on the target is brought across; one on both is a choice with no default', async () => {
+test('plan: only a target-side change is offered — a gap arrives ticked, a DEV-side change is left alone', async () => {
     const { planCovers } = withClients()
     const prod = subsetServer(prodData())
     const dev = subsetServer({
@@ -133,14 +133,23 @@ test('plan: an object only on the target is brought across; one on both is a cho
     })
     clients.DEV = dev
     clients.PROD = prod
-    const p = await planCovers('DEV', 'PROD')
+    // Baseline: S did not exist; S2 held PROD's content (so DEV's change is DEV's);
+    // S4 differed from both.
+    const reader = {
+        commit: 'BASE',
+        list: (p) => p === 'dimensions/D.hierarchies/D.subsets/' ? ['Default', 'S2', 'S4'].map(n => `dimensions/D.hierarchies/D.subsets/${n}.json`) : [],
+        show: (p) => {
+            if (p.endsWith('S2.json')) return JSON.stringify({ Elements: [{ Name: 'A' }, { Name: 'B' }] })
+            if (p.endsWith('S4.json')) return JSON.stringify({ Elements: [{ Name: 'Z' }] })
+            throw new Error('no file')
+        },
+    }
+    const p = await planCovers('DEV', 'PROD', { reader })
     const S = p.subsets.find(x => x.name === 'S')
-    const S2 = p.subsets.find(x => x.name === 'S2')
-    assert.equal(S.adding, true)
-    assert.equal(S.choice, 'take')          // a gap arrives by default
-    assert.equal(S2.adding, false)
-    assert.equal(S2.choice, null)           // a conflict has no default
-    assert.ok(!p.subsets.some(x => x.name === 'S3'))   // only on DEV: the deploy carries it, no refresh
+    assert.equal(S?.adding, true)
+    assert.equal(S?.choice, 'take')            // new on the target: arrives by default
+    assert.ok(!p.subsets.some(x => x.name === 'S2'), 'DEV changed it alone — not a refresh question')
+    assert.ok(!p.subsets.some(x => x.name === 'S3'), 'only on DEV: the deploy carries it')
 })
 
 test('plan: a hierarchy DEV lacks is reported, not created', async () => {
@@ -318,6 +327,17 @@ test('applyRefresh refuses a conflicting view/subset before writing anything', a
         writeLog: () => ({ hasSession: true }),
     })
     stub('core/deploy-settings', { get: async () => ({}) })
+    // A baseline where S differs from BOTH sides → a conflict with no default.
+    const real = require('../core/deploy-base')
+    stub('core/deploy-base', {
+        ...real,
+        resolveBase: async () => ({ ok: true, repoUrl: 'https://repo', commit: 'BASE', source: 'release-branch' }),
+        openBase: () => ({ commit: 'BASE', list: () => [], show: () => { throw new Error('no file') } }),
+        baseSubset: () => ({ mode: 'mdx', expression: 'BASE VERSION' }),
+        baseHierarchy: () => ({ elements: new Map(), edges: new Map() }),
+        baseView: () => null,
+        baseChore: () => null,
+    })
     delete require.cache[resolve('core/refresh-dev')]
     const { applyRefresh } = require('../core/refresh-dev')
 

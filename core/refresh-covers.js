@@ -26,6 +26,14 @@ const { makeClient } = require('./adapter-registry')
 const { TM1Client } = require('./tm1-client')
 const { odataKey } = require('./odata-key')
 const cl = require('./change-log')
+const { originOf, ORIGIN } = require('./refresh-origins')
+const { baseSubset, baseView } = require('./deploy-base')
+
+// One comparable string per definition, so a three-way compare is three strings.
+const canonSubset = (x) => !x ? null : x.mode === 'mdx' ? `mdx:${x.expression}` : `static:${(x.members ?? []).join('|')}`
+const canonView = (v) => !v ? null : v.mode === 'mdx'
+    ? `mdx:${v.expression}`
+    : `native:${JSON.stringify([v.rows ?? [], v.columns ?? [], v.titles ?? []])}|${v.suppressEmptyRows}|${v.suppressEmptyColumns}|${v.formatString ?? ''}`
 
 // TM1 reflows MDX (line breaks, spacing) without changing meaning; comparing raw
 // text would report a difference that isn't one.
@@ -161,7 +169,19 @@ function subsetsUsedBy(view) {
 
 // ── Planning ────────────────────────────────────────────────────────────────
 
-async function planCovers(source, target, { ideToken } = {}) {
+// Names of the files a baseline holds under a prefix — so an object that exists
+// only in the baseline is seen (PROD may have deleted it since).
+function namesInBase(reader, prefix) {
+    try {
+        return (reader.list ? reader.list(prefix) : [])
+            .filter(f => f.endsWith('.json'))
+            .map(f => f.slice(prefix.length).replace(/\.json$/i, ''))
+    } catch { return [] }
+}
+const subsetNamesInBase = (reader, dim, hier) => namesInBase(reader, `dimensions/${dim}.hierarchies/${hier}.subsets/`)
+const viewNamesInBase = (reader, cube) => namesInBase(reader, `cubes/${cube}.views/`)
+
+async function planCovers(source, target, { ideToken, reader = null } = {}) {
     const dev = new TM1Client(source, makeClient(source, ideToken))
     const prod = new TM1Client(target, makeClient(target, ideToken))
     const subsets = []
@@ -182,21 +202,32 @@ async function planCovers(source, target, { ideToken } = {}) {
                 continue
             }
             const devNames = new Set(((await dev.get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(hier)}')/Subsets`, { $select: 'Name' }).catch(() => null))?.value ?? []).map(s => s?.Name).filter(Boolean))
-            for (const name of prodNames) {
+            const baseNames = reader ? subsetNamesInBase(reader, dim, hier) : null
+            const all = new Set([...prodNames, ...devNames, ...(baseNames ?? [])])
+            for (const name of all) {
                 const [p, d] = await Promise.all([
-                    readSubset(prod, dim, name, hier),
+                    prodNames.includes(name) ? readSubset(prod, dim, name, hier) : Promise.resolve(null),
                     devNames.has(name) ? readSubset(dev, dim, name, hier) : Promise.resolve(null),
                 ])
-                if (!p) continue
-                const diff = diffSubsetSpec(p, d)
-                if (!diff.differs) continue
+                const b = baseNames === null ? undefined : (baseNames.includes(name) ? canonSubset(baseSubset(reader, dim, hier, name)) : null)
+                if (!p && !d) continue
+                const origin = b === undefined
+                    ? ORIGIN.UNKNOWN
+                    : originOf(b, canonSubset(p), canonSubset(d), { value: { base: b, prod: canonSubset(p), dev: canonSubset(d) } })
+                if (origin === ORIGIN.UNCHANGED || origin === ORIGIN.BOTH || origin === ORIGIN.DEV_ADDED || origin === ORIGIN.DEV_CHANGED || origin === ORIGIN.DEV_REMOVED) continue
+                const deleting = origin === ORIGIN.TARGET_REMOVED
                 subsets.push({
-                    type: 'subset', name, dimension: dim, hierarchy: hier,
-                    onTarget: true, onDev: !!d, mode: p.mode,
-                    n: p.mode === 'static' ? (p.members ?? []).length : null,
-                    adding: !!diff.adding, differs: true, parts: diff.parts,
-                    // A conflict needs a choice; a gap is brought across by default.
-                    choice: diff.adding ? 'take' : null,
+                    type: 'subset', name, dimension: dim, hierarchy: hier, origin,
+                    onTarget: !!p, onDev: !!d,
+                    mode: (p ?? d)?.mode ?? null,
+                    n: (p ?? d)?.mode === 'static' ? ((p ?? d)?.members ?? []).length : null,
+                    adding: origin === ORIGIN.TARGET_ADDED,
+                    removing: deleting,
+                    differs: true,
+                    parts: [origin === ORIGIN.TARGET_ADDED ? 'new on the target since the last deploy'
+                        : deleting ? 'removed on the target since the last deploy'
+                        : origin === ORIGIN.CONFLICT ? 'changed on both sides' : 'changed on the target since the last deploy'],
+                    choice: origin === ORIGIN.TARGET_ADDED || origin === ORIGIN.TARGET_CHANGED ? 'take' : null,
                 })
             }
         }
@@ -210,23 +241,36 @@ async function planCovers(source, target, { ideToken } = {}) {
             skipped.push({ what: `views in ${cube}`, why: `cube ${cube} is not on ${source} — a refresh does not create cubes` })
             continue
         }
-        const [pn, dn] = await Promise.all([prod.getViews(cube).catch(() => []), dev.getViews(cube).catch(() => [])])
-        const devNames = new Set((dn ?? []).map(v => v.name))
-        for (const v of pn ?? []) {
+        const [pv, dv] = await Promise.all([prod.getViews(cube).catch(() => []), dev.getViews(cube).catch(() => [])])
+        const prodNames = (pv ?? []).map(v => v.name)
+        const devNames = new Set((dv ?? []).map(v => v.name))
+        const baseNames = reader ? viewNamesInBase(reader, cube) : null
+        const all = new Set([...prodNames, ...devNames, ...(baseNames ?? [])])
+        for (const name of all) {
             const [p, d] = await Promise.all([
-                readView(prod, cube, v.name),
-                devNames.has(v.name) ? readView(dev, cube, v.name) : Promise.resolve(null),
+                prodNames.includes(name) ? readView(prod, cube, name) : Promise.resolve(null),
+                devNames.has(name) ? readView(dev, cube, name) : Promise.resolve(null),
             ])
-            if (!p) continue
-            const diff = diffViewSpec(p, d)
-            if (!diff.differs) continue
+            const b = baseNames === null ? undefined : (baseNames.includes(name) ? canonView(baseView(reader, cube, name)) : null)
+            if (!p && !d) continue
+            const origin = b === undefined
+                ? ORIGIN.UNKNOWN
+                : originOf(b, canonView(p), canonView(d), { value: { base: b, prod: canonView(p), dev: canonView(d) } })
+            if (origin === ORIGIN.UNCHANGED || origin === ORIGIN.BOTH || origin === ORIGIN.DEV_ADDED || origin === ORIGIN.DEV_CHANGED || origin === ORIGIN.DEV_REMOVED) continue
+            const deleting = origin === ORIGIN.TARGET_REMOVED
             views.push({
-                type: 'view', name: v.name, cube,
-                onTarget: true, onDev: !!d, mode: p.mode,
-                usesSubsets: subsetsUsedBy(p),
-                unreadable: p.mode === 'native' ? unreadableAxes(p) : [],
-                adding: !!diff.adding, differs: true, parts: diff.parts,
-                choice: diff.adding ? 'take' : null,
+                type: 'view', name, cube, origin,
+                onTarget: !!p, onDev: !!d,
+                mode: (p ?? d)?.mode ?? null,
+                usesSubsets: subsetsUsedBy(p ?? d),
+                unreadable: (p ?? d)?.mode === 'native' ? unreadableAxes(p ?? d) : [],
+                adding: origin === ORIGIN.TARGET_ADDED,
+                removing: deleting,
+                differs: true,
+                parts: [origin === ORIGIN.TARGET_ADDED ? 'new on the target since the last deploy'
+                    : deleting ? 'removed on the target since the last deploy'
+                    : origin === ORIGIN.CONFLICT ? 'changed on both sides' : 'changed on the target since the last deploy'],
+                choice: origin === ORIGIN.TARGET_ADDED || origin === ORIGIN.TARGET_CHANGED ? 'take' : null,
             })
         }
     }
@@ -265,14 +309,43 @@ async function writeView(tm1, item, spec) {
 //
 // Called by applyRefresh AFTER its undecided guard, so every conflict here has a
 // choice. Anything that fails is an ERROR with TM1's message — never a "skip".
-async function applyCovers(dev, prod, { covers = [], source, target, user, log = cl.writeLog } = {}) {
+async function applyCovers(dev, prod, { covers = [], source, target, user, log = cl.writeLog, plan = null } = {}) {
     const changed = []
     const errors = []
     const decisions = []
 
+    // What the real baseline says, for validation: a choice that is not in this
+    // plan came from a stale screen and must not be applied.
+    const known = new Map([...(plan?.subsets ?? []), ...(plan?.views ?? [])]
+        .map(x => [`${x.type}:${x.name}:${x.dimension ?? x.cube}`, x]))
+
     const wanted = [...covers].sort((a, b) => (a.type === 'subset' ? 0 : 1) - (b.type === 'subset' ? 0 : 1))
     for (const c of wanted) {
         const label = c.type === 'subset' ? `subset ${c.name} (${c.dimension})` : `view ${c.name} (${c.cube})`
+        const key = `${c.type}:${c.name}:${c.dimension ?? c.cube}`
+        if (plan && !known.has(key)) {
+            errors.push({ what: label, why: 'not in the plan against the current baseline — rebuild the plan' })
+            continue
+        }
+        const item = known.get(key)
+        if (item?.removing) {
+            // PROD removed it since the last deploy: "delete on DEV too?" or keep.
+            if (c.choice === 'delete') {
+                try {
+                    if (c.type === 'subset') await dev.deleteSubset(c.dimension, c.name, c.hierarchy ?? c.dimension)
+                    else await dev.deleteView(c.cube, c.name)
+                    changed.push({ label, text: 'deleted on DEV too (the target removed it since the last deploy)' })
+                    try { log({ server: source, action: c.type === 'subset' ? 'SUBSET_DELETED' : 'VIEW_DELETED', objectType: c.type, objectName: c.name, detail: c.dimension ?? c.cube, user }) } catch { /* evidence only */ }
+                } catch (e) { errors.push({ what: label, why: e.message }) }
+            } else if (c.choice === 'keep') {
+                const text = `kept ${source}'s ${c.type} — the next deploy puts it back on the target`
+                decisions.push({ label, choice: 'keep', text })
+                try { log({ server: source, action: 'REFRESH_DECISION', objectType: 'decision', objectName: label, detail: text, user, afterState: { kind: c.type, choice: 'keep', parent: c.dimension ?? c.cube } }) } catch { /* evidence only */ }
+            } else {
+                errors.push({ what: label, why: 'no choice made — the target removed it: delete it on DEV too, or keep it' })
+            }
+            continue
+        }
         if (!['take', 'keep'].includes(c.choice)) {
             errors.push({ what: label, why: 'no choice made — say whether DEV takes the target\'s version or keeps its own' })
             continue

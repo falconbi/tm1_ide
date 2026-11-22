@@ -26,13 +26,19 @@ const devFailsCreate = {
 }
 
 test('a created attribute is a change, not an error', async () => {
-    const r = await applyAttributeChanges(devOk, prod, 'D', {})
+    const r = await applyAttributeChanges(devOk, prod, 'D', { creates: ['Loaded'] })
     assert.deepEqual(r.changed, ['attribute Loaded'])
     assert.equal(r.errors.length, 0)
 })
 
+test('an attribute nobody ticked is not created — attributes have no baseline', async () => {
+    const r = await applyAttributeChanges(devOk, prod, 'D', {})
+    assert.deepEqual(r.changed, [])
+    assert.equal(r.errors.length, 0)
+})
+
 test('a creation that TM1 refuses is an ERROR, with its message — not a skip', async () => {
-    const r = await applyAttributeChanges(devFailsCreate, prod, 'D', {})
+    const r = await applyAttributeChanges(devFailsCreate, prod, 'D', { creates: ['Loaded'] })
     assert.equal(r.changed.length, 0)
     assert.equal(r.errors.length, 1)
     assert.match(r.errors[0].why, /TM1 said no/)

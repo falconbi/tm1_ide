@@ -95,11 +95,12 @@ test('a hierarchy only the target has is planned to be created, with no choice n
         elements: { 'D|Alt': [el('A'), el('T', 'Consolidated')] },
         edges: { 'D|Alt': [edge('T', 'A')] },
     })
-    const plan = await planHierarchies('DEV', 'PROD')
+    const reader = { commit: 'BASE', list: () => [], show: () => { throw new Error('no file') } }
+    const plan = await planHierarchies('DEV', 'PROD', { reader })
     assert.equal(plan.length, 1)
     assert.equal(plan[0].name, 'Alt')
     assert.equal(plan[0].adding, true)
-    assert.equal(plan[0].choice, 'take')
+    assert.equal(plan[0].choice, 'take')   // new on the target: arrives ticked
 })
 
 test('the main hierarchy and TM1\'s Leaves are not alternate hierarchies', async () => {
@@ -119,10 +120,16 @@ test('a hierarchy on both sides with a different shape is a conflict with no def
         dims: { D: 1 }, hiers: { D: ['D', 'Alt'] },
         elements: { 'D|Alt': [el('A'), el('B')] }, edges: { 'D|Alt': [] },
     })
-    const plan = await planHierarchies('DEV', 'PROD')
+    // Baseline holds A only; PROD then added B, DEV changed nothing → a target-side
+    // change, offered (ticked), not a conflict.
+    const reader = {
+        commit: 'BASE', list: () => ['dimensions/D.hierarchies/Alt.json'],
+        show: () => JSON.stringify({ Elements: [{ Name: 'A', Type: 'Numeric' }], Edges: [] }),
+    }
+    const plan = await planHierarchies('DEV', 'PROD', { reader })
     assert.equal(plan[0].adding, false)
-    assert.equal(plan[0].choice, null)
-    assert.match(plan[0].parts.join(' '), /\+1 element/)
+    assert.equal(plan[0].choice, 'take')
+    assert.match(plan[0].parts.join(' '), /changed on the target/)
 })
 
 test('taking a missing hierarchy creates it, adds its members and edges, and logs the DIMENSION', async () => {

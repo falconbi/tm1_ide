@@ -133,10 +133,14 @@ app.post('/api/deploy/git/execute', async (req, res) => {
 // closed change set is refused rather than silently unrecorded.
 app.get('/api/deploy/refresh/plan', async (req, res) => {
     try {
-        const { source, target } = req.query
+        const { source, target, base } = req.query
         if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        // `base` is a READ-ONLY what-if: compare against another release commit
+        // (the one before last, say). Admin only, and apply never accepts it — apply
+        // always recomputes against the real baseline.
+        if (base && !(await requireTm1Admin(req, res, target))) return
         const { planRefresh } = require('../core/refresh-dev')
-        res.json(await planRefresh(source, target, { ideToken: req.ideToken }))
+        res.json(await planRefresh(source, target, { ideToken: req.ideToken, baseCommit: base || null }))
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

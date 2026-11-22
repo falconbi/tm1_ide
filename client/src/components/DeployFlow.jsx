@@ -154,7 +154,7 @@ export default function DeployFlow() {
     try {
       const accept = (refresh?.dimensions ?? [])
         .filter(d => ticked[d.dimension])
-        .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {}, attributeTypes: decisions[d.dimension]?.attributes ?? {} }))
+        .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {}, attributeTypes: decisions[d.dimension]?.attributes ?? {}, attributeCreates: decisions[d.dimension]?.attributeCreates ?? [] }))
       const chores = (refresh?.chores ?? []).filter(c => choreTicked[c.name]).map(c => ({ name: c.name, takeSchedule: true }))
       const covers = [...(refresh?.subsets ?? []), ...(refresh?.views ?? [])]
         .map(c => ({
@@ -398,6 +398,17 @@ export default function DeployFlow() {
                             <div className="grid grid-cols-[1fr_90px_120px] text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/30 px-3 py-1 border-b border-border gap-2">
                               <span>Dimension</span><span>Bring across</span><span>Deletes</span>
                             </div>
+                            {refresh.base && !refresh.base.ok && (
+                              <div className="px-3 py-2 border-b border-border/40">
+                                <p className="text-[11px] text-amber-700 font-semibold">No baseline</p>
+                                <p className="text-[10px] text-muted-foreground">{refresh.base.reason} Nothing is selected, and the refresh cannot be applied.</p>
+                              </div>
+                            )}
+                            {refresh.base?.ok && refresh.base.override && (
+                              <div className="px-3 py-2 border-b border-border/40">
+                                <p className="text-[11px] text-amber-700">Comparing against <span className="font-mono">{String(refresh.base.commit).slice(0, 10)}</span> (not the last deploy) — this is a what-if; it cannot be applied.</p>
+                              </div>
+                            )}
                             {(refresh.dimensions ?? []).map((d, i) => (
                               <div key={i} className="grid grid-cols-[1fr_90px_120px] px-3 py-1 text-[11px] border-b border-border/40 last:border-0 gap-2 items-center">
                                 <label className="flex items-center gap-2">
@@ -410,6 +421,27 @@ export default function DeployFlow() {
                                 <span className="text-muted-foreground">
                                   {d.removeElements.length ? `${d.removeElements.length} to decide` : '—'}
                                 </span>
+                                {(d.summary ?? []).length > 0 && (
+                                  <div className="col-span-3 text-[10px] text-muted-foreground/80 space-y-0.5 pb-1">
+                                    {d.summary.map((r, k) => (
+                                      <details key={k}>
+                                        <summary className="cursor-pointer">
+                                          {r.origin === 'target-added' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} added on ${target} since the last deploy — bring across`
+                                            : r.origin === 'target-removed' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} removed on ${target} since the last deploy — to decide`
+                                            : r.origin === 'target-changed' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} changed on ${target} since the last deploy`
+                                            : r.origin === 'dev-removed' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} removed on ${server} — not offered (Review reports the removal)`
+                                            : r.origin === 'dev-added' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} added on ${server} — ships with this change set`
+                                            : r.origin === 'dev-changed' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} changed on ${server} — ships with this change set`
+                                            : `${r.count} ${r.what}${r.count === 1 ? '' : 's'} changed differently on both sides`}
+                                        </summary>
+                                        <div className="pl-3">
+                                          {(r.origin === 'target-removed' ? d.removeElements : r.origin === 'dev-removed' ? d.devRemoved : r.origin === 'dev-added' ? d.devAdded : r.origin === 'target-added' ? d.addElements : r.origin === 'target-changed' ? d.typeChanges : d.typeConflicts ?? [])
+                                            .slice(0, 50).map((e, j) => <div key={j} className="font-mono">{e.name ?? `${e.parent} → ${e.child}`}</div>)}
+                                        </div>
+                                      </details>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             ))}
                             {(refresh.chores ?? []).length > 0 && (
@@ -437,7 +469,12 @@ export default function DeployFlow() {
                                       <span className="text-foreground">Hierarchy {h.name}</span>
                                       <span className="text-muted-foreground/60">({h.dimension}) · {(h.parts ?? []).join(', ')}{h.elements != null ? ` · ${h.elements} members, ${h.edges} edges` : ''}</span>
                                       {h.adding ? (
-                                        <span className="text-emerald-700">missing on {server} — created</span>
+                                        <span className="text-emerald-700">new on {target} since the last deploy — created</span>
+                                      ) : h.removing ? (
+                                        <>
+                                          <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'delete' }))} className={choice === 'delete' ? 'px-2 py-0.5 rounded bg-red-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Delete on {server} too</button>
+                                          <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'keep' }))} className={choice === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep — it comes back on {target}</button>
+                                        </>
                                       ) : (
                                         <>
                                           <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'take' }))} className={choice === 'take' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take {target}'s</button>
@@ -459,7 +496,12 @@ export default function DeployFlow() {
                                     <span className="text-foreground">{c.type === 'subset' ? 'Subset' : 'View'} {c.name}</span>
                                     <span className="text-muted-foreground/60">({c.dimension ?? c.cube}{c.hierarchy && c.hierarchy !== c.dimension ? `/${c.hierarchy}` : ''}) · {c.mode}{c.n != null ? ` · ${c.n} members` : ''} · {(c.parts ?? []).join(', ')}</span>
                                     {c.adding ? (
-                                      <span className="text-emerald-700">missing on {server} — brought across</span>
+                                      <span className="text-emerald-700">new on {target} since the last deploy — brought across</span>
+                                    ) : c.removing ? (
+                                      <>
+                                        <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'delete' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'delete' ? 'px-2 py-0.5 rounded bg-red-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Delete on {server} too</button>
+                                        <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'keep' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep — it comes back on {target}</button>
+                                      </>
                                     ) : (
                                       <>
                                         <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'take' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'take' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take {target}'s</button>
@@ -481,14 +523,25 @@ export default function DeployFlow() {
                                   <div key={d.dimension} className="text-[11px]">
                                     <span className="text-muted-foreground">{d.dimension}: </span>
                                     {(d.attributes.add ?? []).map(a => (
-                                      <span key={a.name} className="mr-2">{a.name} <span className="text-muted-foreground/60">({a.type})</span></span>
+                                      <label key={a.name} className="mr-3 inline-flex items-center gap-1">
+                                        <input type="checkbox"
+                                          checked={(decisions[d.dimension]?.attributeCreates ?? []).includes(a.name)}
+                                          onChange={e => setDecisions(prev => {
+                                            const cur = prev[d.dimension] ?? {}
+                                            const list = new Set(cur.attributeCreates ?? [])
+                                            if (e.target.checked) list.add(a.name); else list.delete(a.name)
+                                            return { ...prev, [d.dimension]: { ...cur, attributeCreates: [...list] } }
+                                          })} />
+                                        <span>{a.name} <span className="text-muted-foreground/60">({a.type})</span></span>
+                                      </label>
                                     ))}
                                     {(d.attributes.typeChanges ?? []).map(t => (
                                       <span key={t.name} className="mr-2 text-amber-600">{t.name}: {t.from} → {t.to} <span className="text-muted-foreground/60">(type differs — decided separately)</span></span>
                                     ))}
+                                    {d.attributes.warning && (d.attributes.add ?? []).length > 0 && <div className="text-[10px] text-amber-700">{d.attributes.warning}</div>}
                                   </div>
                                 ))}
-                                <p className="text-[10px] text-muted-foreground">Attribute definitions are created, and values are copied only for the attributes an admin confirmed {target}'s load maintains.</p>
+                                <p className="text-[10px] text-muted-foreground">Only a ticked attribute definition is created. Values are copied only for the attributes an admin confirmed {target}'s load maintains.</p>
                               </div>
                             )}
 
