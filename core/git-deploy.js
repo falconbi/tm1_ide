@@ -90,6 +90,8 @@ function shippedTargetPaths(objects = []) {
     const out = []
     for (const o of objects ?? []) {
         if (!o?.type || !o?.name) continue
+        // A deletion is supposed to leave nothing behind.
+        if (o.action === 'D' || /DELETED/i.test(String(o.action ?? ''))) continue
         const key = `${o.type}|${o.name}|${o.parent ?? ''}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -375,7 +377,9 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         try {
             out.shippedObjects = (cl.getSessionLog(linkedSession.id) ?? [])
                 .filter(e => e.object_type)
-                .map(e => ({ type: e.object_type, name: e.object_name, parent: e.detail ?? null }))
+                // The action matters: an object this change set DELETES is expected
+                // to be absent afterwards, and must not be read as "missing".
+                .map(e => ({ type: e.object_type, name: e.object_name, parent: e.detail ?? null, action: e.action ?? null }))
         } catch { /* report shows none */ }
     }
 

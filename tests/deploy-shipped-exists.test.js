@@ -37,3 +37,20 @@ test('an unknown type is skipped, never guessed', () => {
     assert.equal(shippedTargetPaths([{ type: 'dimension' }]).length, 0)
     assert.equal(shippedTargetPaths([]).length, 0)
 })
+
+test('an object the change set deletes is not checked for existence', () => {
+    const paths = shippedTargetPaths([
+        { type: 'dimension', name: 'Gone', action: 'DIMENSION_DELETED' },
+        { type: 'cube', name: 'GoneCube', action: 'D' },
+        { type: 'dimension', name: 'Kept', action: 'DIMENSION_UPDATED' },
+    ])
+    assert.deepEqual(paths.map(p => p.label), ['dimension Kept'])
+})
+
+test('a creation and an update are both checked', () => {
+    const paths = shippedTargetPaths([
+        { type: 'dimension', name: 'New', action: 'DIMENSION_CREATED' },
+        { type: 'dimension', name: 'Old', action: 'DIMENSION_UPDATED' },
+    ])
+    assert.equal(paths.length, 2)
+})
