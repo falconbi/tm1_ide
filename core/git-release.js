@@ -107,6 +107,41 @@ function expectedPlanKeys(objects) {
     return keys
 }
 
+// A hierarchy file carried only because of a subset may differ from the base's
+// copy in its list of subsets — nothing else. Anything else in it (elements,
+// edges, attributes) came from DEV, possibly from a newer change set that has not
+// been reviewed or deployed, and would ride along with the subset. Return what
+// else differs, so the release can refuse and name it.
+//
+// Pure: takes the two parsed JSON documents.
+function hierarchyDiffBeyondSubsets(baseJson, devJson) {
+    const strip = (j) => {
+        if (!j || typeof j !== 'object') return j
+        const c = { ...j }
+        delete c['Subsets@Code.links']
+        return c
+    }
+    const names = (j) => new Set((Array.isArray(j?.Elements) ? j.Elements : Array.isArray(j?.elements) ? j.elements : [])
+        .map(e => e?.Name ?? e?.name).filter(n => typeof n === 'string'))
+    const base = strip(baseJson)
+    const dev = strip(devJson)
+    const baseEls = names(base)
+    const devEls = names(dev)
+    const elementsAdded = [...devEls].filter(n => !baseEls.has(n))
+    const elementsRemoved = [...baseEls].filter(n => !devEls.has(n))
+
+    const a = { ...base }; delete a.Elements; delete a.elements
+    const b = { ...dev }; delete b.Elements; delete b.elements
+    const otherFields = []
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+        if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) otherFields.push(k)
+    }
+    return {
+        differs: elementsAdded.length > 0 || elementsRemoved.length > 0 || otherFields.length > 0,
+        elementsAdded, elementsRemoved, otherFields,
+    }
+}
+
 // A view or subset that changed on the target AND is shipped by this release:
 // TM1's pull does not touch those, but the IDE applies them over REST afterwards,
 // and that REPLACES — so the target's version would be lost. Pure, so both the
@@ -442,6 +477,30 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                     const obj = objectFromFile(c.file)
                     if (!obj || obj.type !== 'dimension' || obj.name !== dim) continue
                     if (included.some(x => x.file === c.file)) continue
+
+                    // It may differ from the base only in its subset list. Any other
+                    // difference is somebody else's work, shipped unreviewed.
+                    if (c.action !== 'D') {
+                        let baseJson = null
+                        let devJson = null
+                        try {
+                            baseJson = JSON.parse(git(work, 'show', `${base}:${c.file}`))
+                            devJson = JSON.parse(git(work, 'show', `${devCommit}:${c.file}`))
+                        } catch { baseJson = null; devJson = null }
+                        if (baseJson && devJson) {
+                            const d = hierarchyDiffBeyondSubsets(baseJson, devJson)
+                            if (d.differs) {
+                                const parts = []
+                                if (d.elementsAdded.length) parts.push(`${d.elementsAdded.length} element${d.elementsAdded.length === 1 ? '' : 's'} added (${d.elementsAdded.slice(0, 5).join(', ')}${d.elementsAdded.length > 5 ? '…' : ''})`)
+                                if (d.elementsRemoved.length) parts.push(`${d.elementsRemoved.length} removed (${d.elementsRemoved.slice(0, 5).join(', ')}${d.elementsRemoved.length > 5 ? '…' : ''})`)
+                                if (d.otherFields.length) parts.push(`${d.otherFields.join(', ')} changed`)
+                                return {
+                                    ok: false, refused: true,
+                                    error: `Refused: ${dim} has other changes on DEV that aren't in this change set (${parts.join('; ')}). Deploy those first, or include the dimension in this change set.`,
+                                }
+                            }
+                        }
+                    }
                     included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
                     addedAsDependency.push({
                         type: 'dimension', name: dim, parent: null, file: c.file,
@@ -657,7 +716,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, sharedObjectOrdering, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
+module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, sharedObjectOrdering, hierarchyDiffBeyondSubsets, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git's pull plan has no operation for subsets or views, so a release pull
 // never applies them. After the pull, apply every included subset and view to the

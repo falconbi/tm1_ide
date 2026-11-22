@@ -520,3 +520,15 @@ Proved on the lab: create `JDLove` in one change set, deploy; delete it in a sec
 PROD ends without it and drift is 0 immediately, with no baseline re-seed.
 
 The same rule matters for the refresh design: a subset and its hierarchy link are one change.
+
+**And the carried file may differ from the base only in its subset list.** A hierarchy file brought
+along for a subset holds the dimension's elements as well, so a newer change set — or an edit made in
+PAW or by a TI run, which the change log never saw — would otherwise ride along unreviewed. The
+release compares the two files with `Subsets@Code.links` ignored and refuses if anything else
+differs, naming the dimension and what changed:
+
+> Refused: WFP Currency has other changes on DEV that aren't in this change set
+> (1 element added (ZZ_CARRY_PROBE)). Deploy those first, or include the dimension in this change set.
+
+Proved on the lab by adding an element with a direct TM1 REST call (invisible to the change log) and
+then building a subset-only release.
