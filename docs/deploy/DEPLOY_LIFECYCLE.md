@@ -492,3 +492,24 @@ Catch-up releases ship everything and keep their own rule.
 and MCP agents. A change made in Planning Analytics Workspace, or by a TI process running on DEV, is
 **not** ordered. If someone edits an object in PAW and a change set also touches it, the order between
 them is not enforced. That gap is visible later as ordinary drift, not here.
+
+---
+
+## Known issue — a subset change leaves the parent hierarchy drifted (22 Nov 2026)
+
+A release that **creates or deletes a subset** includes only the subset file. The dimension's
+hierarchy file also changes when a subset appears or disappears — TM1 adds or removes the entry in
+`Subsets@Code.links` — and that file belongs to the *dimension* object, so it is not in the release.
+
+The pull does not touch subsets. The IDE applies them over REST afterwards, TM1 rewrites the link,
+and drift then reports `dimensions/<Dim>.hierarchies/<Hier>.json` as modified. Deploying again is
+refused by the drift gate until it is cleared.
+
+Seen on the lab while testing deploy ordering: `JDLove` created by one change set left
+`dimensions/WFP Currency.hierarchies/WFP Currency.json` drifted with the single line
+`"WFP Currency.subsets/JDLove.json"` added.
+
+**Clearing it:** include the dimension itself in a release, or adopt the target's current state as
+the baseline (Baselines / a re-seed). **Fixing it:** a release whose change set touches a subset
+must carry the parent hierarchy file too — this matters directly for the refresh design, which
+must treat the subset and its hierarchy link as one change.

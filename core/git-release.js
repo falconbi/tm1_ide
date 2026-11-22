@@ -525,14 +525,18 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                 subset: ['subset'],
                 view: ['view'],
             }
-            const objs = included
-                .filter(i => i?.type && LOG_TYPES[i.type] && i.name)
-                .map(i => ({
-                    type: i.type,
-                    name: i.name,
-                    parent: (i.type === 'subset' || i.type === 'view') ? (i.parent ?? null) : null,
-                    logTypes: LOG_TYPES[i.type],
-                }))
+            // One entry per OBJECT: a process is two files (.json + .ti), and an
+            // MDX view is two as well — without this the same conflict is named twice.
+            const seenObj = new Set()
+            const objs = []
+            for (const i of included) {
+                if (!i?.type || !LOG_TYPES[i.type] || !i.name) continue
+                const parent = (i.type === 'subset' || i.type === 'view') ? (i.parent ?? null) : null
+                const key = objectKey(i.type, i.name, parent)
+                if (seenObj.has(key)) continue
+                seenObj.add(key)
+                objs.push({ type: i.type, name: i.name, parent, logTypes: LOG_TYPES[i.type] })
+            }
 
             let rows = []
             try {
