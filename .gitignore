@@ -85,3 +85,4 @@ data/process-summaries.json
 
 # Per-deploy reports are runtime records (also written into the target model)
 data/deploy-records.json
+data/deploy-settings.json

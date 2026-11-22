@@ -88,46 +88,56 @@ See the [deployment guides](#deployment), or [why the deploy works this way](htt
 <a href="docs/deploy/DEPLOY_LIFECYCLE.md"><img src="docs/images/deploy.png" alt="The step-by-step deploy" width="480"></a>
 
 ### Deployment
-How a change moves from DEV to PROD without carrying anyone else’s work:
-[Shipping a TM1 change](https://falconbi.github.io/articles/shipping-tm1-changes/) ·
+How a change moves from DEV to PROD without carrying anyone else's work, and without wiping what
+PROD changed by itself:
+**[How a TM1 deploy works](https://falconbi.github.io/articles/how-tm1-deploys-work/)** (the whole
+process, step by step, with diagrams) ·
 [When PROD drifts](https://falconbi.github.io/articles/deploy-drift-recovery/) ·
 [Deploying Lenses](https://falconbi.github.io/articles/deploying-lenses/).
 
 > [!NOTE]
-> **The deploy is being reworked (November 2026).** Testing it against real working patterns
-> showed that PROD is rarely static: nightly loads add elements, users save views, and operators
-> switch chores on and off. Those changes must survive a deploy instead of blocking it. The
-> guides above describe the current version.
+> **Status (23 November 2026): reworked, and proven end to end on a lab DEV + PROD pair (TM1 v11).**
+> Testing against real working patterns showed that PROD is never static: loads add elements, users
+> save views, operators switch chores off. The deploy now carries those changes instead of wiping
+> them.
 >
-> **The challenges, found by testing on live servers:**
+> **How it works now: two phases.**
 >
-> - **TM1 Git makes the target match the release, object by object.** Any dimension, cube, process
->   or chore whose live copy differs is replaced, even when the release doesn't mention it. So a
->   GL code loaded on PROD overnight would be wiped by the next deploy.
-> - **Git can't simply be told to leave an object alone.** TM1 Git accepts a per-server ignore
->   setting, but the pull doesn't use it. The project-wide ignore breaks the links between files,
->   so no release can be built at all.
-> - **Not everything travels through Git.** Views, subsets, deletes and attribute values have to
->   be applied separately, and each of those steps can overwrite PROD's own version.
-> - **Some changes clear data with no warning.** When a deploy gives a leaf element children, TM1
->   turns it into a consolidation and clears every value stored against it.
-> - **Order matters across change sets.** If two change sets touch the same object, deploying the
->   older one last can bring back something the newer one removed.
-> - **Tests that read today's data can't tell a broken calculation from changed data.**
+> - **Pre-deploy** (look and decide, changes only DEV): check PROD is idle and hasn't drifted →
+>   **refresh DEV from PROD** → tests and close → build the release (PROD's last release plus
+>   exactly one change set) → review, which stops before any element is removed or any leaf
+>   becomes a consolidation.
+> - **Deploy** (one button): approve → idle check again → Save Data → backup → TM1 Git pull →
+>   subsets, views, confirmed attribute values and deletes applied in dependency order → chore
+>   on/off switches restored → verify and record in PROD's own model.
+> - **The refresh compares three copies,** not two: PROD's last release, PROD now and DEV now. So a
+>   GL code PROD loaded is brought into DEV, and an element DEV removed on purpose is left alone.
+> - **Order is enforced** across change sets that touch the same object, and **Return to last
+>   release** puts PROD's model objects back (not data: that comes from the backup).
 >
-> What's coming:
+> **Proven on the lab:** a cut of 4,798 elements from PROD with the review stop; a dimension
+> replacement that kept every surviving element's values and attribute values, including an
+> element PROD's own load had created; deletes in dependency order; views and subsets changed on
+> both sides; alternate hierarchies.
 >
-> - **Two clear phases.** *Pre-deploy* is where you look and decide; *Deploy* is one button.
-> - **Refresh DEV from PROD.** Before a release is built, the changes PROD made itself are listed
->   and brought into DEV, so a deploy carries them instead of overwriting them.
-> - **No silent data loss.** A deploy stops and asks before it removes elements or changes an
->   element's type (which clears its stored values).
-> - **Safer timing.** Deploy only when PROD is idle, with Save Data and a recorded backup first.
-> - **Order is enforced.** Change sets that touch the same object deploy in the order the changes
->   were made, so an older release can't undo a newer one.
-> - **Return to the last release.** A failed deploy can put PROD's design back the way it was.
-> - **Tests that stay true.** Structure checks run on any data, calculation checks bring their own
->   test data, and data-quality checks warn without blocking.
+> **Still open, before relying on it with a real model:**
+>
+> - The lab PROD has **no backup process** set (Deploy → Protection); a stated backup time is
+>   recorded instead.
+> - **Attribute values aren't in Git.** The refresh lists them but never preselects them; values
+>   travel only for attributes an admin confirms.
+> - **Re-running failed deletes** is an admin API route, with no button yet.
+> - **DEV → TEST → PROD** uses the same pieces but hasn't been run on the lab.
+> - **Several developers, each with their own IDE, on one DEV:** the overlap warning can't see
+>   another IDE's open change sets.
+> - **"What PROD last received"** is a local record cross-checked against the release branch; a
+>   dedicated marker in Git is next.
+> - Marking a server read-only is a config edit (`readOnlyServers`), and copying PROD's data onto
+>   a new DEV is done in TM1: neither has a screen.
+>
+> [Governed TM1 deploys](https://falconbi.github.io/articles/governed-tm1-deploys/) explains why a
+> release ships one change set. [Shipping a TM1 change](https://falconbi.github.io/articles/shipping-tm1-changes/)
+> describes the earlier wizard.
 
 ### Web applications on TM1 (Lenses)
 Focused HTML screens on live TM1 data, one per job, with governed write-back. They're built in the
