@@ -69,19 +69,28 @@ Follow `docs/models/BUILDING_MODELS.md` for the model itself. The data sequence 
    delete the generated roster, whichever the build doc says for your case).
 2. Keep the **hand-typed roster** (`ENG-*`, `EXEC-*`, `SALES-*` positions). The generator adds to
    it; it does not replace it.
-3. Seed the data. **`Generate Positions` with `pCount = 500`** and the original `pSeed`
-   (20261020) — the same seed keeps the roster deterministic, the count keeps it small:
+3. **Remove the old generated roster first.** `Generate Positions` only *adds* ("a larger
+   `pCount` only adds people"), so lowering the count on its own leaves the 3,000 in place:
 
    ```bash
-   # edit PARAMS in tools/reseed-workforce.cjs: pCount 500
-   node tools/reseed-workforce.cjs TM1_Test_DEV --run
+   node tools/trim-generated-positions.cjs TM1_Test_DEV            # report
+   node tools/trim-generated-positions.cjs TM1_Test_DEV --delete  # remove the generated codes
    ```
 
-4. **Snapshots** (optional, only if you keep the assertions that need them): run
+   It deletes only Numeric elements ending in 4+ digits (`ENG-1001`, `CS-1003`,
+   `TBH-SALES-0001`), leaving hand-typed codes (`ENG-002`) and consolidations alone.
+
+4. Seed the data at the new size, with the original `pSeed` (20261020):
+
+   ```bash
+   RESEED_POSITIONS=500 node tools/reseed-workforce.cjs TM1_Test_DEV --run
+   ```
+
+5. **Snapshots** (optional, only if you keep the assertions that need them): run
    `Generate Hiring Plan` with `pStage=feb`, then `WFP Snapshot`, then `pStage=now`.
-5. **Actuals** (optional): `WFP Load Actuals` if its file is still available. Without it, every
+6. **Actuals** (optional): `WFP Load Actuals` if its file is still available. Without it, every
    `Actual` assertion must go or be rewritten.
-6. Recalculate. Use the direct REST call — the IDE route gives up at 120 s while TM1 keeps
+7. Recalculate. Use the direct REST call — the IDE route gives up at 120 s while TM1 keeps
    working, and a client disconnect can cancel the run:
 
    ```bash
