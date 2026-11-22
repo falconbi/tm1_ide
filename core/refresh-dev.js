@@ -94,7 +94,16 @@ async function planRefresh(source, target, { ideToken } = {}) {
         if (!a.elements.length && !a.edges.length) continue
         const d = diffDimension(a, b)
         if (!d.differs) continue
-        items.push({ dimension: dim, ...d })
+        // Giving a leaf element children turns it into a consolidation, and TM1
+        // clears the values stored against it. PROD already made that choice; on
+        // DEV it is still a destructive step that must be named before it happens.
+        const devType = new Map((b.elements ?? []).map(e => [elName(e), elType(e)]))
+        const prodType = new Map((a.elements ?? []).map(e => [elName(e), elType(e)]))
+        const parents = new Set([...d.addEdges.map(e => e.parent), ...d.moves.map(m => m.toParent)])
+        const typeRisk = [...parents]
+            .filter(p => p && devType.get(p) === 'Numeric' && prodType.get(p) === 'Consolidated')
+            .map(p => ({ element: p, from: 'Numeric', to: 'Consolidated' }))
+        items.push({ dimension: dim, ...d, typeRisk })
     }
     return { source, target, dimensions: items }
 }
@@ -125,6 +134,20 @@ async function applyRefresh(source, target, { ideToken, session, accept = [], us
         const [p, d] = await Promise.all([readDimension(prod, dim), readDimension(dev, dim)])
         const diff = diffDimension(p, d)
         const changed = []
+
+        // A move or edge can turn a leaf on DEV into a consolidation, clearing the
+        // values stored against it. Never do that silently.
+        const devType = new Map((d.elements ?? []).map(e => [elName(e), elType(e)]))
+        const prodType = new Map((p.elements ?? []).map(e => [elName(e), elType(e)]))
+        const parents = new Set([...diff.addEdges.map(e => e.parent), ...diff.moves.map(m => m.toParent)])
+        const risky = [...parents].filter(x => x && devType.get(x) === 'Numeric' && prodType.get(x) === 'Consolidated')
+        if (risky.length && !want.allowTypeChanges) {
+            throw Object.assign(new Error(
+                `Refused: refreshing ${dim} would turn ${risky.join(', ')} into consolidation${risky.length === 1 ? '' : 's'} on ${source}, ` +
+                `and TM1 clears the values stored against ${risky.length === 1 ? 'it' : 'them'}. ` +
+                `Tick "allow element type changes" if that is intended, or make the change in the model.`
+            ), { refused: true })
+        }
 
         for (const e of diff.addElements) {
             await dev.addElementAt(dim, e.name, e.type, dim)
