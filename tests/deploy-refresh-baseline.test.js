@@ -144,3 +144,15 @@ test('the WFP cut shape: PROD still had the elements, baseline had them, DEV did
     assert.equal(c.addElements.length, 0, 'nothing to bring back')
     assert.deepEqual(c.devRemoved.map(e => e.name).sort(), ['E2', 'E3'])
 })
+
+// ── The base's two records: full SHA vs TM1's abbreviation ──────────────────
+
+test('the release branch and the local record match when one is abbreviated', () => {
+    const { sameCommit } = require('../core/deploy-base')
+    assert.equal(sameCommit('169b73c1325d670433a0b07281b52f42541cc7db', '169b73c1'), true)
+    assert.equal(sameCommit('169b73c1', '169b73c1325d670433a0b07281b52f42541cc7db'), true)
+    assert.equal(sameCommit('169b73c1325d670433a0b07281b52f42541cc7db', '169b73c1'), true)
+    assert.equal(sameCommit('169b73c1', '2b9cdd83'), false)
+    // A 6-character prefix is too short to identify a commit.
+    assert.equal(sameCommit('169b73c1325d', '169b73'), false)
+})

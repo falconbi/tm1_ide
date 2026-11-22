@@ -36,6 +36,18 @@ function releaseBranch(target) {
     return `release-${target}`
 }
 
+// TM1 reports commits abbreviated (8 characters) and Git reports them in full, so
+// the two records of "the same deploy" are rarely the same string. Compare by
+// prefix, at least 7 characters — the same rule approvals use — and never call a
+// prefix difference a mismatch.
+function sameCommit(a, b) {
+    if (!a || !b) return false
+    const x = String(a), y = String(b)
+    if (x === y) return true
+    const [short, long] = x.length <= y.length ? [x, y] : [y, x]
+    return short.length >= 7 && long.startsWith(short)
+}
+
 async function resolveBase(target, { ideToken } = {}) {
     let local
     try { local = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null } catch { local = null }
@@ -59,7 +71,7 @@ async function resolveBase(target, { ideToken } = {}) {
         let branch = null
         try { branch = git(work, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${releaseBranch(target)}`).trim() || null } catch { branch = null }
 
-        if (branch && local && branch !== local) {
+        if (branch && local && !sameCommit(branch, local)) {
             return {
                 ok: false, target, repoUrl, branch, local, mismatch: true,
                 reason: `The release branch for ${target} is at ${branch.slice(0, 10)}, but this IDE recorded ${local.slice(0, 10)} as the last deploy. ` +
@@ -162,4 +174,4 @@ function baseChore(reader, name) {
     return { StartTime: doc.StartTime ?? null, Frequency: doc.Frequency ?? null, ExecutionMode: doc.ExecutionMode ?? null }
 }
 
-module.exports = { resolveBase, openBase, baseHierarchy, baseSubset, baseView, baseChore, releaseBranch }
+module.exports = { resolveBase, openBase, baseHierarchy, baseSubset, baseView, baseChore, releaseBranch, sameCommit }
