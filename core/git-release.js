@@ -426,6 +426,31 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             }
         }
 
+        // A subset is stored inside its dimension's hierarchy file through
+        // `Subsets@Code.links`. Creating or deleting one changes that file, so a
+        // release that ships the subset must carry the hierarchy too — otherwise
+        // the pull leaves the link stale (drift on the dimension), and a delete
+        // cannot even be built, because closure refuses a base that still links a
+        // subset DEV no longer has.
+        // Declared here: the hierarchy carried with a subset is recorded as a
+        // dependency, and the closure below adds more.
+        const addedAsDependency = []
+        if (!catchUp) {
+            const dims = new Set(included.filter(i => i.type === 'subset' && i.parent).map(i => i.parent))
+            for (const dim of dims) {
+                for (const c of changed) {
+                    const obj = objectFromFile(c.file)
+                    if (!obj || obj.type !== 'dimension' || obj.name !== dim) continue
+                    if (included.some(x => x.file === c.file)) continue
+                    included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
+                    addedAsDependency.push({
+                        type: 'dimension', name: dim, parent: null, file: c.file,
+                        neededBy: `subset in ${dim} (the hierarchy lists its subsets)`,
+                    })
+                }
+            }
+        }
+
         // Nothing to ship?
         if (included.length === 0) {
             return {
@@ -461,7 +486,6 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         const existsOnDev = (file) => {
             try { git(work, 'cat-file', '-e', `${devCommit}:${file}`); return true } catch { return false }
         }
-        const addedAsDependency = []
         for (;;) {
             const releaseFiles = git(work, 'ls-files').split('\n').filter(Boolean)
             const missing = linkClosure(releaseFiles, (file) => {

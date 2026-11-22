@@ -495,7 +495,7 @@ them is not enforced. That gap is visible later as ordinary drift, not here.
 
 ---
 
-## Known issue — a subset change leaves the parent hierarchy drifted (22 Nov 2026)
+## Subset changes carry their hierarchy link — fixed (22 Nov 2026)
 
 A release that **creates or deletes a subset** includes only the subset file. The dimension's
 hierarchy file also changes when a subset appears or disappears — TM1 adds or removes the entry in
@@ -509,7 +509,14 @@ Seen on the lab while testing deploy ordering: `JDLove` created by one change se
 `dimensions/WFP Currency.hierarchies/WFP Currency.json` drifted with the single line
 `"WFP Currency.subsets/JDLove.json"` added.
 
-**Clearing it:** include the dimension itself in a release, or adopt the target's current state as
-the baseline (Baselines / a re-seed). **Fixing it:** a release whose change set touches a subset
-must carry the parent hierarchy file too — this matters directly for the refresh design, which
-must treat the subset and its hierarchy link as one change.
+**Fixed in `buildRelease`:** when a release includes a subset, it now also includes that
+dimension's hierarchy file if it changed between the base and DEV's commit — recorded as a
+dependency ("the hierarchy lists its subsets"), so the approval shows it. The pull then writes the
+link together with the subset, drift stays clean, and a subset *delete* can be built at all
+(previously it was refused by link closure, because the base still linked a subset DEV no longer
+had).
+
+Proved on the lab: create `JDLove` in one change set, deploy; delete it in a second, build, deploy —
+PROD ends without it and drift is 0 immediately, with no baseline re-seed.
+
+The same rule matters for the refresh design: a subset and its hierarchy link are one change.
