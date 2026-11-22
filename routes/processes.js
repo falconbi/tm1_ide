@@ -52,7 +52,14 @@ app.patch('/api/chore', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
+        // A chore that is never recorded can never be released: a change set is the
+        // only way an object travels. Record what changed, before and after.
+        const before = await client.getChore(req.query.name).catch(() => null)
         await client.updateChore(req.query.name, req.body)
+        const after = await client.getChore(req.query.name).catch(() => null)
+        const pick = (c) => c ? { StartTime: c.StartTime, Frequency: c.Frequency, ExecutionMode: c.ExecutionMode, Active: !!c.Active } : null
+        cl.writeLog({ server: req.query.server, action: 'CHORE_UPDATED', objectType: 'chore', objectName: req.query.name,
+            beforeState: pick(before), afterState: pick(after), user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -62,6 +69,7 @@ app.delete('/api/chore', async (req, res) => {
         if (!gateReadOnly(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
         await client.deleteChore(req.query.name)
+        cl.writeLog({ server: req.query.server, action: 'CHORE_DELETED', objectType: 'chore', objectName: req.query.name, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -164,6 +172,7 @@ app.post('/api/chore', async (req, res) => {
     try {
         if (!gateReadOnly(res, req.query.server)) return
         await makeClient(req.query.server, req.ideToken).createChore(req.body)
+        cl.writeLog({ server: req.query.server, action: 'CHORE_CREATED', objectType: 'chore', objectName: req.body?.Name ?? null, user: req.user })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
