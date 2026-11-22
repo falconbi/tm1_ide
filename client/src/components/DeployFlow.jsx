@@ -72,6 +72,8 @@ export default function DeployFlow() {
   const [prep, setPrep] = useState(null)
   const [loss, setLoss] = useState(null)        // computed loss for the release
   const [lossOk, setLossOk] = useState(false)
+  const [typeOk, setTypeOk] = useState(false)      // "Yes, change these" for element types
+  const [typeAllow, setTypeAllow] = useState({})   // refresh: dimension → allow type changes
   const [approved, setApproved] = useState(false)
   const [settings, setSettings] = useState(null)
   const [backupAt, setBackupAt] = useState('')
@@ -84,7 +86,7 @@ export default function DeployFlow() {
     if (!ship) return
     setPhase('start'); setStep(1); setError(null); setProg('')
     setIdle(null); setIdleConfirmed(false); setTests(null); setClosed(false)
-    setRelease(null); setPrep(null); setLoss(null); setLossOk(false)
+    setRelease(null); setPrep(null); setLoss(null); setLossOk(false); setTypeOk(false); setTypeAllow({})
     setRefresh(null); setRefreshed(null); setTicked({}); setDelTicked({})
     setApproved(false); setSettings(null); setBackupAt(''); setRes(null); setDrift(null)
   }, [ship?.session?.id])
@@ -138,7 +140,7 @@ export default function DeployFlow() {
     try {
       const accept = (refresh?.dimensions ?? [])
         .filter(d => ticked[d.dimension])
-        .map(d => ({ dimension: d.dimension, includeDeletes: !!delTicked[d.dimension] }))
+        .map(d => ({ dimension: d.dimension, includeDeletes: !!delTicked[d.dimension], allowTypeChanges: !!typeAllow[d.dimension] }))
       const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept })
       setRefreshed(r)
       await loadRefresh()
@@ -198,6 +200,7 @@ export default function DeployFlow() {
       await POST('/api/deploy/git/approve', {
         source: server, target, commit: release.releaseCommit, note: 'Deployed from the two-phase flow',
         lossAck: loss?.loss?.elements > 0 ? { loss: loss.loss, elements: loss.elementLoss } : undefined,
+        typeAck: (prep?.typeChanges ?? []).length ? { elements: prep.typeChanges } : undefined,
       })
 
       setProg(`Saving ${target}'s data…`)
@@ -345,6 +348,17 @@ export default function DeployFlow() {
                                 </label>
                               </div>
                             ))}
+                            {(refresh.dimensions ?? []).some(d => (d.typeRisk ?? []).length) && (
+                              <div className="px-3 py-2 border-t border-border/40 space-y-1">
+                                <p className="text-[11px] text-red-600">Bringing these across changes element types — their values on {server} are cleared:</p>
+                                {(refresh.dimensions ?? []).filter(d => (d.typeRisk ?? []).length).map((d, i) => (
+                                  <label key={i} className="flex items-center gap-2 text-[11px]">
+                                    <input type="checkbox" checked={!!typeAllow[d.dimension]} onChange={e => setTypeAllow(t => ({ ...t, [d.dimension]: e.target.checked }))} />
+                                    <span>{d.dimension}: {d.typeRisk.map(t => t.element).join(', ')} → consolidation</span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )
                       )}
@@ -420,6 +434,20 @@ export default function DeployFlow() {
                       <span className="font-mono">{o.name}</span>
                     </div>
                   ))}
+                  {(prep?.typeChanges ?? []).length > 0 && (
+                    <div className="border border-red-600/40 bg-red-500/5 rounded-md p-3 space-y-1">
+                      <p className="text-xs font-semibold text-red-600">
+                        This deploy changes the type of {prep.typeChanges.length} element{prep.typeChanges.length === 1 ? '' : 's'} — their stored values will be cleared
+                      </p>
+                      {prep.typeChanges.slice(0, 8).map((t, i) => (
+                        <p key={i} className="text-[11px]">{t.dimension} · <span className="font-mono">{t.element}</span>: {t.from} → {t.to}</p>
+                      ))}
+                      {prep.typeChanges.length > 8 && <p className="text-[11px] text-muted-foreground">…and {prep.typeChanges.length - 8} more</p>}
+                      {!typeOk
+                        ? <button onClick={() => setTypeOk(true)} className="mt-1 px-2.5 py-1 text-[11px] rounded bg-red-700 text-white hover:bg-red-600">Yes, change these</button>
+                        : <p className="text-[11px] text-emerald-700">Confirmed — recorded with your approval.</p>}
+                    </div>
+                  )}
                   {prep?.loss?.elements > 0 && (
                     <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-1">
                       <p className="text-xs font-semibold text-amber-700">This deploy removes {prep.loss.elements} element{prep.loss.elements === 1 ? '' : 's'} in {prep.loss.dimensions} dimension{prep.loss.dimensions === 1 ? '' : 's'}</p>
@@ -433,7 +461,7 @@ export default function DeployFlow() {
                     </div>
                   )}
                   <div className="flex items-center gap-2 pt-1">
-                    <button onClick={() => setPhase('deploy')} disabled={!prep || !!prep.error || lossNeedsConfirm} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue to Deploy</button>
+                    <button onClick={() => setPhase('deploy')} disabled={!prep || !!prep.error || lossNeedsConfirm || ((prep?.typeChanges ?? []).length > 0 && !typeOk)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue to Deploy</button>
                     <button onClick={() => setStep(4)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>
                 </div>

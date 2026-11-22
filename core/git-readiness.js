@@ -212,6 +212,7 @@ function _repoObjectNames(repoDir, folder, extensions) {
 function _readRepo(repoDir) {
     const dimensions = new Set()
     const hierarchies = new Map()
+    const elementTypes = new Map()   // dim → hierarchy → element → type (N/S/C)
     const dimDir = path.join(repoDir, 'dimensions')
     for (const ent of _readdir(dimDir)) {
         if (ent.isFile() && ent.name.endsWith('.json')) {
@@ -220,6 +221,7 @@ function _readRepo(repoDir) {
             const dim = ent.name.slice(0, -'.hierarchies'.length)
             dimensions.add(dim)
             const byHierarchy = new Map()
+            const byHierarchyTypes = new Map()
             const hDir = path.join(dimDir, ent.name)
             for (const h of _readdir(hDir)) {
                 if (!h.isFile() || !h.name.endsWith('.json')) continue
@@ -230,8 +232,12 @@ function _readRepo(repoDir) {
                 catch (e) { throw new Error(`could not read repo file ${path.relative(repoDir, full)}: ${e.message}`, { cause: e }) }
                 const els = Array.isArray(data?.Elements) ? data.Elements : Array.isArray(data?.elements) ? data.elements : []
                 byHierarchy.set(hierarchy, els.map(e => e?.Name ?? e?.name).filter(n => typeof n === 'string'))
+                byHierarchyTypes.set(hierarchy, new Map(els
+                    .map(e => [e?.Name ?? e?.name, e?.Type ?? e?.type])
+                    .filter(([n]) => typeof n === 'string')))
             }
             hierarchies.set(dim, byHierarchy)
+            elementTypes.set(dim, byHierarchyTypes)
         }
     }
     return {
@@ -240,6 +246,7 @@ function _readRepo(repoDir) {
         processes: _repoObjectNames(repoDir, 'processes', ['.json', '.ti']),
         chores: _repoObjectNames(repoDir, 'chores', ['.json', '.ti']),
         hierarchies,
+        elementTypes,
     }
 }
 
@@ -247,8 +254,8 @@ function _readRepo(repoDir) {
 // Each read names its object in the error so the reason says what could not be
 // checked.
 async function _readTarget(c) {
-    const get = async (route, object) => {
-        try { return await c.get(route, { '$select': 'Name' }) }
+    const get = async (route, object, select = 'Name') => {
+        try { return await c.get(route, { '$select': select }) }
         catch (e) { throw new Error(`${object}: ${_tm1Message(e)}`, { cause: e }) }
     }
     const names = async (route, object) => _clean(((await get(route, object)).value ?? []).map(x => x.Name))
@@ -259,17 +266,21 @@ async function _readTarget(c) {
     const dimensions = await names('Dimensions', 'Dimensions')
 
     const hierarchies = new Map()
+    const elementTypes = new Map()
     for (const dim of dimensions) {
         const hs = (await get(`Dimensions('${odataKey(dim)}')/Hierarchies`, `hierarchies of dimension ${dim}`)).value ?? []
         const byHierarchy = new Map()
+        const byHierarchyTypes = new Map()
         for (const h of hs.map(x => x.Name)) {
             if (String(h).toLowerCase() === 'leaves') continue
-            const els = (await get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(h)}')/Elements`, `elements of ${dim}/${h}`)).value ?? []
+            const els = (await get(`Dimensions('${odataKey(dim)}')/Hierarchies('${odataKey(h)}')/Elements`, `elements of ${dim}/${h}`, 'Name,Type')).value ?? []
             byHierarchy.set(h, els.map(e => e.Name))
+            byHierarchyTypes.set(h, new Map(els.map(e => [e.Name, e.Type])))
         }
         hierarchies.set(dim, byHierarchy)
+        elementTypes.set(dim, byHierarchyTypes)
     }
-    return { cubes, dimensions, processes, chores, hierarchies }
+    return { cubes, dimensions, processes, chores, hierarchies, elementTypes }
 }
 
 function _planCounts(operations) {
@@ -350,7 +361,33 @@ async function compareTargetWithRepo(server, { commit, repoUrl, token, gitUser =
             ? `I understand this overwrites ${server} and removes ${loss.elements} elements in ${loss.dimensions} dimensions`
             : `I understand this overwrites ${server}`
 
-        return { targetOnly, elementLoss, loss, confirmText }
+        // Element TYPE changes. Making a leaf a consolidation (or the reverse)
+        // clears the values stored against it — the same loss as deleting it, but
+        // silent. Collected here so every caller can name them before they happen.
+        const norm = (t) => {
+            const x = String(t ?? '').toUpperCase()
+            if (x === 'C' || x === 'CONSOLIDATED') return 'C'
+            if (x === 'S' || x === 'STRING' || x === 'ALIAS') return 'S'
+            return 'N'
+        }
+        const typeChanges = []
+        for (const [dim, byHier] of repo.elementTypes ?? []) {
+            const targetHier = target.elementTypes?.get(dim)
+            if (!targetHier) continue
+            for (const [hierarchy, repoTypes] of byHier) {
+                const targetTypes = targetHier.get(hierarchy)
+                if (!targetTypes) continue
+                for (const [name, repoType] of repoTypes) {
+                    const targetType = targetTypes.get(name)
+                    if (targetType == null) continue
+                    if (norm(targetType) !== norm(repoType)) {
+                        typeChanges.push({ dimension: dim, hierarchy, element: name, from: norm(targetType), to: norm(repoType) })
+                    }
+                }
+            }
+        }
+
+        return { targetOnly, elementLoss, loss, confirmText, typeChanges }
     } finally {
         fs.rmSync(work, { recursive: true, force: true })
     }

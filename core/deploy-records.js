@@ -136,6 +136,9 @@ function buildRecord(out, { startedAt } = {}) {
         // The confirmation shown when Ship stopped: who said yes, when, and what
         // they were shown.
         lossAck: out.lossAck ?? null,
+        // Element type changes and the person's acceptance of them (values cleared).
+        typeChanges: out.typeChanges ?? [],
+        typeAck: out.typeAck ?? null,
         restoreCommit: out.restoreCommit ?? null,
         startedAt: startedAt ?? null,
         finishedAt: at,

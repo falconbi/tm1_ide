@@ -191,6 +191,7 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
                 })
                 out.elementLoss = cmp.elementLoss
                 out.loss = cmp.loss
+                out.typeChanges = cmp.typeChanges ?? []
             } catch (e) {
                 out.elementLossError = e.message
             }
@@ -311,6 +312,7 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
     out.approvalNote = approval.note ?? null
     // The loss confirmation recorded at approval time (who, when, what was shown).
     out.lossAck = approval.lossAck ?? null
+    out.typeAck = approval.typeAck ?? null
 
     // The approval's linked change set is the authoritative source. If the approval
     // has no linked change set (release mode), the caller must supply the source.
@@ -458,8 +460,23 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                 })
                 out.elementLoss = cmp.elementLoss
                 out.loss = cmp.loss
+                out.typeChanges = cmp.typeChanges ?? []
             }
         } catch (e) { out.elementLossError = e.message }
+
+        // Type changes clear stored values, exactly like deleting the element. The
+        // approval must carry the person's "yes" for them, recorded when they were
+        // shown the list — a count is not a confirmation.
+        if ((out.typeChanges ?? []).length) {
+            const ack = approval.typeAck
+            const covered = ack && Array.isArray(ack.elements) && ack.elements.length >= out.typeChanges.length
+            if (!covered) {
+                out.executed = false
+                out.refused = true
+                out.error = `Refused: this release changes the type of ${out.typeChanges.length} element${out.typeChanges.length === 1 ? '' : 's'} (${out.typeChanges.slice(0, 5).map(t => `${t.dimension}.${t.element}: ${t.from} → ${t.to}`).join('; ')}${out.typeChanges.length > 5 ? '…' : ''}), and TM1 clears the values stored against them. Approve it again at Review, where the list is shown.`
+                return out
+            }
+        }
 
         // Now that this release's own loss is known: a dimension whose elements the
         // release carries does not block; anything else still does.

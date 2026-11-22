@@ -404,6 +404,18 @@ app.post('/api/deploy/git/approve', async (req, res) => {
                     : [],
             }
             : null
+        // Element type changes clear stored values; the person must have seen and
+        // accepted the list, not merely a count.
+        const typeAck = req.body.typeAck && typeof req.body.typeAck === 'object' && Array.isArray(req.body.typeAck.elements)
+            ? {
+                at: new Date().toISOString(),
+                by: req.user ?? null,
+                elements: req.body.typeAck.elements.slice(0, 500).map(t => ({
+                    dimension: t.dimension ?? null, hierarchy: t.hierarchy ?? null,
+                    element: t.element ?? null, from: t.from ?? null, to: t.to ?? null,
+                })),
+            }
+            : null
         const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
@@ -412,6 +424,7 @@ app.post('/api/deploy/git/approve', async (req, res) => {
             addedAsDependency: parseList(linkedSession.release_added_as_dependency),
             excludedByUser: parseList(linkedSession.release_excluded_by_user),
             lossAck,
+            typeAck,
             deletes: requestedDeletes,
         }, { ideToken: req.ideToken })
         res.json(rec)

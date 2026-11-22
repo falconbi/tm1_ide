@@ -504,6 +504,34 @@ removed, Ship stays one click: no extra step appears.
 
 ---
 
+## 17a. A deploy changes an element's type
+
+**What you see:** at **Review** (and at the top of **Deploy** when it applies), a red panel:
+
+```
+This deploy changes the type of 1 element — their stored values will be cleared
+WFP Currency · NZD: Numeric → Consolidated
+[ Yes, change these ]
+```
+
+**Why:** giving an element children makes it a consolidation, and TM1 **clears the values
+stored against it**. Taking its children away makes it a leaf again — but the values do not come
+back. It is the same loss as deleting the element, without deleting anything, and it happens
+inside the pull where nobody sees it.
+
+**Do this:**
+1. Read the list. If it is intended, press **Yes, change these**. The confirmation is recorded
+   with your approval and in the deploy report.
+2. If it is not intended, stop. Something in the release (or an edit on DEV) has changed the
+   element's role — usually someone building a rollup over a measure element.
+3. After the deploy, values for those elements have to be reloaded or recalculated. There is no
+   way to keep them.
+
+**The refresh asks the same question** before it brings a move or an edge across, naming the
+element it would turn into a consolidation.
+
+---
+
 ## 18. Data lost by a deploy
 
 **What you see:** the model is right, the numbers are not. A deploy replaced a dimension and the
