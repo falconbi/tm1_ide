@@ -459,14 +459,22 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         if (!catchUp) {
             for (const a of addObjects) {
                 const label = `${a.type} ${a.name}${a.parent ? ` (${a.parent})` : ''}`
-                const hit = excluded.find(x => objectKey(x.type, x.name, x.parent) === objectKey(a.type, a.name, a.parent))
-                if (!hit) return { ok: false, refused: true, error: `Cannot add ${label}: it is not an unowned "left on DEV" item in this release.` }
-                if (hit.owner) return { ok: false, refused: true, error: `Cannot add ${label}: it belongs to change set "${hit.owner.sessionName}". ${RELEASE_FIRST(hit.owner.sessionName, target)}` }
-                const file = hit.file ?? hit.files?.[0] ?? null
-                if (!file) return { ok: false, refused: true, error: `Cannot add ${label}: the release has no file for it.` }
-                included.push({ ...hit, file, action: hit.action ?? 'A' })
-                addedByUser.push({ type: hit.type, name: hit.name, parent: hit.parent ?? null, file, by })
-                excluded.splice(excluded.indexOf(hit), 1)
+                const key = objectKey(a.type, a.name, a.parent)
+                // EVERY changed file of the object, not the first one: a dimension is
+                // its own file PLUS one per hierarchy, and the elements live in the
+                // hierarchy files. Adding only the first left the release without the
+                // file that actually carries them.
+                const hits = excluded.filter(x => objectKey(x.type, x.name, x.parent) === key)
+                if (!hits.length) return { ok: false, refused: true, error: `Cannot add ${label}: it is not an unowned "left on DEV" item in this release.` }
+                const owned = hits.find(h => h.owner)
+                if (owned) return { ok: false, refused: true, error: `Cannot add ${label}: it belongs to change set "${owned.owner.sessionName}". ${RELEASE_FIRST(owned.owner.sessionName, target)}` }
+                const files = hits.map(h => h.file ?? h.files?.[0] ?? null).filter(Boolean)
+                if (!files.length) return { ok: false, refused: true, error: `Cannot add ${label}: the release has no file for it.` }
+                for (const h of hits) {
+                    included.push({ ...h, file: h.file ?? h.files?.[0], action: h.action ?? 'A' })
+                    excluded.splice(excluded.indexOf(h), 1)
+                }
+                addedByUser.push({ type: hits[0].type, name: hits[0].name, parent: hits[0].parent ?? null, file: files[0], files, by })
             }
         }
 
