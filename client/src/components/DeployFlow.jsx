@@ -143,7 +143,7 @@ export default function DeployFlow() {
       const d = await GET(`/api/deploy/refresh/plan?source=${encodeURIComponent(server)}&target=${encodeURIComponent(target)}`)
       setRefresh(d)
       const all = {}
-      for (const it of d.dimensions ?? []) all[it.dimension] = true
+      for (const it of d.dimensions ?? []) if (it.offered !== false) all[it.dimension] = true
       setTicked(all)
     } catch (e) { setError(e.message); setRefresh({ dimensions: [], error: e.message }) }
     finally { setRefreshBusy('') }
@@ -153,6 +153,7 @@ export default function DeployFlow() {
     setRefreshBusy('apply'); setError(null)
     try {
       const accept = (refresh?.dimensions ?? [])
+        .filter(d => d.offered !== false)
         .filter(d => ticked[d.dimension])
         .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {}, attributeTypes: decisions[d.dimension]?.attributes ?? {}, attributeCreates: decisions[d.dimension]?.attributeCreates ?? [] }))
       const chores = (refresh?.chores ?? []).filter(c => choreTicked[c.name]).map(c => ({ name: c.name, takeSchedule: true }))
@@ -412,8 +413,11 @@ export default function DeployFlow() {
                             {(refresh.dimensions ?? []).map((d, i) => (
                               <div key={i} className="grid grid-cols-[1fr_90px_120px] px-3 py-1 text-[11px] border-b border-border/40 last:border-0 gap-2 items-center">
                                 <label className="flex items-center gap-2">
-                                  <input type="checkbox" checked={!!ticked[d.dimension]} onChange={e => setTicked(t => ({ ...t, [d.dimension]: e.target.checked }))} />
+                                  {d.offered === false
+                                    ? <span className="w-[13px]" />
+                                    : <input type="checkbox" checked={!!ticked[d.dimension]} onChange={e => setTicked(t => ({ ...t, [d.dimension]: e.target.checked }))} />}
                                   <span>{d.dimension}</span>
+                                  {d.offered === false && <span className="text-[10px] text-muted-foreground/70">nothing to bring across</span>}
                                 </label>
                                 <span className="text-muted-foreground">
                                   {[d.addElements.length ? `+${d.addElements.length} el` : '', d.addEdges.length || d.moves.length ? `+${d.addEdges.length + d.moves.length} edge` : ''].filter(Boolean).join(' · ') || '—'}
@@ -435,8 +439,18 @@ export default function DeployFlow() {
                                             : `${r.count} ${r.what}${r.count === 1 ? '' : 's'} changed differently on both sides`}
                                         </summary>
                                         <div className="pl-3">
-                                          {(r.origin === 'target-removed' ? d.removeElements : r.origin === 'dev-removed' ? d.devRemoved : r.origin === 'dev-added' ? d.devAdded : r.origin === 'target-added' ? d.addElements : r.origin === 'target-changed' ? d.typeChanges : d.typeConflicts ?? [])
-                                            .slice(0, 50).map((e, j) => <div key={j} className="font-mono">{e.name ?? `${e.parent} → ${e.child}`}</div>)}
+                                          {(r.origin === 'target-removed' ? d.removeElements
+                                              : r.origin === 'dev-removed' ? d.devRemoved
+                                              : r.origin === 'dev-added' ? d.devAdded
+                                              : r.origin === 'dev-changed' ? d.devMoved
+                                              : r.origin === 'target-added' ? d.addElements
+                                              : r.origin === 'target-changed' ? (r.what === 'move' ? d.moves : d.typeChanges)
+                                              : [...(d.moveConflicts ?? []), ...(d.typeConflicts ?? [])])
+                                            .slice(0, 50).map((e, j) => (
+                                              <div key={j} className="font-mono">
+                                                {e.name ? e.name : e.toParent ? `move ${e.child}: DEV ${e.fromParent} · ${target} ${e.toParent}` : `${e.parent} → ${e.child}`}
+                                              </div>
+                                            ))}
                                         </div>
                                       </details>
                                     ))}

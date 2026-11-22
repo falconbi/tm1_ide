@@ -159,7 +159,11 @@ async function planRefresh(source, target, { ideToken, baseCommit = null } = {})
             }
         } catch { /* no attribute access — carry on with elements */ }
 
-        if (!offered && !attributes.add.length && !attributes.typeChanges.length) continue
+        // A dimension whose only differences are DEV-side is still worth a line —
+        // "2,295 removed on DEV, not offered" is the reassurance that the cut is
+        // safe, not noise. It is never ticked and apply ignores it.
+        const devSideOnly = c.devRemoved.length || c.devAdded.length || c.devMoved.length || c.moveConflicts.length
+        if (!offered && !devSideOnly && !attributes.add.length && !attributes.typeChanges.length) continue
         // Giving a leaf element children turns it into a consolidation, and TM1
         // clears the values stored against it. PROD already made that choice; on
         // DEV it is still a destructive step that must be named before it happens.
@@ -171,6 +175,7 @@ async function planRefresh(source, target, { ideToken, baseCommit = null } = {})
             .map(p => ({ element: p, from: 'Numeric', to: 'Consolidated' }))
         items.push({
             dimension: dim,
+            offered: !!offered,
             differs: d.differs,
             ...c,
             // What the person needs to see, one line per kind (2,295 grey rows in a
