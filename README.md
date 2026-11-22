@@ -85,7 +85,7 @@ change set. Tests live in the model. A release ships exactly one change set thro
 Git, with review, approval, deploy and verify steps.
 See the [deployment guides](#deployment), or [why the deploy works this way](https://falconbi.github.io/articles/governed-tm1-deploys/).
 
-<a href="docs/deploy/DEPLOY_LIFECYCLE.md"><img src="docs/images/deploy.png" alt="The step-by-step deploy" width="480"></a>
+<a href="https://falconbi.github.io/articles/how-tm1-deploys-work/"><img src="docs/images/deploy-07-done.png" alt="A finished deploy: PROD up to date, checks passed, data saved, backup recorded, no drift" width="480"></a>
 
 ### Deployment
 How a change moves from DEV to PROD without carrying anyone else's work, and without wiping what
