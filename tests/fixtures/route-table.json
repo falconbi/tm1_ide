@@ -195,6 +195,7 @@
   "GET /api/jobs",
   "POST /api/job/cancel",
   "GET /api/transactions",
+  "POST /api/server/backup",
   "POST /api/transactions/restore",
   "GET /api/threads",
   "POST /api/thread/cancel",

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { request, authHeader } from '@/lib/api'
-import { ShieldCheck, Loader2, Save, HelpCircle } from 'lucide-react'
+import { ShieldCheck, Loader2, Save, HelpCircle, HardDriveDownload } from 'lucide-react'
 import { useServers } from '@/hooks/useApi'
 import { useStore } from '@/store'
 import { toast } from 'sonner'
@@ -34,6 +34,21 @@ export default function DeployProtection() {
       return d
     },
   })
+  const [backupMsg, setBackupMsg] = useState(null)
+  const runBackup = async () => {
+    setBusy('backup'); setBackupMsg(null); setError(null)
+    try {
+      const r = await request('/api/server/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ server: target, keep: 5 }),
+      })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      setBackupMsg(`}IDE.Backup ran on ${target} — archive written to the folder beside its data folder.`)
+    } catch (e) { setError(e.message) }
+    finally { setBusy('') }
+  }
   const loaded = settings.data ? (settings.data.backupProcess ?? '') : null
   const process = draft ?? loaded ?? ''
 
@@ -113,7 +128,7 @@ export default function DeployProtection() {
             <input
               value={process}
               onChange={e => setDraft(e.target.value)}
-              placeholder="(none — ask for the last backup time)"
+              placeholder="(none — ask for the last backup time) — or }IDE.Backup"
               className="flex-1 bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <button
@@ -123,9 +138,18 @@ export default function DeployProtection() {
             >
               {busy === 'save' ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />} Save
             </button>
+            <button
+              onClick={runBackup}
+              disabled={busy === 'backup'}
+              title="Run }IDE.Backup on this server now — writes an archive into the folder beside its data folder"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+            >
+              {busy === 'backup' ? <Loader2 size={11} className="animate-spin" /> : <HardDriveDownload size={11} />} Back up now
+            </button>
           </div>
           {settings.isLoading && <p className="text-[11px] text-muted-foreground">Reading the setting…</p>}
           {settings.error && <p className="text-[11px] text-red-600">{settings.error.message}</p>}
+          {backupMsg && <p className="text-[11px] text-emerald-700">{backupMsg}</p>}
           {error && <p className="text-[11px] text-red-600">{error}</p>}
           {dimsOffered.length > 0 && (
             <div className="border border-border rounded-md p-3 space-y-2">

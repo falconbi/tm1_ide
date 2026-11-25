@@ -3,6 +3,7 @@
 const { odataKey, odataLit } = require('./odata-key')
 const { extractMembersFromExpression } = require('./view-axes')
 const SAVE_DATA_ALL = require('../ti-processes/save-data-all/process.json')
+const BACKUP = require('../ti-processes/backup/process.json')
 const { rebuildProcess, referencesHierarchy } = require('./hierarchy-gen')
 
 class TM1Client {
@@ -562,6 +563,31 @@ class TM1Client {
             { Parameters: paramArray },
             opts
         )
+    }
+
+    // Archive the data folder into the sibling 'backup' folder, before a deploy replaces
+    // the model. Same shape as saveDataAll: install the hidden process on demand, run it,
+    // and treat a non-success status as a failure — a backup that did not happen must never
+    // read as one that did (the process itself calls ProcessError when its archive is not
+    // confirmed, so the deploy that asked for it stops).
+    async backupData({ keep = 5, targetDir = null, format = null } = {}) {
+        const name = BACKUP.name
+        const existing = await this.getProcess(name).catch(e => {
+            if (e.response?.status === 404) return null
+            throw e
+        })
+        if (!existing) await this.createOrReplaceProcess(BACKUP)
+        const params = ['pKeep', Number(keep) || 5]
+        if (targetDir) params.push('pTargetDir', String(targetDir))
+        if (format) params.push('pFormat', String(format))
+        const result = await this.executeProcess(name, params)
+        const status = result?.ProcessExecuteStatusCode ?? result?.['odata.ProcessExecuteStatusCode']
+        const ok = status === undefined || status === 0 || status === 'CompletedSuccessfully' || status === 'HasMinorErrors'
+        if (!ok) {
+            const errFile = result?.ErrorLogFile?.Filename ?? ''
+            throw new Error(`}IDE.Backup failed on ${this.server} (status ${status})${errFile ? ` — see ${errFile}` : ''}`)
+        }
+        return { ok: true, status: status ?? 'CompletedSuccessfully', process: name }
     }
 
     // Write all changed cube data to disk. TM1 11.8 supports the REST action;

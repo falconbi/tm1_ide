@@ -39,6 +39,23 @@ app.get('/api/transactions', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Back up a server's data folder into its sibling 'backup' folder (}IDE.Backup).
+// Also the process a deploy can be pointed at, so the backup is verified, not stated.
+app.post('/api/server/backup', async (req, res) => {
+    try {
+        const { server, keep } = req.body ?? {}
+        if (!server) return res.status(400).json({ error: 'server required' })
+        // Admin only, but NOT gated by read-only: a backup changes no model object (it
+        // saves data and writes files outside the model), and a read-only production
+        // server is exactly the one that needs one.
+        if (!(await requireTm1Admin(req, res, server))) return
+        const client = makeClient(server, req.ideToken)
+        const r = await client.backupData({ keep: Number(keep) || 5 })
+        cl.writeLog({ server, action: 'BACKUP_RUN', objectType: 'server', objectName: server, detail: `}IDE.Backup — archive written to the sibling backup folder (keep ${Number(keep) || 5})`, user: req.user })
+        res.json(r)
+    } catch (e) { fail(res, e) }
+})
+
 app.post('/api/transactions/restore', async (req, res) => {
     try {
         const { server, cube, tuple, restoreTo, expectNow, force } = req.body ?? {}
