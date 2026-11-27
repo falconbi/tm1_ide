@@ -95,44 +95,49 @@ process, step by step, with diagrams) ·
 [Deploying Lenses](https://falconbi.github.io/articles/deploying-lenses/).
 
 > [!NOTE]
-> **Status (23 November 2026): reworked, and proven end to end on a lab DEV + PROD pair (TM1 v11).**
+> **Status (27 November 2026): reworked, and proven end to end on a lab DEV + PROD pair, and DEV → TEST → PROD (TM1 v11).**
 > Testing against real working patterns showed that PROD is never static: loads add elements, users
 > save views, operators switch chores off. The deploy now carries those changes instead of wiping
 > them.
 >
 > **How it works now: two phases.**
 >
-> - **Pre-deploy** (look and decide, changes only DEV): check PROD is idle and hasn't drifted →
->   **refresh DEV from PROD** → tests and close → build the release (PROD's last release plus
->   exactly one change set) → review, which stops before any element is removed or any leaf
->   becomes a consolidation.
-> - **Deploy** (one button): approve → idle check again → Save Data → backup → TM1 Git pull →
->   subsets, views, confirmed attribute values and deletes applied in dependency order → chore
->   on/off switches restored → verify and record in PROD's own model.
-> - **The refresh compares three copies,** not two: PROD's last release, PROD now and DEV now. So a
->   GL code PROD loaded is brought into DEV, and an element DEV removed on purpose is left alone.
-> - **Order is enforced** across change sets that touch the same object, and **Return to last
->   release** puts PROD's model objects back (not data: that comes from the backup).
+> - **Pre-deploy** (read-only on PROD): **Check PROD** (idle, whether it changed since its last
+>   deploy, what it has that DEV does not) → **Tests & close** → **Build release** → **Review**,
+>   which names every element a release would remove and asks before any leaf becomes a
+>   consolidation.
+> - **The release starts from the target's own copy.** For data objects — dimensions, hierarchies,
+>   subsets, views, chores — it begins with the target's live copy and applies this change set's
+>   recorded changes on top. Code — rules, processes, cube structure — comes from DEV. Nothing PROD
+>   did by itself is rolled back, and no refresh step is needed to protect it.
+> - **Deploy** (one screen): approve → idle check again → Save Data → backup → TM1 Git pull →
+>   confirmed attribute values, subsets, views and deletes applied in dependency order → chore
+>   switches restored → verify → record in PROD's own model → **sign off** in Change Sets once it
+>   has been tested by hand.
+> - **One change set per deploy, one deploy per target at a time.** Order is enforced across change
+>   sets that share an object. **Return to last release** (admin) puts the target's model objects
+>   back; data comes from the backup.
+> - **Sync DEV is separate and optional.** It copies PROD's own changes onto DEV when you want to
+>   work with them, and refuses while any change set is open. A TI run on DEV inside a change set is
+>   captured: the elements, hierarchies, subsets, views and objects it changes are recorded, so they
+>   deploy like any other change.
+> - **TEST is a rehearsal.** Re-clone it from PROD before each cycle; the cycle closes when a set in
+>   it reaches PROD.
 >
-> **Proven on the lab:** a cut of 4,798 elements from PROD with the review stop; a dimension
-> replacement that kept every surviving element's values and attribute values, including an
-> element PROD's own load had created; deletes in dependency order; views and subsets changed on
-> both sides; alternate hierarchies.
+> **Proven on the lab:** a cut of 4,798 elements from PROD with the review stop; PROD's own added
+> elements kept through a deploy that never mentioned their dimension; a dimension replacement that
+> kept every surviving element's values and attribute values; deletes in dependency order; views and
+> subsets changed on both sides; alternate hierarchies; and three model bugs found by the checks
+> (a feeder chain that lost 2,400 of benefits, 200 of bonus and a 5,640 severance).
 >
 > **Still open, before relying on it with a real model:**
 >
-> - The lab PROD has **no backup process** set (Deploy → Protection); a stated backup time is
->   recorded instead.
-> - **Attribute values aren't in Git.** The refresh lists them but never preselects them; values
->   travel only for attributes an admin confirms.
 > - **Re-running failed deletes** is an admin API route, with no button yet.
-> - **DEV → TEST → PROD** uses the same pieces but hasn't been run on the lab.
 > - **Several developers, each with their own IDE, on one DEV:** the overlap warning can't see
 >   another IDE's open change sets.
-> - **"What PROD last received"** is a local record cross-checked against the release branch; a
->   dedicated marker in Git is next.
 > - Marking a server read-only is a config edit (`readOnlyServers`), and copying PROD's data onto
 >   a new DEV is done in TM1: neither has a screen.
+> - Attribute values travel only for attributes the change set recorded.
 >
 > [Governed TM1 deploys](https://falconbi.github.io/articles/governed-tm1-deploys/) explains why a
 > release ships one change set.

@@ -131,6 +131,24 @@ This keeps "logic in TM1" while keeping code review in git.
 
 Both are catalog artefacts. Neither is written by the page.
 
+### 4.5 Two tiers: built-in services and app services (added 25 Nov 2026)
+
+The catalog is more than a list of app queries. Some operations mean the same thing in
+every model, and nobody should have to write them for each app:
+
+- **Built-in services (work on any model, shipped with the bridge):** members for a
+  picker (under an element, at a level, or a named subset), the hierarchy under an
+  element, a member's attributes, and the default member for a dimension. These are
+  parameterised by dimension and validated like any other service, and they still run
+  under the user's TM1 session.
+- **App services (business meaning, one set per app):** questions such as variance
+  breakdown, roster and actual against budget for a period. "Variance" means something
+  different in every model, so these are per app. The AI proposes and creates them in
+  step 3 of the MCP workflow (section 10).
+
+The AI discovers both tiers through `services()` and `describe()` and combines them in a
+manifest. It never needs the MDX or REST calls behind them.
+
 ### 4.4 Actions
 
 Actions map a service name to a TI process and a parameter schema:
@@ -203,6 +221,45 @@ Keep them apart:
 
 Never deploy dev group names or a dev cost centre as production config.
 
+### 5.4 Components the AI can assemble (added 25 Nov 2026)
+
+The aim is that the AI assembles whole Lens **applications** (pages, navigation and
+bindings) from the components, rather than writing each page's HTML. To do that the
+AI needs to know what each component is for and what it takes, not how it draws.
+
+- **Each component has a contract.** The contract gives its name, when to use it, its
+  settings (what each one means and its type), a valid sample, and the services it
+  can bind to. The Lens patterns already work this way:
+  `shared/lens-patterns/*.json` has `description`, `settings` and `sample`. Components
+  use the same shape, one level down (a pattern is a page, a component is one widget).
+- **Components stay generic.** Grid/pivot, KPI card, bar/line/waterfall chart, picker,
+  form, comment, tabs and navigation. Each one knows nothing about any model.
+- **EPM shapes are patterns, not components.** Shapes such as headcount movement,
+  budget vs actual, revenue bridge and cash flow all assume a model shape, and every
+  client model is different. They are patterns that the AI copies and adapts. They are
+  never fixed widgets with fixed inputs (the template trap).
+- **The default is a declarative manifest, with an escape hatch** (5.1 and 5.2). The AI
+  writes the manifest; it does not rewrite component code. Hand-written HTML is only
+  for the genuinely unique bit, and it still goes through `query`/`action` only.
+- **The manifest is checked before save.** Every component's settings are checked
+  against its contract, every bound service must exist and be declared, every member
+  must resolve, and every write must be a declared action. A manifest that fails the
+  check is not saved. The same check blocks a Lens deploy when a reference is missing.
+- **Permissions are not in the manifest.** Who sees what comes from TM1 security and the
+  catalog `groups` (section 7). A manifest that lists users or groups turns into an
+  admin list that drifts.
+- **The AI loop is:** read the component and pattern contracts, then the services
+  (section 10), write the manifest, validate it, save it, and run the service tests.
+  When the user asks for a change ("add a revenue bridge, drill into region"), only
+  the manifest changes.
+- **Order:** the service catalog comes first (Phases 1–2). Assembling pages before the
+  data layer exists would only repeat the Workforce problem faster. Themes and
+  application templates are out of scope.
+
+Because the manifest is data stored with the model, an application can be diffed,
+reviewed and deployed like a rule. The model governs the screens as well as the
+numbers.
+
 ---
 
 ## 6. Parameters, limits and safety
@@ -229,6 +286,13 @@ Never deploy dev group names or a dev cost centre as production config.
 - Lens documents and the service catalog live in TM1 Applications / control objects;
   only admins author them. The Lens app remains read/serve plus declared actions.
 - Config is UI policy, not data permission. Never store credentials or tokens in it.
+- **What the page shows follows what the user can do (added 25 Nov 2026).** A data
+  permission (TM1 security) and whether a button or input is shown are different
+  questions, but they share one source of truth. The page asks the bridge. If
+  `describe(service)` says the user is not in the service's groups, or TM1 cell
+  security makes the target read-only, the action or input is not drawn. There is no
+  separate list of who sees which button, and the bridge still refuses the call if it
+  is made anyway.
 
 ---
 
@@ -336,11 +400,18 @@ application-specific.
    widget? (Recommend widget services first, composite only where measured.)
 4. **Caching:** TTL vs invalidation on write; per-user vs shared (security-sensitive).
 5. **Lens HTML:** generate from a manifest, or keep hand-written HTML with bindings?
-   (Recommend manifest for standard pages, escape hatch for one-offs.)
+   (Recommend manifest for standard pages, escape hatch for one-offs. See 5.4 for
+   component contracts, manifest validation and the AI assembly loop.)
 6. **Write concurrency:** do services require an expected version/timestamp, or is TI
    validation enough?
 7. **Transactional workflow state:** TM1 or SQL? If approvals/audit must be
    transactional, SQL is the better system of record.
+8. **Plain input grids vs "writes are actions" (added 25 Nov 2026).** Rule 3 sends every
+   write through a TI action. For a plain planning grid (type a number into a cell),
+   a process behind every cell is heavy, and it is exactly what `Lens.save` does today.
+   One option is to allow direct cell writes only into a **declared input area** (cube
+   plus the member scope given in the manifest, checked by the bridge), with TM1 cell
+   security still applying. Anything with business logic stays an action. Not decided.
 
 ---
 

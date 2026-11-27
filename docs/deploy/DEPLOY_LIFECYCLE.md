@@ -9,15 +9,11 @@ This is the behaviour the code has now; earlier sections below are the design re
 
 - **Normal release:** one change set, in dependency order. The release carries the set's files plus any linked file the set needs (hierarchy → subsets, cube → views, MDX view → `.mdx`). The closure is recursive; a linked file owned by another set refuses and names it, and a link missing from DEV refuses. The review screen lists auto-added dependencies separately. “Add to this release” can pull one unowned left-on-DEV object into the release; the server validates ownership and records who added it.
 - **Processes run:** IDE and MCP process/chore runs are recorded in the open change set as `PROCESS_RUN` with masked parameters, status and duration. A run is a record, never a reason to ship the process file.
-- **Phantom change sets:** closed sets whose touched objects no longer exist are detected automatically on the Change Sets list and hidden as history only. There is no manual mark. This does not filter files from a catch-up.
-- **Catch-up:** admin-only, from the rocket-icon **Deploy** menu → **Catch up a server…**. Only targets with a recorded deployed commit are offered. Choose the target, type `I understand this brings <target> level with <source>`, start, then build → review → approve → deploy → verify. An existing catch-up opens directly at **Build release** in catch-up mode.
-- **Catch-up source commit:** the source's last pushed commit. TM1 v11 may return it as `LocalCommit.ID` or `DeployedCommit.ID`; if neither exists, commit DEV first. Some TM1 builds do not report unpushed changes, so the catch-up uses the last pushed state.
+- **Phantom change sets:** closed sets whose touched objects no longer exist are detected automatically on the Change Sets list and hidden as history only. There is no manual mark.
+- **Catch-up:** removed. See "Catch-up was removed" below.
 - **Catch-up build:** every file that differs between the target's recorded base and the source commit, with no change-set ownership filter. Link closure still applies. Git renames remove the old base path before adding the new one; non-ASCII filenames are passed unquoted.
-- **Catch-up approval:** the release link closure is checked, but `CheckRules`/TI lint are **not** run against the old target — the catch-up creates those cubes and elements. Normal releases still run both.
 - **Catch-up deletes are reviewed and recorded.** The review lists target-only cubes, dimensions, processes, chores, views and subsets. Tick any that should be removed. Approval records that exact list; after the pull the IDE deletes those objects through the same reconcile path (views/subsets first, then processes/chores, then cubes/dimensions) and records the result. Nothing is selected by default, and a delete not in the release's target-only list is refused.
-- **After a catch-up, drift may still be non-empty.** Ticked deletes remove the objects you chose; unticked old base objects, TM1's view/hierarchy write-back, and subsets applied over REST can still differ from the release commit. Drift means PROD differs from what it last received; it pauses further deploys. Either clean the rest so PROD matches its last received commit, or adopt the difference on DEV and release it. Reseeding the local baseline does not change the Git drift reference; it does not clear Git drift by itself.
-- **Covered sets:** only after a clean catch-up deploy, and only closed sets whose objects the catch-up carried. Open sets stay open and are listed as partly shipped.
-- **Deletes:** a normal change set records its deletes and reconcile removes exactly those on the target. A catch-up uses its approved target-only list; no other target object is deleted.
+- **Deletes:** a normal change set records its deletes and reconcile removes exactly those on the target.
 
 ### Deploy → Lenses (no Git) — 18 Nov 2026
 
@@ -51,7 +47,7 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Round 2 — the migration tool writes the manifest (`--manifest`, `--from-markers`), and a model-owned change-set document that cannot be read fails the list instead of disappearing.
 - Round 2 — first-pull analysis clones the branch, compares every hierarchy, lists target-only objects and element loss, and refuses when any read fails; it is wired into the first-pull call, a read-only route and the setup screen.
 
-- Round 4 — releases are one change set at a time, in dependency order. A closed change set whose touched objects no longer exist is detected as a **phantom** automatically and then owns nothing. A target whose history predates change-set releases can be brought level once with a **catch-up release**, and the older sets it carried are marked **covered** after it deploys cleanly.
+- Round 4 — releases are one change set at a time, in dependency order. A closed change set whose touched objects no longer exist is detected as a **phantom** automatically and then owns nothing. Older targets are brought level by releasing their sets in order.
 
 **Still open**
 
@@ -94,32 +90,21 @@ The Change Sets list shows those older sets the target has not received. Work
 through them in dependency order. In practice a target that predates change-set
 releases (or a stretch of lab work) needs one of the two exceptions below.
 
-### The catch-up exception
+### Catch-up was removed
 
-A **catch-up** is the one explicit, deliberate exception to releasing one set at
-a time. It brings a target level with DEV in a single built release: every file
-that differs between the target's recorded deployed commit and DEV's pushed
-commit, regardless of which change set touched it.
+Catch-up (a single release carrying everything DEV has, regardless of change
+sets) is gone, with its wizard. It existed to bring a target level after a
+stretch of work outside change sets. Two things replaced it:
 
-- **Who:** a TM1 admin only.
-- **When:** a target has a recorded deployed commit (so it has pulled at least
-  once) and DEV's history is far ahead — typically a model that reached PROD
-  before change-set releases existed. For a never-pulled target, use first pull.
-- **How:** Deploy (rocket icon) → **Catch up a server…**, choose an eligible
-  target, type `I understand this brings <target> level with <source>`, then build,
-  review, approve, deploy and verify. An existing catch-up opens at Build release.
-  The source commit is the last pushed one (`LocalCommit.ID` or `DeployedCommit.ID`).
-  Some TM1 v11 builds do not report unpushed changes; commit DEV first if its Git
-  has no commit.
-- **What it is:** a closed, empty change set of kind `catch-up` named
-  `Catch-up: <target> level with <source> (<date>)`, with the source's pushed
-  commit as its `commit_ref`. The release is built on `release-<target>` like
-  any other, so prepare, approve, execute, verify, History and Rule 1 are
-  unchanged.
-- **Review:** the banner, every included object grouped by type, the change sets
-  it would cover, any open sets it partly ships, and the target-only objects.
-  Tick any target-only object you want deleted after the pull; approval records
-  that list.
+- A release is built from **the target's own copy plus one change set**, so a
+  target no longer needs DEV to be level with it.
+- A target that is genuinely behind is brought level by releasing its change
+  sets in order, which the order check enforces.
+
+Old `kind = 'catch-up'` records remain in the database and in History. They can
+no longer be released, approved or deployed: each route refuses with "catch-up
+has been removed". Sets marked `covered_by` an old catch-up keep that record and
+still count as released.
 
 ### Rehearse a catch-up on a TEST copy
 
@@ -489,7 +474,8 @@ Not the change-set number, not the close time — a set can be closed long after
 Catch-up releases ship everything and keep their own rule.
 
 **The limitation, stated plainly:** the check sees only changes recorded in the change log — the IDE
-and MCP agents. A change made in Planning Analytics Workspace, or by a TI process running on DEV, is
+and MCP agents, plus the objects a TI run on DEV creates or changes (the run itself is captured; see
+[PROCESS_RUN_CAPTURE.md](PROCESS_RUN_CAPTURE.md)). A change made in Planning Analytics Workspace is
 **not** ordered. If someone edits an object in PAW and a change set also touches it, the order between
 them is not enforced. That gap is visible later as ordinary drift, not here.
 

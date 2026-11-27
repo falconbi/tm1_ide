@@ -3,7 +3,7 @@
 `tools/tm1mcp/` is a [Model Context Protocol](https://modelcontextprotocol.io) server
 that exposes the TM1 model and a full set of build/diagnostic tools to any MCP-capable AI
 client (Claude Desktop, Claude Code, Cursor, Cline, …). `server.js` is just the bootstrap
-(shared context + wiring); the 68 tools themselves live in `shared.js` (common helpers) and
+(shared context + wiring); the 64 tools themselves live in `shared.js` (common helpers) and
 `tools/*.js`, one file per subject — `docs`, `introspect`, `changeset`, `assertions`,
 `deploy`, `build`, `develop`, `period`, `coreti`, `diagnostics`, `lenses`. The security wrapper every tool goes
 through lives in `registry.js`, `guard.js` and `identity.js` (see [Security](#security)).
@@ -15,7 +15,7 @@ particular model.
 first (or call the `read_build_guide` tool) — it's the method; this file is the reference.
 
 > ⚠️ **Status: early, needs more real-world testing.** The change-set gating and deploy-pipeline
-> integration below are the intended safety net, but the tool surface (68 tools) hasn't seen
+> integration below are the intended safety net, but the tool surface (64 tools) hasn't seen
 > heavy production use yet — treat it as a working build, not a hardened one.
 >
 > **Security note on external LLMs:** any MCP client you point at this server — including a
@@ -90,14 +90,14 @@ every read.
   If a value must not be seen, deny it with TM1 element or cell security on the reader login
   (`TM1_MCP_READ_USER`), or deny the cube in the policy. Use masking as a convenience on top,
   not as the control.
-- **Some governance reads use the service login.** `list_baselines`, `get_change_set` and
-  `diff_change_set` read through the deploy tooling with its own connection. They're audited and
+- **Some governance reads use the service login.** `get_change_set`, `show_release` and
+  `show_review` read the IDE's own change-set records. They're audited and
   scrubbed of passwords, but not narrowed by the reader's TM1 security.
-- **The deploy checks reach another server as its service login.** `check_deploy_risk` and
-  `check_target_drift` connect to a target (which can be production) with that server's service
-  login, outside the reader's TM1 security and the masking rules. In `readonly` mode they're
+- **The pre-deploy check reaches another server as its service login.** `pre_deploy_check`
+  connects to a target (which can be production) with that server's service
+  login, outside the reader's TM1 security and the masking rules. In `readonly` mode it is
   only offered when target servers were named on purpose (`TM1_MCP_ALLOWED_TARGETS` or
-  `"mcpAllowTargets"` in `config/servers.json`). In `build` mode they're limited to that list
+  `"mcpAllowTargets"` in `config/servers.json`). In `build` mode it is limited to that list
   plus the bound server. `packageDir` must resolve inside the IDE's `data/packages/` folder and
   contain a `manifest.json`; paths outside it are refused. A failed check is returned as a
   protocol error (`isError: true`), not as successful prose.
@@ -139,8 +139,8 @@ Writes are unchanged: change-set gated, read-only (PROD-posture) servers refuse 
 
 | Mode | Tools offered | Default when |
 |------|---------------|--------------|
-| `readonly` | the 38 read tools only, or 36 when no target servers are named (see below). Write tools are **not registered**, so the agent never sees them | **always**, unless `MCP_MODE=build` is set |
-| `build` | all 68 | only when `MCP_MODE=build` is set |
+| `readonly` | the 37 read tools only, or 36 when no target servers are named (see below). Write tools are **not registered**, so the agent never sees them | **always**, unless `MCP_MODE=build` is set |
+| `build` | all 64 | only when `MCP_MODE=build` is set |
 
 **Read-only is the default on every server.** An AI connected through this MCP can only read
 until someone deliberately turns on building. Set `MCP_MODE=build` only where you build:
@@ -175,8 +175,8 @@ password, or a server reached through PAW) it stops — it **never** falls back 
 login. Start-up prints the outcome, e.g.:
 
 ```
-tm1mcp: connected to "MyServer" — mode readonly, 36 tools (not offered: 30 write tools,
-        2 deploy checks — name target servers to offer them);
+tm1mcp: connected to "MyServer" — mode readonly, 36 tools (not offered: 27 write tools,
+        1 deploy check — name target servers to offer them);
         reads as TM1 user "east_mgr" (TM1 security applies)
 ```
 
@@ -238,7 +238,7 @@ keep forever) are removed at start-up and once a day.
 writes the builder's; a reader that can't be honoured fails closed; denylisted cubes are refused
 on every way in; masking masks, rounds and blocks, and covers parents; passwords are stripped
 from every answer; reads are audited, kept 90 days, and never touch the change set. Separately,
-`safety-mcp-write-tools.test.js` runs every one of the 30 write tools once against a fake TM1, so
+`safety-mcp-write-tools.test.js` runs every one of the 27 write tools once against a fake TM1, so
 a tool that can't run at all (like the old `esc is not defined` bug) fails a test. An optional live check (`TM1_MCP_LIVE_SERVER`,
 `TM1_MCP_LIVE_USER`, `TM1_MCP_LIVE_PASSWORD`) proves a restricted user sees fewer cubes than
 the service login.
@@ -346,33 +346,25 @@ not model metadata, so they work without an open change set; when one is open, t
 still logged as `ASSERTION_ADDED` / `ASSERTION_UPDATED` / `ASSERTION_REMOVED`.
 
 ```
-seed_baseline           → snapshot the server as its deploy baseline (do this FIRST,
-                          so the diff shows only what the agent builds, not older drift)
-                          Baselines are per-server — .tm1baseline/<server>.json — so
-                          several Dev→Prod loops run without colliding.
 start_change_set        → open a labelled change set ("AI: <model name>")
   build_dimension …     ┐
   build_cube …          ├─ each write logged to change_log.db against the open set
   build_process …       ┘
 get_change_set          → review what's been recorded
-diff_change_set         → diff vs the deployment baseline
-close_change_set        → done
-package_change_set      → build the deployable folder under data/packages/ (add release:true
-                          for every object changed since the baseline, not just this set)
-check_deploy_risk       → risk analysis of the package against a target (read-only)
-check_target_drift      → has the target moved from the baseline? (read-only)
-                        → deploy itself is a human step in the IDE Deploy panel
+close_change_set        → the same tests-and-close the IDE runs (Part F)
+pre_deploy_check        → read-only check of a target before Build Release
+show_release            → a change set's built release and what it carries
+show_review             → Review: what came from the target, attributes, approval
+                        → Build Release, approve and deploy are human IDE steps
 ```
 
 Writes attempted with no open change set are refused with a clear message.
-`read_*`, `run_process`, `check_rules_syntax`, all diagnostics, and the
-`package_change_set` / `check_*` deploy tools do **not** need a change set.
+`read_*`, `run_process`, `check_rules_syntax`, all diagnostics, and
+`pre_deploy_check` / `show_release` / `show_review` do **not** need a change set.
 
-**The agent prepares and checks; a human approves the push.** `package_change_set`
-and the two `check_*` tools cover diff → package → risk → drift — the tedious 90%,
-including the fix loop (risk flags a bad rule → fix it → re-package → re-check).
-There is deliberately no `deploy_execute` tool: the actual write to a target goes
-through a person in the IDE (Deploy panel, or Import Package on another machine).
+**The agent prepares and checks; a human approves the push.** The read-only tools
+cover the pre-deploy check and Review. There is deliberately no `deploy_execute`
+tool: the actual write to a target goes through a person in the IDE.
 
 Change sets are stored in `data/change_log.db` (shared with the IDE), attributed to user
 `ai-agent`. Change sets are keyed by server + developer (`TM1_MCP_USER`, default `ai-agent`), so several
@@ -481,7 +473,7 @@ worked example (e.g. an Excel); the tool just enforces them.
 
 ---
 
-## Tool catalog (68: 38 read, 30 write)
+## Tool catalog (64: 37 read, 27 write)
 
 In `readonly` mode only the read tools are offered. The split is defined in
 `tools/tm1mcp/guard.js` (`READ_TOOLS` / `WRITE_TOOLS`); this inventory is generated by
@@ -490,10 +482,7 @@ In `readonly` mode only the read tools are offered. The split is defined in
 <!-- BEGIN GENERATED TOOL TABLE -->
 | Tool | Class | Gate | Identity |
 |---|---|---|---|
-| `check_deploy_risk` | read | — | reader |
 | `check_rules_syntax` | read | — | reader |
-| `check_target_drift` | read | — | reader |
-| `diff_change_set` | read | — | reader |
 | `execute_view` | read | — | reader |
 | `find_cube_usage` | read | — | reader |
 | `find_cubes_using_dimension` | read | — | reader |
@@ -513,7 +502,6 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `get_transaction_log` | read | — | reader |
 | `get_view` | read | — | reader |
 | `list_assertions` | read | — | reader |
-| `list_baselines` | read | — | reader |
 | `list_chores` | read | — | reader |
 | `list_cubes` | read | — | reader |
 | `list_dimensions` | read | — | reader |
@@ -523,10 +511,13 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `list_processes` | read | — | reader |
 | `list_subsets` | read | — | reader |
 | `list_views` | read | — | reader |
+| `pre_deploy_check` | read | — | reader |
 | `read_build_guide` | read | — | reader |
 | `read_cells` | read | — | reader |
 | `run_assertions` | read | — | reader |
 | `search_ti_code` | read | — | reader |
+| `show_release` | read | — | reader |
+| `show_review` | read | — | reader |
 | `trace_feeders` | read | — | reader |
 | `add_assertion` | write | ungated | builder |
 | `add_elements` | write | change set | builder |
@@ -542,16 +533,13 @@ In `readonly` mode only the read tools are offered. The split is defined in
 | `create_view` | write | change set | builder |
 | `delete_lens` | write | ungated | builder |
 | `delete_object` | write | change set | builder |
-| `package_change_set` | write | change set | builder |
 | `remove_assertion` | write | ungated | builder |
 | `reprocess_feeders` | write | ungated | builder |
 | `restructure_dimension` | write | change set | builder |
 | `run_process` | write | ungated | builder |
 | `save_data_all` | write | ungated | builder |
 | `save_lens` | write | ungated | builder |
-| `seed_baseline` | write | change set | builder |
 | `set_attribute_values` | write | change set | builder |
-| `set_baseline_head` | write | change set | builder |
 | `set_chore_state` | write | change set | builder |
 | `start_change_set` | write | ungated | builder |
 | `update_assertion` | write | ungated | builder |
@@ -581,22 +569,18 @@ In `readonly` mode only the read tools are offered. The split is defined in
 ### Change set
 | Tool | Purpose |
 |---|---|
-| `seed_baseline` | snapshot server state as the deploy baseline — run before a build |
-| `list_baselines` | the server's append-only baseline history, and which one is HEAD |
-| `set_baseline_head` | move HEAD back to an earlier baseline |
 | `start_change_set` | open — **call first** |
-| `close_change_set` | close when the build is done |
+| `close_change_set` | the same tests-and-close the IDE runs (Part F) |
 | `get_change_set` | list recorded object changes |
-| `diff_change_set` | diff vs deployment baseline |
 
-### Deploy — prepare & check (no change set / no writes to target)
+### Deploy — read-only views (no change set / no writes to target)
 | Tool | Purpose |
 |---|---|
-| `package_change_set` | build the deployable folder under `data/packages/` (`release:true` = everything since baseline) |
-| `check_deploy_risk` | risk analysis of a package vs a target — syntax on target, missing deps, chore conflicts; `packageDir` must be under `data/packages/` |
-| `check_target_drift` | has the target changed from the baseline for the package's objects? `packageDir` must be under `data/packages/` |
+| `pre_deploy_check` | idle check, the target writes its own objects into Git, differences sorted into keeps / carry-backs / stops |
+| `show_release` | a change set's built release, its target and commit, and what it carries |
+| `show_review` | Review: what came from the target, attribute writes, type changes, recorded approval |
 
-*(No `deploy_execute` — the push to a target is a human step in the IDE.)*
+*(No `deploy_execute` — Build Release, approval and the push are human IDE steps.)*
 
 ### Build — write (change set required)
 | Tool | Purpose |

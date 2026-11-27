@@ -115,7 +115,7 @@ tools/
     registry.js               #   registers every tool through the security wrapper: read/write classification, MCP_MODE=readonly skips writes, policy check, reader/builder identity, read audit
     guard.js                  #   pure rules: READ_TOOLS/WRITE_TOOLS, config/mcp-security.json policy, cell/attribute masking, TI password stripping
     identity.js               #   reader (TM1_MCP_READ_USER — TM1 security applies) vs builder (service login); fails closed, never falls back
-    tools/                    #   the 65 tools, one file per subject: docs, introspect, changeset, assertions, deploy, build, develop, diagnostics, lenses
+    tools/                    #   the 64 tools, one file per subject: docs, introspect, changeset, assertions, deploy, build, develop, diagnostics, lenses
   tm1deploy/                  # Deploy pipeline CLI (diff / package / risk / execute)
 ```
 
