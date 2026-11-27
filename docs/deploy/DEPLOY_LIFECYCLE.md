@@ -36,9 +36,10 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
 - Step 2 — the approval's linked change set now supplies the authoritative `source`; source mismatch is refused, source is required in release-only mode, and reconcile errors/skips make `controlOk` false with reasons.
 - Step 3 — attribute-value writes are logged as `ATTRIBUTE_VALUE_SET`; the manifest carries dimension/element/attribute pairs and subset/view/chore deletes, and a blank value clears the target value.
 - Step 4 — an unrecognised pull-plan operation now refuses instead of being ignored.
-- Step 5 — first pull records the pulled commit as the target's deploy anchor.
+- Step 5 — the target writes its own objects at setup and that commit is recorded as its deploy
+  anchor (the first pull was removed; nothing is put onto a target at setup).
 - Step 6 — readiness findings now block the Git push route, and the setup screen disables Link/Commit while blockers remain.
-- Step 7 — standalone drift checks take the target's deploy lock; a concurrent check returns busy instead of racing the `prod-live` push.
+- Step 7 — standalone drift checks take the target's deploy lock; a concurrent check returns busy instead of racing the `live-<target>` push.
 - Step 8 — change sets are owner-managed (case-insensitive); admins may also close/resume/edit. The UI hides those controls for another user's set.
 - Step 9 — single-assertion runs record to `}TestResults`; assertion writes use `gateWrite`; finite numeric fields are validated and client-supplied identity/change-set fields are ignored.
 - Step 10 — one deploy surface (the step-by-step wizard); Deploy History shows model deploy records first and keeps package archives collapsed; Release opens the wizard.
@@ -67,8 +68,8 @@ Found by code review, not by a failed deploy. Each line moves to **Fixed** as th
    commit — non-optional, enforced server-side.
 3. Every deploy runs **control checks** on the target and records the result. The approved change set supplies the source used for reconcile/assertions; a caller cannot substitute another source, and reconcile errors or skipped deletes make the deploy not-clean.
 4. **Drift** is measured against what the target last received (the IDE-recorded
-   commit), never TM1's own `DeployedCommit`. The first pull records that anchor so
-   the first release and the first drift check have a base.
+   commit), never TM1's own `DeployedCommit`. Setup records that anchor from the target's own
+   write, so the first release and the first drift check have a base.
 5. **Drift pauses deploys.** It is measured against the commit the target last
    received. The normal fix is to **re-apply the change on DEV in a change set and
    release it**; the target must also be put back to its last received commit first
@@ -173,12 +174,12 @@ unaided, with one attribute value and one delete (the two parts TM1 Git doesn't 
 3. **Deploy-pull + reconcile** — PROD pulled; the attribute value was applied by `syncAttributeValues`, and the delete round proved **airtight**: the pull leaves the orphan on PROD, `reconcileDeletes` removes it.
 4. **Verify** — control set 2/2 on PROD, recorded to `}TestResults`.
 5. **Approve** — recorded (the deploy gate).
-6. **Drift** — `prod-live` diff **clean (0 entries)**.
+6. **Drift** — `live-<target>` diff **clean (0 entries)**.
 
 Two real bugs surfaced and fixed:
 
 - **`execute()` ordering** — control checks ran *before* reconcile, contradicting the loop (pull → apply values/deletes → assertions). Reconcile now runs first.
-- **`driftCheck` never executed its push** — it created the `prod-live` push plan but plans expire in seconds, so `prod-live` stayed stale and the diff false-positived on a clean-but-changed PROD. It now creates **and executes** the plan atomically.
+- **`driftCheck` never executed its push** — it created the `live-<target>` push plan but plans expire in seconds, so `live-<target>` stayed stale and the diff false-positived on a clean-but-changed PROD. It now creates **and executes** the plan atomically.
 
 ## Gates enforced — proven (6 Oct 2026)
 
@@ -235,16 +236,16 @@ Notes:
 - The **`tm1deploy` CLI's `deploy` command** writes to a target **outside** the IDE's approval gate and change-set
   reconcile scope — treat it as **admin-only** (run a drift check after).
 - **Static-subset hazard (7 Oct):** PROD's `WFP Period` Default subset lost its 36 YTD members while the dimension
-  stayed intact. Pulls never touched WFP Period (always "Skip"; dev = 93), so **no deploy caused it** — the prod-live
+  stayed intact. Pulls never touched WFP Period (always "Skip"; dev = 93), so **no deploy caused it** — the live-<target>
   diff for the window shows other out-of-band PROD activity (a new "Test Process", a `WFP Tax Type` dimension change,
   a `Position Input` view change), i.e. **direct model edits/rebuild on PROD during the walkthrough**. TM1 drops
   members from a **static** subset when its elements are removed and does not restore them on re-add. Any rebuild of a
   dimension on a target has this effect; nothing in the deploy pipeline did it here.
 - **Revert/Promote retired (10 Oct 2026):** the drift Revert (restore from the approved commit's repo file) and
-  Promote (merge `prod-live` → dev) features below are **no longer available** — the buttons, routes
+  Promote (merge `live-<target>` → dev) features below are **no longer available** — the buttons, routes
   (`/api/git/drift/revert`, `/api/git/drift/promote`) and `git-drift.revert` / `git-drift.promote` are removed.
   **Drift pauses deploys**; the fix is to re-apply the change on DEV in a change set and release it. The drift
-  **check** (`prod-live` diff, IDE-recorded base) stays.
+  **check** (`live-<target>` diff, IDE-recorded base) stays.
 
 The second drift-check reading in the revert proof briefly showed entries — those were the proof's own PROD-only
 test process, cleaned up immediately; with it removed, drift is **clean** and the drifted object is confirmed restored.
@@ -315,15 +316,15 @@ Every model is built with two kinds of checks, stored in the model
 ## Lifecycle — blank server start
 
 1. **Setup** — GitInit DEV to a repo; build the model (house standards: Default view per cube, Default subset per dim; behaviour + control checks built in).
-2. **First deploy (blank → blank target)** — gate on DEV (readiness + behaviour + control) → push → **first pull on PROD is a full overwrite** (nothing to lose on blank; readiness first-pull safety analysis confirms) → reconcile the change set's deletes/values → **control checks on PROD** → baseline established.
+2. **First deploy (blank → blank target)** — gate on DEV (readiness + behaviour + control) → push → PROD pulls the release, which is the whole model for a blank target → reconcile the change set's deletes/values → **control checks on PROD** → baseline established.
 3. **Second deploy** — change set → gate on DEV → push (one commit, only the change) → **pull plan shows only the change** (baseline exists) → execute → control on PROD → reconcile scoped to the change set's deletes / attribute dims.
-4. **Mark PROD read-only last** — a server must be linked and first-pulled **while writable**: `init` and `first-pull` refuse on read-only servers. Mark it read-only only after the first pull (or temporarily remove it from `readOnlyServers`, set it up, then add it back).
+4. **Mark PROD read-only last** — a server must be linked and set up **while writable**, because setup has TM1 write its own objects and the IDE write its attributes. Mark it read-only after that (or temporarily remove it from `readOnlyServers`, set it up, then add it back).
 
 ## Lifecycle — template start
 
 Same shape, two differences:
 - The new server **inherits the template's tests** (behaviour + control) and repo — the control layer comes built in.
-- A **populated** target's first pull is where control checks earn their keep: they prove the model holds together on **real data the model has never seen**.
+- A **populated** target is where control checks earn their keep: after its first deploy they prove the model holds together on **real data the model has never seen**.
 
 ## The deploy sequence (as implemented)
 
@@ -375,13 +376,16 @@ rather than by removing what it would have lost.
 |---|---|---|
 | **Attribute values** | don't travel (they're cube data — a value change produced an empty commit) | `tm1project` pre/post-pull task exporting/importing values to a flat file in the repo; or the IDE's value-writer |
 | **Deletes** | don't propagate (repo removes, target keeps — zero Delete ops) | reconcile step (repo vs target) or the IDE delete path |
-| **Drift** | the pull plan is a commit diff, not live-state — out-of-band PROD change wasn't flagged | drift-through-git (`prod-live` diff) as the IDE's check |
+| **Drift** | the pull plan is a commit diff, not live-state — out-of-band PROD change wasn't flagged | drift-through-git (`live-<target>` diff) as the IDE's check |
 
 ## The readiness check (IMPROVEMENTS 10.2)
 
 A blocker before any push: member-less view titles, stale member references in views/subsets, names TM1 Git won't round-trip, `tm1project` Ignore. The Git push route runs the scan and refuses on blockers; warnings still travel with a successful push. It also runs on demand and cross-server (Model Health).
 
-The first pull is analysed immediately before it runs: the IDE clones the branch into a throwaway folder, compares **every** hierarchy (skipping the server-generated `Leaves`), lists target-only cubes/dimensions/processes/chores, and counts elements the target has but the repo does not. It fails closed — any read error refuses the pull, with the object and TM1's own message. With loss, the user must type `I understand this overwrites <server> and removes <n> elements in <d> dimensions`; without loss, `I understand this overwrites <server>`. The setup screen shows the plan counts, target-only objects and the loss table before the confirmation box. `GET /api/git/setup/first-pull-analysis` returns the preview; the pull route re-runs the analysis so a target that changed since the preview no longer matches the sentence.
+**The first pull was removed (26 Nov).** Setup no longer puts anything onto a server: TM1 on the
+target writes its own objects into `live-<target>`, the IDE writes `attrs-<target>`, and that commit
+is recorded as where the target starts. The analysis, the preview route and the typed sentence went
+with it; the readiness scan above still runs and still blocks the write.
 
 ## What stays where (the "no model data on the IDE" rule)
 
@@ -416,8 +420,8 @@ read and write the repository.
 4. **Add the token** — the token is stored server-side and never shown again.
 5. **Check readiness** — the setup screen runs the Git-readiness scan and blocks
    Link/Commit while there are blockers.
-6. **Seed the history** — first push from DEV; first pull into PROD. PROD's first
-   pull is analysed and confirmed before it runs.
+6. **Seed the history** — each server writes its own model: DEV to `dev`, PROD to
+   `live-PROD`. Nothing is pulled onto either server.
 
 Link **both** servers to the **same** repo, one as DEV and one as PROD. Linking
 DEV does not link PROD automatically; each server has its own Git configuration
@@ -471,7 +475,7 @@ is refused when:
 
 Order is taken from the change log: each change set's **last change to that object**, by timestamp.
 Not the change-set number, not the close time — a set can be closed long after the edit that matters.
-Catch-up releases ship everything and keep their own rule.
+Catch-up was removed, so there is no exception to this rule.
 
 **The limitation, stated plainly:** the check sees only changes recorded in the change log — the IDE
 and MCP agents, plus the objects a TI run on DEV creates or changes (the run itself is captured; see
