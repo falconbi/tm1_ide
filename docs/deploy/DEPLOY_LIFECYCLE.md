@@ -534,3 +534,14 @@ button.
 
 Not yet in this step: hierarchies (alternate), attributes and their values, chores, views and
 subsets. Element **type** changes cannot be done over REST and are reported as skipped.
+
+---
+
+## Still open (27 Nov 2026)
+
+- **Re-running failed deletes** is an admin API route, with no button yet.
+- **Several developers, each with their own IDE, on one DEV:** the overlap warning cannot see
+  another IDE's open change sets.
+- **Read-only posture and DEV copies:** marking a server read-only is a config edit
+  (`readOnlyServers`), and copying PROD's data onto a new DEV is done in TM1. Neither has a screen.
+- **Attribute values** travel only for attributes the change set recorded.
