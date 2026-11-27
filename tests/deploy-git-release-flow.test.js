@@ -178,20 +178,21 @@ test('rebuilding a release before it is deployed succeeds (replaces the undeploy
     for (const prev of cl.getAllSessions(500)) cl.markSessionWontDeploy(prev.id, { by: 'test', reason: 'fixture' })
     // Two differently-named change sets on the same DEV commit → the release
     // commit message differs, so the rebuild is a genuinely different commit
-    // (a sibling of the first, both children of base).
+    // (a sibling of the first, both children of base). The second is started only
+    // after the first is retired: a rule/cube is a whole object, so an open set on
+    // it would (correctly) stop the first build either way round.
     const a = cl.startSession('Rebuild A', 'DEV1', 'admin')
     cl.setSessionCommit(a.id, repo.devCommit)
-    cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
-    const a2 = cl.startSession('Rebuild B', 'DEV1', 'admin')
-    cl.setSessionCommit(a2.id, repo.devCommit)
     cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
 
     const first = await buildRelease(a, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
     assert.equal(first.ok, true, JSON.stringify(first))
     const firstCommit = first.releaseCommit
-    // The second set touches the same object; the order rule would refuse it while
-    // the first is live and undeployed. Retire it — this test is about rebuilding.
     cl.markSessionWontDeploy(a.id, { by: 'test', reason: 'fixture' })
+
+    const a2 = cl.startSession('Rebuild B', 'DEV1', 'admin')
+    cl.setSessionCommit(a2.id, repo.devCommit)
+    cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
 
     // No deploy happened — the branch tip is an undeployed release built on base.
     const second = await buildRelease(a2, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
@@ -219,13 +220,14 @@ test('rebuild matches a SHORT recorded base against the FULL parent commit', asy
     const a = cl.startSession('Short-base A', 'DEV1', 'admin')
     cl.setSessionCommit(a.id, repo.devCommit)
     cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
-    const a2 = cl.startSession('Short-base B', 'DEV1', 'admin')
-    cl.setSessionCommit(a2.id, repo.devCommit)
-    cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
 
     const first = await buildRelease(a, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })
     assert.equal(first.ok, true, JSON.stringify(first))
     cl.markSessionWontDeploy(a.id, { by: 'test', reason: 'fixture' })
+
+    const a2 = cl.startSession('Short-base B', 'DEV1', 'admin')
+    cl.setSessionCommit(a2.id, repo.devCommit)
+    cl.writeLog({ server: 'DEV1', action: 'RULES_UPDATED', objectType: 'rules', objectName: 'WFP Workforce Cost', user: 'admin' })
 
     // The tip's parent is the FULL base, the record is the SHORT base — must match.
     const second = await buildRelease(a2, 'TG1', { token: 'x', gitUser: 't', repoUrl: repo.bare })

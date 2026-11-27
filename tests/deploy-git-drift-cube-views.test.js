@@ -35,7 +35,7 @@ function load({ deployedCube, liveCube }) {
         ...arReal,
         makeClient: () => ({
             async post(route) {
-                if (route === 'GitStatus') return { URL: 'https://repo', Remote: { Branches: ['prod-live'] }, DeployedCommit: { ID: 'C1' } }
+                if (route === 'GitStatus') return { URL: 'https://repo', Remote: { Branches: ['live-TGT'] }, DeployedCommit: { ID: 'C1' } }
                 if (route === 'GitPush') return { ID: 'P1' }
                 return {}
             },
@@ -50,7 +50,7 @@ function load({ deployedCube, liveCube }) {
             if (args[0] === 'diff') return ''
             if (args[0] === 'show') {
                 const ref = args[1]
-                if (ref.startsWith('origin/prod-live:')) return liveCube
+                if (ref.startsWith('origin/live-TGT:')) return liveCube
                 return deployedCube
             }
             return ''

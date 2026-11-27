@@ -140,10 +140,54 @@ function buildRecord(out, { startedAt } = {}) {
         typeChanges: out.typeChanges ?? [],
         typeAck: out.typeAck ?? null,
         restoreCommit: out.restoreCommit ?? null,
+        // Part Q — after the deploy: feeders, DEV's tests on the target, and the
+        // developer's manual sign-off (filled in later by POST .../signoff).
+        feeders: out.feeders ?? null,
+        devTests: out.devTests ?? null,
+        needsChecking: !!out.needsChecking,
+        needsCheckingTests: out.needsCheckingTests ?? [],
+        signoff: out.signoff ?? null,
         startedAt: startedAt ?? null,
         finishedAt: at,
         durationMs: startedAt ? Math.max(0, Date.parse(at) - Date.parse(startedAt)) : null,
     }
+}
+
+// A short plain-English summary a developer can send to users, asking them to
+// check the model. Kept next to the record so every screen shows the same text.
+function userSummary(rec) {
+    if (!rec) return ''
+    const bits = []
+    const n = rec.objects?.length ?? 0
+    bits.push(`${rec.target} was updated${n ? ` with ${n} change${n === 1 ? '' : 's'}` : ''}.`)
+    if (rec.changeSet?.name) bits.push(`It includes "${rec.changeSet.name}".`)
+    if (rec.loss?.elements > 0) bits.push(`${rec.loss.elements} element${rec.loss.elements === 1 ? ' was' : 's were'} removed.`)
+    if (rec.needsChecking) bits.push(`Some checks need attention: ${(rec.needsCheckingTests ?? []).join(', ') || 'see the deploy report'}.`)
+    if (!rec.signoff) bits.push('The developer has not signed it off on PROD yet.')
+    else bits.push(`Tested on PROD by ${rec.signoff.by}${rec.signoff.at ? ` at ${rec.signoff.at}` : ''}.`)
+    bits.push('Please check the parts you use and tell the developer if anything looks wrong.')
+    return bits.join(' ')
+}
+
+// Record the developer's manual sign-off ("tested on PROD", name and time) on
+// the deploy's record. Local file first, then the model copy when it owns one.
+async function updateSignoff(target, commit, { by = null, at = null, note = null } = {}, { ideToken } = {}) {
+    if (!target || !commit) return null
+    const signoff = { by: by ?? 'unknown', at: at ?? new Date().toISOString(), note: note ?? null }
+    const d = loadLocal()
+    const arr = Array.isArray(d[target]) ? d[target] : []
+    const rec = arr.find(r => sameCommit(r.commit, commit))
+    if (rec) { rec.signoff = signoff; saveLocal(d) }
+    if (await modelOwned(target, { ideToken })) {
+        const model = await fromModel(target, { ideToken }).catch(() => [])
+        const found = model.find(r => sameCommit(r.commit, commit))
+        if (found) {
+            const store = require('./model-store')
+            await store.writeDoc(target, AREA, docName(found), { ...found, signoff }, { ideToken })
+        }
+    }
+    if (!rec) return null
+    return { ...rec, signoff }
 }
 
 // ── Writing ─────────────────────────────────────────────────────────────────
@@ -160,6 +204,7 @@ async function modelOwned(target, { ideToken } = {}) {
 
 async function record(out, { ideToken, startedAt } = {}) {
     const rec = buildRecord(out, { startedAt })
+    rec.userSummary = userSummary(rec)
 
     // Local first — the fallback every read can use, and what a non-migrated
     // target relies on entirely.
@@ -202,6 +247,7 @@ async function list(target, { ideToken } = {}) {
     const seen = new Set(model.map(r => `${r.commit}::${r.at}`))
     return [...model, ...local.filter(r => !seen.has(`${r.commit}::${r.at}`))]
         .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+        .map(r => r.userSummary ? r : { ...r, userSummary: userSummary(r) })
 }
 
 // The report for one deployment. Newest wins when a commit was deployed twice
@@ -211,4 +257,4 @@ async function get(target, commit, { ideToken } = {}) {
     return all.find(r => sameCommit(r.commit, commit)) ?? null
 }
 
-module.exports = { record, list, get, buildRecord, classify, sameCommit, FILE, PREFIX, AREA }
+module.exports = { record, list, get, buildRecord, classify, userSummary, updateSignoff, sameCommit, FILE, PREFIX, AREA }

@@ -92,9 +92,18 @@ async function resolveBase(target, { ideToken } = {}) {
             return { ok: false, target, repoUrl, missing: true, reason: `${target} has never received a release, so there is no baseline: every difference is shown with nothing selected.` }
         }
         if (!branch) {
+            // Part C: a target set up by asking TM1 to write its own objects has a
+            // recorded Last Deployed commit but no release branch yet. That commit
+            // IS the baseline. Only an unresolvable record is refused.
+            if (local) {
+                try {
+                    git(work, 'cat-file', '-e', `${local}^{commit}`)
+                    return { ok: true, target, repoUrl, commit: local, local, branch: null, source: 'local-record' }
+                } catch { /* not in this repo */ }
+            }
             return {
                 ok: false, target, repoUrl, local, missing: true,
-                reason: `This IDE recorded ${String(local).slice(0, 10)} as ${target}'s last deploy, but the repository has no release branch for ${target} — the baseline cannot be confirmed from Git.`,
+                reason: `This IDE recorded ${String(local).slice(0, 10)} as ${target}'s last deploy, but the repository has no release branch for ${target} and that commit is not in the repository — the baseline cannot be confirmed from Git.`,
             }
         }
         return { ok: true, target, repoUrl, commit: branch, local, branch, source: local ? 'release-branch' : 'release-branch-only' }

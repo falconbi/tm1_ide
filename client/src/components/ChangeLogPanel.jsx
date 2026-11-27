@@ -1,7 +1,7 @@
 import { request } from '@/lib/api'
 import { useState, useRef, useEffect } from 'react'
-import { useQueryClient, useMutation } from '@tanstack/react-query'
-import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Pencil, RotateCcw, HelpCircle, Plus, Rocket, MoreHorizontal } from 'lucide-react'
+import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query'
+import { X, ChevronRight, ChevronDown, Clock, Box, Layers, Cog, FileText, FileCheck, Table2, List, Tag, Loader2, Diff, Pencil, RotateCcw, HelpCircle, Plus, Rocket, MoreHorizontal, CheckCircle2, Copy } from 'lucide-react'
 import HelpPanel from '@/components/HelpPanel'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { useWorkSessions, useWorkSessionLog, useWorkSessionLogVerbose, useUpdateSessionDescription, useResumeWorkSession, useServerLogins } from '@/hooks/useApi'
@@ -129,6 +129,27 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
     },
     onError: e => toast.error(e.message ?? 'Could not retire this change set'),
   })
+  // Fix 11 — Close from the menu runs the same close as "Tests & close": tests,
+  // the attribute-value ownership list, and TM1 Git writing DEV into `dev`.
+  const closeSet = useMutation({
+    mutationFn: async () => {
+      const r = await request('/api/sessions/close', {
+        method: 'POST', headers: authHeader(), body: JSON.stringify({ id: session.id }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      return d
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['work-sessions', server] })
+      qc.invalidateQueries({ queryKey: ['work-session-active', server] })
+      toast.success('Change set closed')
+    },
+    onError: e => toast.error(e.message ?? 'Could not close this change set'),
+  })
+  // Which open-set action is waiting for a second click. Open work is real work,
+  // so neither Close nor Retire sends anything until the confirm is accepted.
+  const [confirmAction, setConfirmAction] = useState(null)
   const { data: entries = [], isFetching } = useWorkSessionLog(open ? session.id : null)
   // Only while the row is open — this is the "saved Nx" detail, not something
   // every row in the list should fetch.
@@ -148,6 +169,51 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
   const owns = isAdmin || !session.user || !currentUser || String(session.user).toLowerCase() === String(currentUser).toLowerCase()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  // Part Q.3 — a deployed change set carries the same sign-off as its deploy
+  // record. Read only when there is a deployment to ask about, so the in-play
+  // list makes no requests.
+  const deployTarget = session.deployed ? (session.deployed_target ?? null) : null
+  const deployCommit = session.release_commit ?? null
+  const recordQ = useQuery({
+    queryKey: ['deploy-record', deployTarget, deployCommit],
+    enabled: !!deployTarget && !!deployCommit,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const qs = new URLSearchParams({ target: deployTarget })
+      if (deployCommit) qs.set('commit', deployCommit)
+      const r = await request(`/api/deploy/record?${qs.toString()}`, { headers: authHeader() })
+      const d = await r.json()
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      return d
+    },
+  })
+  const deployRecord = recordQ.data?.record ?? null
+  const signoff = deployRecord?.signoff ?? null
+  const [signingOff, setSigningOff] = useState(false)
+  const signOff = async () => {
+    if (!deployTarget) return
+    setSigningOff(true)
+    try {
+      const r = await request('/api/deploy/git/signoff', {
+        method: 'POST', headers: authHeader(),
+        body: JSON.stringify({ target: deployTarget, commit: deployCommit ?? undefined }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      toast.success('Signed off')
+      await recordQ.refetch()
+      qc.invalidateQueries({ queryKey: ['deploy-record'] })
+    } catch (e) { toast.error(e.message ?? 'Could not sign off') }
+    finally { setSigningOff(false) }
+  }
+  const copyUserSummary = async () => {
+    if (!deployRecord?.userSummary) return
+    try {
+      await navigator.clipboard.writeText(deployRecord.userSummary)
+      toast.success('Message to users copied')
+    } catch { toast.error('Could not copy the message') }
+  }
+
   // Everything a reader needs about this set, on one line.
   const closeTests = (() => {
     try { return session.close_tests ? JSON.parse(session.close_tests) : null } catch { return null }
@@ -158,7 +224,8 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
     isActive ? 'open' : (session.closed_at ? `closed ${fmtDate(session.closed_at)}` : 'closed'),
     closeTests ? `tests ${closeTests.passed}/${closeTests.total}${closeTests.blocking ? ` (${closeTests.blocking} blocking)` : ''}` : null,
     session.commit_ref ? `commit ${String(session.commit_ref).slice(0, 8)}` : null,
-    session.deployed_target ? `shipped to ${session.deployed_target}` : null,
+    session.deployed_target ? `deployed to ${session.deployed_target}` : null,
+    session.deployed ? (signoff ? `signed off by ${signoff.by}` : (deployRecord ? 'awaiting sign-off' : null)) : null,
   ].filter(Boolean).join(' · ')
 
   useEffect(() => { if (editingDesc) descRef.current?.focus() }, [editingDesc])
@@ -189,7 +256,7 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                 {session.wont_deploy_at ? (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0">Retired</span>
                 ) : session.covered_by ? (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="Carried by a catch-up release">Covered</span>
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0" title="Carried by an older whole-server release">Covered</span>
                 ) : session.deployed ? (
                   <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">Deployed</span>
                 ) : null}
@@ -245,13 +312,51 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                         <FileText size={11} className="text-muted-foreground" /> Deploy report
                       </button>
                     )}
-                    {!isActive && session.kind !== 'catch-up' && !session.deployed && !session.covered_by && !session.wont_deploy_at && (
+                    {session.deployed && deployRecord && !signoff && (
+                      <button
+                        onClick={() => { setMenuOpen(false); signOff() }}
+                        disabled={signingOff}
+                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted disabled:opacity-40"
+                      >
+                        <CheckCircle2 size={11} className="text-muted-foreground" /> {signingOff ? 'Signing off…' : `I tested this on ${session.deployed_target}`}
+                      </button>
+                    )}
+                    {signoff && (
+                      <div className="flex items-center gap-2 w-full px-3 py-1.5 text-[10px] text-emerald-600">
+                        <CheckCircle2 size={11} /> Tested on {session.deployed_target} by {signoff.by}{signoff.at ? ` · ${fmtDate(signoff.at)} ${fmtTime(signoff.at)}` : ''}
+                      </div>
+                    )}
+                    {deployRecord?.userSummary && (
+                      <button
+                        onClick={() => { setMenuOpen(false); copyUserSummary() }}
+                        className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                      >
+                        <Copy size={11} className="text-muted-foreground" /> Copy message to users
+                      </button>
+                    )}
+                    {!isActive && !session.deployed && !session.covered_by && !session.wont_deploy_at && (
                       <button
                         onClick={() => { setMenuOpen(false); resume.mutate({ id: session.id, server }) }}
                         className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
                       >
                         <RotateCcw size={11} className="text-muted-foreground" /> Resume
                       </button>
+                    )}
+                    {isActive && (
+                      <>
+                        <button
+                          onClick={() => { setMenuOpen(false); setConfirmAction('close') }}
+                          className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                        >
+                          <FileCheck size={11} className="text-muted-foreground" /> Close — run tests
+                        </button>
+                        <button
+                          onClick={() => { setMenuOpen(false); setConfirmAction('retire') }}
+                          className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted"
+                        >
+                          <Tag size={11} className="text-muted-foreground" /> Retire — never ship this
+                        </button>
+                      </>
                     )}
                     {!isActive && session.closed_at && !session.deployed && !session.covered_by && (
                       <button
@@ -282,6 +387,43 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
               className="w-full text-[10px] bg-background border border-border rounded px-2 py-1 outline-none focus:border-primary text-foreground placeholder:text-muted-foreground/40 resize-none"
             />
             <div className="text-[9px] text-muted-foreground/40 mt-0.5">Blur or click away to save · Esc to cancel</div>
+          </div>
+        )}
+
+        {confirmAction && (
+          <div className="mx-3 mb-2 rounded border border-amber-600/40 bg-amber-500/5 px-2.5 py-2 text-[11px] space-y-1">
+            {confirmAction === 'retire' ? (
+              <>
+                <p className="font-medium text-amber-700">Retire this change set without shipping it?</p>
+                <p className="text-muted-foreground">It closes and is retired in the IDE's records — no tests run and nothing is written to Git. The edits stay on DEV. Undo them on DEV if you don't want them there.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium text-amber-700">Run the tests and close this change set?</p>
+                <p className="text-muted-foreground">This is the same close as "Tests &amp; close": tests, the attribute-value ownership list, and TM1 Git writing DEV into dev. It does not start a deploy.</p>
+              </>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={() => {
+                  const action = confirmAction
+                  setConfirmAction(null)
+                  if (action === 'retire') retire.mutate({ id: session.id, restore: false })
+                  else closeSet.mutate()
+                }}
+                disabled={retire.isPending || closeSet.isPending}
+                className="px-2.5 py-1 rounded bg-amber-600 text-white text-[11px] hover:bg-amber-500 disabled:opacity-40"
+              >
+                {confirmAction === 'retire' ? 'Retire it' : 'Run tests & close'}
+              </button>
+              <button
+                onClick={() => setConfirmAction(null)}
+                disabled={retire.isPending || closeSet.isPending}
+                className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 
@@ -317,6 +459,35 @@ function SessionRow({ session, server, openTab, onClose, currentUser, isAdmin = 
                   />
                 ))}
               </>
+            )}
+            {session.deployed && deployRecord && (
+              <div className={cn('px-3 py-2 border-t border-border/40 space-y-1', signoff ? 'bg-emerald-600/5' : 'bg-amber-500/5')}>
+                <p className={cn('text-[10px] uppercase tracking-wide font-semibold flex items-center gap-1.5', signoff ? 'text-emerald-700' : 'text-amber-700')}>
+                  <CheckCircle2 size={10} /> {signoff ? 'Signed off' : 'Awaiting sign-off'}
+                </p>
+                {signoff
+                  ? <p className="text-[11px]">Tested on {session.deployed_target} by <span className="font-medium">{signoff.by}</span>{signoff.at ? ` · ${fmtDate(signoff.at)} ${fmtTime(signoff.at)}` : ''}</p>
+                  : (
+                    <button
+                      onClick={signOff}
+                      disabled={signingOff}
+                      className="px-2.5 py-1 text-[11px] rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40"
+                    >
+                      {signingOff ? 'Saving…' : `I tested this on ${session.deployed_target}`}
+                    </button>
+                  )}
+                {deployRecord.userSummary && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-muted-foreground">{deployRecord.userSummary}</p>
+                    <button
+                      onClick={copyUserSummary}
+                      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      <Copy size={9} /> Copy message to users
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             {entries.length > 0 && (
               <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-t border-border/40">

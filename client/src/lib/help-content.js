@@ -216,7 +216,7 @@ export const HELP_CONTENT = {
       },
       {
         heading: 'Statuses',
-        body: 'Open, closed, deployed, covered by a catch-up, or phantom (empty, history only). **Resume** is only for a closed, undeployed, non-catch-up set.',
+        body: 'Open, closed, deployed, covered by an older whole-server release, or phantom (empty, history only). **Resume** is only for a closed, undeployed, non-catch-up set.',
       },
     ],
     docs: [
@@ -230,23 +230,45 @@ export const HELP_CONTENT = {
     sections: [
       {
         heading: 'Start here',
-        body: 'Click **Deploy** on a change-set row. There is no separate New Deploy — the row supplies the set and target context.',
+        body: 'Open **Deploy → Ready to deploy**, choose the target in **Ready for**, then open the change set. A closed set goes straight to Build. An open one runs **Tests & close** first.',
       },
       {
-        heading: 'The wizard',
-        body: '**Test** runs the model assertions. **Close** records the tests and entries. **Commit** sends DEV to GitHub. **Build release** creates a commit from the target\'s last received state plus this set. **Review** shows the pull plan and drift. **Approve** signs the exact commit. **Deploy** applies it. **Verify** re-checks drift.',
+        heading: 'Pre-deploy is read-only',
+        body: '**Check PROD** asks three questions: is the target idle, has it changed since the last deploy, and what does it have that DEV does not. Nothing is written to PROD or DEV.',
       },
       {
-        heading: 'Drift',
-        body: 'Drift means the target was edited outside the pipeline. Deploys pause until the target matches the commit it last received. Restore the target, or port the intended change to DEV and release it. **Reseed does not clear Git drift** — it only replaces the local baseline snapshot.',
+        heading: 'Tests & close',
+        body: "The model's **logic** tests run on DEV. A **block** test stops the close — fix it, or set it to **warn** if it is only advice. On success DEV is saved to Git (the DEV After Close commit) and Build Release uses that commit.",
       },
       {
-        heading: 'Catch-up',
-        body: 'Admin-only exception for bringing a target level when DEV is far ahead. It can ship several change sets at once, but it is not the normal path. It does not cover open sets and can leave drift behind.',
+        heading: 'Build & Review',
+        body: "A release is the target's **current state plus this change set**. The target's own additions are kept. **Review** shows what changes and asks you to confirm any elements the release removes. **Rebuild** only if the target changed after the build.",
       },
       {
-        heading: 'Deploy Center',
-        body: '**History** shows releases, approvals and snapshots. **Baselines** bootstraps or force-reseeds a local baseline; it is not a Git drift fix. **Lenses** is the separate Lens deploy flow.',
+        heading: 'Deploy',
+        body: 'Approve, Save Data, take the backup (`}IDE.Backup`), pull, verify. One change set goes to one target at a time. After the pull, logic checks run on the target; data quality is not part of a deploy.',
+      },
+      {
+        heading: 'When DEV and PROD differ',
+        body: "**PROD's own changes are kept. A deploy never deletes anything on PROD unless you recorded that deletion on DEV in a change set.**",
+        table: {
+          columns: ['What you see', 'What it means', 'What you do'],
+          rows: [
+            ['PROD has an element, subset or view DEV does not', 'The deploy keeps it', 'Nothing — it stays. Sync DEV if DEV needs it. To remove it from PROD, delete it on DEV in a change set and confirm at Review.'],
+            ['DEV has something PROD does not', 'That is your change', 'Build → Review → Deploy.'],
+            ['Both changed the same thing differently', 'A conflict; there is no default', "Take PROD's (Sync DEV) or keep DEV's (the deploy carries DEV's version)."],
+            ['PROD removed something DEV still has', 'The target deleted it', 'Delete it on DEV too (recorded), or keep it — the next deploy restores it on PROD.'],
+            ['PROD changed a rule or process', 'Edited by hand on PROD', "Carry-back: copy PROD's version to DEV, then deploy."],
+            ['PROD changed a cube structure', 'A deploy must not guess', 'Make the change on DEV in a change set, then deploy it first.'],
+            ['PROD changed a dimension this set touches', 'Normal', 'Rebuild the release after a fresh check. Additions are kept; removals are confirmed at Review.'],
+            ['PROD changed a dimension this set does not touch', 'The pull skips it', 'Leave it; PROD keeps it.'],
+            ['PROD changed a chore schedule', 'Kept', 'Sync copies the schedule to DEV, with the chore switched off.'],
+          ],
+        },
+      },
+      {
+        heading: 'Sync DEV',
+        body: "Copies PROD's own changes onto DEV in a separate `sync` set that is never deployed. Only when DEV has no open change set — it writes to DEV and would move the data under work in progress.",
       },
     ],
     docs: [
@@ -265,7 +287,7 @@ export const HELP_CONTENT = {
       },
       {
         heading: 'Target / Branch',
-        body: '**Target** is the server receiving the deploy (e.g. PROD). **Branch** is the git branch to pull — `dev` is the working branch; `prod-live` is the drift branch and is not used for deploys.',
+        body: '**Target** is the server receiving the deploy (e.g. PROD). **Branch** is the git branch to pull — `dev` is the working branch; `live-<target>` is that target\'s drift branch and is not used for deploys.',
       },
       {
         heading: 'Prepare',
@@ -279,7 +301,7 @@ export const HELP_CONTENT = {
   },
 
   gitdrift: {
-    title: 'Git Drift (prod-live)',
+    title: 'Git Drift (live-<target>)',
     sections: [
       {
         heading: 'What this is',
@@ -287,11 +309,11 @@ export const HELP_CONTENT = {
       },
       {
         heading: 'What you see',
-        body: '**Deployed** is the commit the target was given. **prod-live** is the target\'s current live state. Any object that differs is drift.',
+        body: '**Deployed** is the commit the target was given. **live-<target>** is the target\'s current live state. Any object that differs is drift.',
       },
       {
         heading: 'When the target has drifted',
-        body: 'Deploys are **paused**. Restore the target to its last received commit, or make the intended change on DEV in a change set and release it — the target must match again before Review passes. **Reseed does not clear Git drift.** There is no automated revert.',
+        body: 'Deploys are **paused**. Make the intended change on DEV in a change set and release it, or — if the target is unusable — restore its data folder from the backup taken before the last deploy and use **restored from a backup** (this screen, admin only). **Reseed does not clear Git drift.** There is no automated revert.',
       },
     ],
     docs: [

@@ -51,7 +51,7 @@ export default function ModelHealth({ server, onClose, onOpenAssertions, embedde
   const [error,   setError]   = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [copied,  setCopied]  = useState(null)
-  const [assertKind, setAssertKind] = useState('all')
+  const [assertScope, setAssertScope] = useState('all')
   const [histories, setHistories] = useState({})
   const [historyErrors, setHistoryErrors] = useState({})
   const [openHist,  setOpenHist]  = useState(null)
@@ -136,37 +136,42 @@ export default function ModelHealth({ server, onClose, onOpenAssertions, embedde
               {a?.error && <p className="text-xs text-red-600">{a.error}</p>}
               {a && !a.error && (
                 <>
-                  <p className="text-[10px] text-muted-foreground/80">Behaviour = a specific number on DEV. Control = a rule that must hold on any data (DEV and PROD).</p>
+                  <p className="text-[10px] text-muted-foreground/80">
+                    Logic checks prove the model computes: they gate a deploy. Quality checks read the data against thresholds:
+                    they inform the data owner, and they only run on a target server.
+                  </p>
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-xs text-muted-foreground">
-                      {a.passed}/{a.total} passing
-                      {a.failed > 0 && (() => {
-                        const beh = a.failures.filter(f => (f.kind ?? 'behaviour') !== 'control').length
-                        const ctl = a.failures.filter(f => f.kind === 'control').length
-                        return <> · {beh > 0 && <span className="text-amber-600">{beh} changed</span>}{beh > 0 && ctl > 0 && ' · '}{ctl > 0 && <span className="text-red-600">{ctl} failed</span>}</>
-                      })()}
+                      {a.by_scope?.logic && <>Logic {a.by_scope.logic.passed}/{a.by_scope.logic.total}{a.by_scope.logic.failed > 0 && <span className="text-red-600"> · {a.by_scope.logic.failed} failing</span>}</>}
+                      {a.by_scope?.quality && a.by_scope.quality.total > 0 && <> · Quality {a.by_scope.quality.passed}/{a.by_scope.quality.total}{a.by_scope.quality.failed > 0 && <span className="text-amber-600"> · {a.by_scope.quality.failed} data warning{a.by_scope.quality.failed === 1 ? '' : 's'}</span>}</>}
+                      {(!a.by_scope?.quality || a.by_scope.quality.total === 0) && <> · quality not run here</>}
                     </p>
-                    {a.by_kind && (
-                      <span className="text-[10px] text-muted-foreground">
-                        · behaviour {a.by_kind.behaviour.passed}/{a.by_kind.behaviour.total} · control {a.by_kind.control.passed}/{a.by_kind.control.total}
-                      </span>
-                    )}
                     <div className="flex items-center gap-1 ml-auto">
-                      {['all', 'behaviour', 'control'].map(k => (
-                        <button key={k} onClick={() => setAssertKind(k)}
-                          className={cn('px-2 py-0.5 text-[10px] rounded border transition-colors', assertKind === k ? 'bg-muted text-foreground border-border' : 'border-border/50 text-muted-foreground hover:text-foreground')}>
+                      {['all', 'logic', 'quality'].map(k => (
+                        <button key={k} onClick={() => setAssertScope(k)}
+                          className={cn('px-2 py-0.5 text-[10px] rounded border transition-colors', assertScope === k ? 'bg-muted text-foreground border-border' : 'border-border/50 text-muted-foreground hover:text-foreground')}>
                           {k}
                         </button>
                       ))}
                     </div>
                   </div>
-                  {a.failures.filter(f => assertKind === 'all' || (f.kind ?? 'behaviour') === assertKind).length === 0 && empty}
-                  {a.failures.filter(f => assertKind === 'all' || (f.kind ?? 'behaviour') === assertKind).map(f => {
+                  {a.scope_run === 'logic' && (
+                    <p className="text-[10px] text-muted-foreground/70">
+                      Quality checks are not run on DEV: its data is a copy. Run them against TEST or PROD, where the data matters.
+                    </p>
+                  )}
+                  {a.total === 0 && (
+                    <p className="text-[10px] text-muted-foreground/70">
+                      No checks are stored on {server}. Checks live in the model that owns them; a deploy runs that model's logic checks against the target.
+                    </p>
+                  )}
+                  {(a.failures ?? []).filter(f => assertScope === 'all' || (f.scope ?? 'logic') === assertScope).length === 0 && empty}
+                  {(a.failures ?? []).filter(f => assertScope === 'all' || (f.scope ?? 'logic') === assertScope).map(f => {
                     const s = summarizeMdx(f.mdx)
-                    const isControl = (f.kind ?? 'behaviour') === 'control'
+                    const isQuality = f.scope === 'quality'
                     const controlsOk = a.by_kind?.control ? a.by_kind.control.passed === a.by_kind.control.total : true
-                    const label = isControl ? 'failed' : 'changed'
-                    const tone = isControl ? 'text-red-600' : 'text-amber-600'
+                    const label = isQuality ? 'data warning' : 'failing'
+                    const tone = isQuality ? 'text-amber-600' : 'text-red-600'
                     return (
                       <div key={f.id} className={cn('border rounded px-2 py-1.5', isControl ? 'border-red-600/30' : 'border-amber-600/30')}>
                         <button className="w-full flex items-start gap-2 text-left" onClick={() => setExpanded(expanded === f.id ? null : f.id)}>

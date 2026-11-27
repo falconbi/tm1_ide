@@ -38,7 +38,7 @@ require.cache[resolve('core/git-state')] = {
 }
 const { driftCheck } = require(resolve('core/git-drift'))
 
-test('concurrent drift checks do not race the prod-live push', async () => {
+test('concurrent drift checks do not race the live-<target> push', async () => {
     const [a, b] = await Promise.all([driftCheck('TGT'), driftCheck('TGT')])
     const results = [a, b]
     assert.equal(results.filter(r => r.busy).length, 1)

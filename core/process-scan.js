@@ -94,8 +94,28 @@ const DIM_WRITE_FNS = Object.fromEntries(Object.entries(CATALOG)
     .map(([name, f]) => [name, f.params.indexOf('dimname')]))
 const DIM_CALL_RE = new RegExp(`\\b(${Object.keys(DIM_WRITE_FNS).join('|')})\\s*\\(`, 'gi')
 
+// Subset and view statements, also derived from the catalog. They are excluded
+// from dimension writes (temp-view scaffolding would link nearly every process),
+// but a run capture needs the dimension/cube they name so it can compare the
+// content of that dimension's subsets or that cube's views.
+const SUBSET_CALL_FNS = Object.fromEntries(Object.entries(CATALOG)
+    .filter(([, f]) => f.language !== 'rules' && (f.params ?? []).includes('dimname') && (f.params ?? []).includes('subset'))
+    .map(([name, f]) => [name, { dim: f.params.indexOf('dimname'), subset: f.params.indexOf('subset') }]))
+const SUBSET_CALL_RE = new RegExp(`\\b(${Object.keys(SUBSET_CALL_FNS).join('|')})\\s*\\(`, 'gi')
+const VIEW_CALL_FNS = Object.fromEntries(Object.entries(CATALOG)
+    .filter(([name, f]) => f.language !== 'rules' && /^(VIEW|PUBLISHVIEW)/i.test(name) && (f.params ?? []).includes('cubename'))
+    .map(([name, f]) => [name, { cube: f.params.indexOf('cubename'), view: Math.max(0, f.params.indexOf('value')) }]))
+const VIEW_CALL_RE = new RegExp(`\\b(${Object.keys(VIEW_CALL_FNS).join('|')})\\s*\\(`, 'gi')
+
 const CELLPUT_RE = /\b(CellPut[NS](?:Complete)?|CellIncrement[NS])\s*\(/gi
 const CELLGET_RE = /\bCellGet[NS]\s*\(/gi
+// Attribute WRITES, derived from the shared catalog (never hand-listed): a
+// statement taking a dimname and an attribute. Reads are left out — only a write
+// can change the model a deploy carries.
+const ATTR_WRITE_FNS = Object.fromEntries(Object.entries(CATALOG)
+    .filter(([, f]) => f.language !== 'rules' && f.isStatement && (f.params ?? []).includes('dimname') && (f.params ?? []).includes('attribute'))
+    .map(([name, f]) => [name, f.params.indexOf('dimname')]))
+const ATTR_WRITE_RE = new RegExp(`\\b(${Object.keys(ATTR_WRITE_FNS).join('|')})\\s*\\(`, 'gi')
 const CUBE_FIRST_RE = new RegExp(`\\b(${CUBE_FIRST_FNS.join('|')})\\s*\\(`, 'gi')
 const EXEC_RE = /\b(?:ExecuteProcess|RunProcess)\s*\(([\s\S]*?)\)\s*;/gi
 const CUBE_PARAM_RE = /'([pP]\w*[Cc]ube\w*)'\s*,\s*'((?:''|[^'])+)'/g
@@ -134,7 +154,8 @@ function scanProcess(p, { cubeNames = new Set(), cubeDims = {}, dimNames = new S
     const rawCode = [p.PrologProcedure, p.MetadataProcedure, p.DataProcedure, p.EpilogProcedure]
         .filter(Boolean).join('\n')
     const code = stripComments(rawCode)
-    const writes = [], reads = [], calls = [], dimWrites = []
+    const writes = [], reads = [], calls = [], dimWrites = [], attrWrites = []
+    const subsetOps = [], viewOps = []
 
     const varValues = {}
     for (const prm of p.Parameters ?? []) {
@@ -195,6 +216,41 @@ function scanProcess(p, { cubeNames = new Set(), cubeDims = {}, dimNames = new S
         dimWrites.push({ dim, pos: m.index })
     }
 
+    ATTR_WRITE_RE.lastIndex = 0
+    while ((m = ATTR_WRITE_RE.exec(code)) !== null) {
+        const fn = m[1].toUpperCase()
+        const args = splitArgs(code, m.index + m[0].length - 1)
+        const dimAt = ATTR_WRITE_FNS[fn]
+        const dim = resolveName(args[dimAt], varValues)
+        if (!dim || !dimNames.has(dim)) continue
+        // AttrPut*(value, dim, element, attribute)
+        // ElementAttrPut*(value, dim, hierarchy, element, attribute)
+        const elementAt = fn.startsWith('ELEMENTATTRPUT') ? dimAt + 2 : dimAt + 1
+        const attributeAt = fn.startsWith('ELEMENTATTRPUT') ? dimAt + 3 : dimAt + 2
+        const element = resolveName(args[elementAt], varValues)
+        const attribute = resolveName(args[attributeAt], varValues)
+        attrWrites.push({ dim, element, attribute, pos: m.index })
+    }
+
+    SUBSET_CALL_RE.lastIndex = 0
+    while ((m = SUBSET_CALL_RE.exec(code)) !== null) {
+        const fn = m[1].toUpperCase()
+        const args = splitArgs(code, m.index + m[0].length - 1)
+        const at = SUBSET_CALL_FNS[fn]
+        const dim = resolveName(args[at.dim], varValues)
+        if (!dim || !dimNames.has(dim)) continue
+        subsetOps.push({ dim, subset: resolveName(args[at.subset], varValues) ?? null, pos: m.index })
+    }
+    VIEW_CALL_RE.lastIndex = 0
+    while ((m = VIEW_CALL_RE.exec(code)) !== null) {
+        const fn = m[1].toUpperCase()
+        const args = splitArgs(code, m.index + m[0].length - 1)
+        const at = VIEW_CALL_FNS[fn]
+        const cube = resolveName(args[at.cube], varValues)
+        if (!cube || !cubeNames.has(cube)) continue
+        viewOps.push({ cube, view: resolveName(args[at.view], varValues) ?? null, pos: m.index })
+    }
+
     EXEC_RE.lastIndex = 0
     while ((m = EXEC_RE.exec(code)) !== null) {
         const argList = m[1]
@@ -218,6 +274,9 @@ function scanProcess(p, { cubeNames = new Set(), cubeDims = {}, dimNames = new S
         reads: reads.sort(byPos),
         calls: calls.sort(byPos),
         dimWrites: dimWrites.sort(byPos),
+        attrWrites: attrWrites.sort(byPos),
+        subsetOps: subsetOps.sort(byPos),
+        viewOps: viewOps.sort(byPos),
     }
 }
 

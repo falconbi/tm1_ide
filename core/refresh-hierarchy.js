@@ -12,10 +12,12 @@
 //   * one on both sides that differs — a CONFLICT with no default ("take the
 //     target's" or "keep DEV's"), exactly like a view, subset, delete or move.
 //
-// Never deleted here: in TM1 an element is dimension-wide, so removing one from an
-// alternate hierarchy removes it from the dimension (and its values). An element DEV
-// has and the target does not is REPORTED (`onlyDev`) and kept — the deploy carries
-// it, which is the honest direction for a piece of work someone did on DEV.
+// Never deleted here: an element DEV has and the target does not is REPORTED
+// (`onlyDev`) and kept — the deploy carries it, which is the honest direction for
+// a piece of work someone did on DEV. (The old comment said removing an element
+// from an alternate hierarchy removes it from the dimension. The lab on 24 Nov,
+// v11, showed it removes it from that hierarchy ONLY — a leaf remains an element
+// of the dimension. Deleting is still never done here.)
 
 const { makeClient } = require('./adapter-registry')
 const { TM1Client } = require('./tm1-client')
@@ -144,6 +146,7 @@ async function planHierarchies(source, target, { ideToken, reader = null } = {})
             items.push({
                 type: 'hierarchy', dimension: dim, name: hier, origin,
                 onTarget: !!p, onDev: !!d,
+                prodValue: canonHier(p), devValue: canonHier(d),
                 adding: origin === ORIGIN.TARGET_ADDED,
                 removing: origin === ORIGIN.TARGET_REMOVED,
                 differs: true, parts,
@@ -178,7 +181,7 @@ async function applyHierarchies(dev, prod, { hierarchies = [], source, target, u
                 try {
                     await dev.deleteHierarchy(h.dimension, h.name)
                     changed.push({ label, text: 'deleted on DEV too (the target removed it since the last deploy)' })
-                    try { log({ server: source, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: h.dimension, detail: h.name, user }) } catch { /* evidence only */ }
+                    try { log({ server: source, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: h.dimension, detail: h.name, beforeState: { dimension: h.dimension, hierarchy: h.name }, user }) } catch { /* evidence only */ }
                 } catch (e) { errors.push({ what: label, why: e.message }) }
             } else if (h.choice === 'keep') {
                 const text = `kept ${source}'s hierarchy — the next deploy puts it back on the target`
@@ -261,7 +264,7 @@ async function applyHierarchies(dev, prod, { hierarchies = [], source, target, u
                 log({
                     server: source, action: onDev ? 'HIERARCHY_UPDATED' : 'HIERARCHY_CREATED',
                     objectType: 'dimension', objectName: h.dimension, detail: h.name,
-                    afterState: { hierarchy: h.name, refreshedFrom: target ?? null }, user,
+                    afterState: { dimension: h.dimension, hierarchy: h.name, refreshedFrom: target ?? null }, user,
                 })
             } catch { /* the write stands; the log is evidence */ }
         } catch (e) {

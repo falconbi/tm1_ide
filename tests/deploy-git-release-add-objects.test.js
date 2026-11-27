@@ -164,7 +164,8 @@ test('a change set that owns nothing names what DEV changed anyway, instead of a
         const r = await buildRelease(s, 'TN', { token: 'x', gitUser: 't', repoUrl: repo.bare })
         assert.equal(r.noChange, true)
         assert.ok(r.leftOnDev.some(x => x.type === 'dimension' && x.name === 'D3'), JSON.stringify(r.leftOnDev))
-        assert.match(r.warnings.join(' '), /DEV differs from TN on D3/)
+        assert.match(r.warnings.join(' '), /D3 is different on DEV and this release does not send it/)
+        assert.match(r.warnings.join(' '), /TN keeps its own copy/)
 
         // And including it turns the same set into a real release.
         const withDim = await buildRelease(s, 'TN', {

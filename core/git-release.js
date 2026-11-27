@@ -21,6 +21,8 @@ const cl = require('./change-log')
 const { lintTI } = require('./ti-lint')
 const { sameCommit } = require('./git-approvals')
 const { odataKey } = require('./odata-key')
+const { recordedChanges } = require('./recorded-changes')
+const { applyDimensionChanges, applyChoreChanges, planAttributeChanges, checkWrittenHierarchy } = require('./release-live')
 
 const NO_BASE_ERROR = (target) => `${target} has no recorded deployed commit — set it up first (init + first pull), then release against it.`
 // Releases go one change set at a time, in dependency order.
@@ -88,8 +90,36 @@ function changedFilesBetween(work, from, to) {
 // Key an object for change-set matching / plan checking. Subsets belong to a
 // DIMENSION and views to a CUBE — the parent is part of the identity, so a
 // 'Default' subset on two dimensions is two different objects.
-const objectKey = (type, name, parent) => {
-    const n = String(name ?? '').toLowerCase()
+// TM1 object names are compared case-insensitively here; a hierarchy file names
+// its dimension file's hierarchy, and the default hierarchy is named like the dim.
+const sameName = (a, b) => String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase()
+const normPath = (p) => String(p ?? '').toLowerCase()
+// The hierarchy a recorded change set created/removed, case-insensitively.
+const hierarchyAction = (record, hierarchy) => {
+    for (const [name, info] of record?.hierarchies ?? []) {
+        if (sameName(name, hierarchy)) return info?.action ?? null
+    }
+    return null
+}
+const findDimensionRecord = (map, dimension) => {
+    for (const [name, record] of map ?? []) if (sameName(name, dimension)) return record
+    return null
+}
+// True when the target's own commit differs from its last deployed commit for
+// this dimension — its index OR any of its hierarchy files. A "whole dimension"
+// record cannot be replayed element by element, so shipping DEV's file over such
+// a change would silently lose the target's work.
+function dimensionChangedOnTarget(work, base, liveRef, dimension) {
+    try {
+        const out = git(work, 'diff', '--name-only', base, liveRef, '--',
+            `dimensions/${dimension}.json`, `dimensions/${dimension}.hierarchies`)
+        return String(out ?? '').trim().length > 0
+    } catch {
+        // Cannot tell whether the target changed. Stop rather than risk losing it.
+        return true
+    }
+}
+const objectKey = (type, name, parent) => {    const n = String(name ?? '').toLowerCase()
     if (type === 'subset' || type === 'view') return `${type}::${String(parent ?? '').toLowerCase()}::${n}`
     return `${type}::${n}`
 }
@@ -167,7 +197,7 @@ function cubeDiffBeyondViews(baseJson, devJson) {
 // TM1's pull does not touch those, but the IDE applies them over REST afterwards,
 // and that REPLACES — so the target's version would be lost. Pure, so both the
 // Review check and the final deploy guard use exactly the same rule.
-function viewSubsetConflicts(nonBlockingEntries, releaseKeys) {
+function viewSubsetConflicts(nonBlockingEntries, releaseKeys, ownedKeys = null) {
     return (nonBlockingEntries ?? []).filter(e => {
         // A cube file whose ONLY difference is its list of views is not a conflict:
         // the drift check proved nothing else changed, the list is a consequence of
@@ -175,7 +205,12 @@ function viewSubsetConflicts(nonBlockingEntries, releaseKeys) {
         // only applies views the IDE hands it). Shipping it IS the fix.
         if (e?.kind === 'cube-views') return false
         const o = objectFromFile(e.file)
-        return o?.type && releaseKeys?.has(objectKey(o.type, o.name, o.parent))
+        if (!o?.type || !releaseKeys?.has(objectKey(o.type, o.name, o.parent))) return false
+        // A subset/view the change set does not own is in the release only because
+        // Build carried the target's own copy of it. The IDE would apply that same
+        // copy back, so there is nothing to overwrite and nothing to ask about.
+        if (ownedKeys && !ownedKeys.has(objectKey(o.type, o.name, o.parent))) return false
+        return true
     })
 }
 
@@ -192,15 +227,23 @@ function viewSubsetConflicts(nonBlockingEntries, releaseKeys) {
 //   newer change, already deployed → this release would undo work already on the
 //                                  target
 //
+// For a rule, process, view, subset or cube — a whole object the release carries —
+// any other undeployed change set that changed it blocks in either direction: two
+// versions of one whole object cannot be merged, so there is no safe order.
+// Dimensions and chores keep the ordering rule (their records and fields can be
+// applied individually against the target's file).
+//
 // Retired sets are ignored (they own nothing), and a set carried by a catch-up
-// counts as deployed. A newer change that has not been deployed yet does not
-// block: shipping the older one first preserves the order.
+// counts as deployed. A newer dimension/chore change that has not been deployed
+// yet does not block: shipping the older one first preserves the order.
 //
 // Pure, so the rule can be tested without a repo: rows are
-//   { label, mineAt, other: { id, name, at, deployed, covered, retired } }
+//   { type, label, mineAt, other: { id, name, at, deployed, covered, retired } }
+const SHARED_OBJECT_STRICT = new Set(['cube', 'rules', 'process', 'view', 'subset'])
 function sharedObjectOrdering(rows, target) {
     const older = []
     const newer = []
+    const shared = []
     for (const r of rows ?? []) {
         // A retired set owns nothing, and a set recorded as "no change to deploy"
         // has nothing left to apply — neither may block a later release.
@@ -209,23 +252,28 @@ function sharedObjectOrdering(rows, target) {
         const mine = r.mineAt
         if (!at || !mine) continue
         const deployed = !!(r.other.deployed || r.other.covered)
-        if (!deployed) {
-            if (at < mine) older.push(r)
-        } else if (at > mine) {
-            newer.push(r)
+        if (deployed) {
+            if (at > mine) newer.push(r)
+        } else if (SHARED_OBJECT_STRICT.has(r.type)) {
+            shared.push(r)
+        } else if (at < mine) {
+            older.push(r)
         }
     }
-    if (!older.length && !newer.length) return null
+    if (!older.length && !newer.length && !shared.length) return null
 
     const clock = (iso) => String(iso).slice(11, 16)
     const parts = []
+    for (const r of shared) {
+        parts.push(`${r.label} was also changed in ${r.other.name} (${clock(r.other.at)}), which hasn't been deployed to ${target}. Only one change set can own an object version — release one of them first, or combine the changes.`)
+    }
     for (const r of older) {
         parts.push(`${r.label} was also changed in ${r.other.name} (${clock(r.other.at)}), which hasn't been deployed to ${target}. Deploy ${r.other.name} first, or retire it.`)
     }
     for (const r of newer) {
         parts.push(`${r.other.name} already deployed a newer change to ${r.label} (${clock(r.other.at)}). This release would undo it. Retire this change set, or redo the change on DEV.`)
     }
-    return { older, newer, message: `Refused: ${parts.join(' ')}` }
+    return { older, newer, shared, message: `Refused: ${parts.join(' ')}` }
 }
 
 // ── Link closure ─────────────────────────────────────────────────────────────
@@ -282,18 +330,29 @@ function linkClosure(files, read) {
     return missing
 }
 
+function deployedTo(s, target) {
+    if (!s) return false
+    if (!target) return !!s.deployed_target
+    const list = s.deployed_targets
+    if (Array.isArray(list)) return list.includes(target)
+    if (typeof list === 'string' && list) return list.split(',').includes(target)
+    return s.deployed_target === target
+}
+
 // Best-effort owner of an object: another change-log session (on the change set's
 // server) whose log touched the same object. A retired phantom set (or one
 // already covered by a catch-up) owns nothing — it must never block a release.
-function ownerOf(logsBySession, obj) {
+function ownerOf(logsBySession, obj, target = null) {
     const wanted = objectKey(obj.type, obj.name, obj.parent)
     for (const s of logsBySession) {
         // A retired set, one covered by a catch-up, and one that has ALREADY been
         // deployed all own nothing that is still waiting to go: their version is on
         // the target, so a later change to the same object is not theirs. Treating a
         // deployed set as the owner refused every later release of that object with
-        // "release it first" — after it had been released.
-        if (s.wont_deploy_at || s.covered_by || s.deployed_target) continue
+        // "release it first" — after it had been released. "Deployed" is per target:
+        // a set deployed to TEST still owns its work for PROD.
+        // A sync owns nothing (Part E.5); a retired set owns nothing either.
+        if (s.wont_deploy_at || s.covered_by || s.kind === 'sync' || deployedTo(s, target)) continue
         for (const e of s.entries) {
             const type = ENTRY_TO_OBJECT[e.object_type]
             if (!type) continue
@@ -365,9 +424,61 @@ async function targetOnlyObjects(target, work, commit, { ideToken } = {}) {
     return out
 }
 
+// ── Part G helpers ──────────────────────────────────────────────────────────
+// A link in a TM1 Git file is relative to that file's folder. Removing one is how
+// an index stays valid when the release deliberately does not carry the target.
+function removeLinkedFile(work, parentFile, targetPath) {
+    try {
+        const full = path.join(work, parentFile)
+        const doc = JSON.parse(fs.readFileSync(full, 'utf8'))
+        let changed = false
+        for (const [key, value] of Object.entries(doc)) {
+            if (!key.endsWith('@Code.links') && !key.endsWith('@Code.link')) continue
+            const one = key.endsWith('@Code.link')
+            const list = one ? [value] : (Array.isArray(value) ? value : [])
+            const kept = list.filter(link => {
+                if (typeof link !== 'string' || !link) return true
+                const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(parentFile), link))
+                if (resolved === targetPath) { changed = true; return false }
+                return true
+            })
+            if (one) doc[key] = kept[0] ?? ''
+            else doc[key] = kept
+        }
+        if (changed) fs.writeFileSync(full, JSON.stringify(doc, null, '\t') + '\n')
+        return changed
+    } catch { return false }
+}
+
+// The dimension a hierarchy file belongs to, and the hierarchy's own name.
+function dimensionFileParts(file) {
+    const f = String(file ?? '')
+    let m = f.match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.json$/)
+    if (m) return { dimension: m[1], hierarchy: m[2], hierarchyFile: true }
+    m = f.match(/^dimensions\/([^/]+)\.json$/)
+    if (m) return { dimension: m[1], hierarchy: null, hierarchyFile: false }
+    return null
+}
+
+// Parse the attribute files stored on an attrs-<server> branch into the documents
+// release-live.js works with. A missing file is "the target has no values for
+// that dimension", never a silent empty write.
+function attrsDocsFromFiles(files) {
+    const out = {}
+    for (const [rel, text] of Object.entries(files ?? {})) {
+        const m = String(rel).match(/^attributes\/(.+)\.json$/)
+        if (!m) continue
+        try {
+            const doc = JSON.parse(text)
+            out[m[1]] = doc
+        } catch { /* unreadable: treated as absent */ }
+    }
+    return out
+}
+
 // Build the release commit for one change set against the target's recorded base.
 // Returns { ok, ... } — never throws past here.
-async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, addObjects = [], excludeObjects = [], by = null, catchUp = false, resetIncludes = false } = {}) {
+async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, addObjects = [], excludeObjects = [], by = null, resetIncludes = false, liveAttrsFiles = null, baseAttrsFiles = null, liveAttrsCommit = null } = {}) {
     // Re-read the session so commit_ref / release fields are the live DB values.
     const session = changeSet?.id ? (cl.getSession(changeSet.id) ?? changeSet) : changeSet
     const base = lastDeployed(target)?.lastDeployedCommit
@@ -415,86 +526,127 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                 e.object_name,
                 (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null)))
 
+        // Part G: the target's own latest state. When it exists, a dimension or
+        // chore file is built from Live plus this change set's records — never from
+        // the whole of DEV. Without a live branch (targets set up before Part B, and
+        // existing fixtures) the old whole-file path is kept.
+        let liveRef = null
+        try { liveRef = git(work, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/live-${target}`).trim() || null } catch { liveRef = null }
+        const showAt = (ref, file) => { try { return git(work, 'show', `${ref}:${file}`) } catch { return null } }
+        const records = recordedChanges(session?.id ? cl.getSessionLogVerbose(session.id) : [])
+        const liveAttrNotes = []
+        let liveAttrs = null
+        let baseAttrs = null
+        if (liveRef) {
+            // Read (or refresh) the target's attributes. G.1: the IDE writes Live
+            // attributes at Build Release. With no client token in a unit test the
+            // caller may supply the two parsed sets directly.
+            try {
+                if (!liveAttrsFiles && ideToken) {
+                    const { TM1Client } = require('./tm1-client')
+                    const { collectAttrsFiles, writeAttrsBranch } = require('./git-attrs')
+                    const tc = new TM1Client(target, makeClient(target, ideToken))
+                    const files = await collectAttrsFiles(tc)
+                    const w = await writeAttrsBranch(target, { repoUrl, token, gitUser, files, message: `Live attributes of ${target}` })
+                    if (w?.ok !== false) { liveAttrsFiles = files; liveAttrsCommit = w?.commit ?? null }
+                }
+            } catch (e) { liveAttrNotes.push(`Live attributes could not be refreshed: ${e.message}`) }
+            liveAttrs = attrsDocsFromFiles(liveAttrsFiles ?? {})
+
+            if (!baseAttrsFiles) {
+                // Last Deployed attributes = the attrs commit recorded on the target's
+                // latest deploy. A target that has never deployed has no base; that is
+                // reported, not guessed.
+                let attrsCommit = null
+                try {
+                    const last = cl.latestDeployTo(target)
+                    if (last && ['complete', 'incomplete', 'reverted'].includes(String(last.status))) attrsCommit = last.attrs_commit ?? null
+                } catch { /* no record */ }
+                if (attrsCommit) {
+                    const files = {}
+                    for (const dim of records.dimensions.keys()) {
+                        const text = showAt(attrsCommit, `attributes/${dim}.json`)
+                        if (text != null) files[`attributes/${dim}.json`] = text
+                    }
+                    baseAttrsFiles = files
+                }
+            }
+            baseAttrs = attrsDocsFromFiles(baseAttrsFiles ?? {})
+        }
+
         // Other sessions on the same server, for the "left on DEV" owners.
         const allSessions = cl.getAllSessions(500)
         const otherLogs = (session?.server ? allSessions.filter(s => s.server === session.server) : [])
             .filter(s => s.id !== session?.id)
-            .map(s => ({ id: s.id, name: s.name, user: s.user ?? null, closed_at: s.closed_at ?? null, deployed_target: s.deployed_target ?? null, wont_deploy_at: s.wont_deploy_at ?? null, covered_by: s.covered_by ?? null, entries: (() => { try { return cl.getSessionLog(s.id) } catch { return [] } })() }))
+            .map(s => ({ id: s.id, name: s.name, user: s.user ?? null, kind: s.kind ?? null, closed_at: s.closed_at ?? null, deployed_target: s.deployed_target ?? null, deployed_targets: (() => { try { return cl.deployTargets(s.id) } catch { return [] } })(), wont_deploy_at: s.wont_deploy_at ?? null, covered_by: s.covered_by ?? null, entries: (() => { try { return cl.getSessionLog(s.id) } catch { return [] } })() }))
 
         // A catch-up takes EVERY file that changed between the target's base and
         // DEV's pushed commit: no change-set filter, no ownership refusal. An
         // ordinary release takes only the files whose objects this set touched.
         const included = []
         const excluded = []
-        if (catchUp) {
-            for (const c of changed) {
-                const obj = objectFromFile(c.file)
-                included.push(obj
-                    ? { ...obj, file: c.file, oldFile: c.oldFile, action: c.action }
-                    : { type: 'other', name: c.file, file: c.file, oldFile: c.oldFile, action: c.action })
-            }
-        } else {
-            for (const c of changed) {
-                const obj = objectFromFile(c.file)
-                if (!obj) { excluded.push({ type: 'other', name: c.file, files: [c.file] }); continue }
-                if (csetObjectKeys.has(objectKey(obj.type, obj.name, obj.parent))) {
-                    included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
-                } else {
-                    excluded.push({ ...obj, files: [c.file], file: c.file, owner: ownerOf(otherLogs, obj) })
-                }
+        for (const c of changed) {
+            const obj = objectFromFile(c.file)
+            if (!obj) { excluded.push({ type: 'other', name: c.file, files: [c.file] }); continue }
+            if (csetObjectKeys.has(objectKey(obj.type, obj.name, obj.parent))) {
+                included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
+            } else {
+                excluded.push({ ...obj, files: [c.file], file: c.file, owner: ownerOf(otherLogs, obj, target) })
             }
         }
+    
 
         // Objects in the change set that produced no file change (e.g. only an attribute value).
         const noFile = []
-        if (!catchUp) {
-            for (const e of logEntries) {
-                const o = ENTRY_TO_OBJECT[e.object_type]
-                if (!o) continue
-                const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
-                const key = objectKey(o, e.object_name, parent)
-                if (!included.some(i => objectKey(i.type, i.name, i.parent) === key)) noFile.push({ type: o, name: e.object_name, parent: parent ?? undefined })
-            }
+        for (const e of logEntries) {
+            const o = ENTRY_TO_OBJECT[e.object_type]
+            if (!o) continue
+            const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
+            const key = objectKey(o, e.object_name, parent)
+            if (!included.some(i => objectKey(i.type, i.name, i.parent) === key)) noFile.push({ type: o, name: e.object_name, parent: parent ?? undefined })
         }
+    
 
         // Objects added from "Left on DEV" by the person building the release.
         // Validate here: the client is never trusted on ownership, and only an
         // unowned excluded item may be pulled into this release.
         const addedByUser = []
-        if (!catchUp) {
-            // What this change set already declared as included. A REBUILD must not
-            // silently drop it: the include was a decision, and the screen that makes
-            // it is one button away from "Build release". Only `resetIncludes` clears
-            // it explicitly.
-            let wanted = Array.isArray(addObjects) ? addObjects : []
-            if (!wanted.length && !resetIncludes) {
-                try {
-                    wanted = (JSON.parse(session?.release_added_by_user ?? '[]') ?? [])
-                        .map(a => ({ type: a.type, name: a.name, parent: a.parent ?? null }))
-                } catch { wanted = [] }
+        // What this change set already declared as included. A REBUILD must not
+        // silently drop it: the include was a decision, and the screen that makes
+        // it is one button away from "Build release". Only `resetIncludes` clears
+        // it explicitly.
+        let wanted = Array.isArray(addObjects) ? addObjects : []
+        if (!wanted.length && !resetIncludes) {
+            try {
+                wanted = (JSON.parse(session?.release_added_by_user ?? '[]') ?? [])
+                    .map(a => ({ type: a.type, name: a.name, parent: a.parent ?? null }))
+            } catch { wanted = [] }
+        }
+        for (const a of wanted) {
+            const label = `${a.type} ${a.name}${a.parent ? ` (${a.parent})` : ''}`
+            const key = objectKey(a.type, a.name, a.parent)
+            // EVERY changed file of the object, not the first one: a dimension is
+            // its own file PLUS one per hierarchy, and the elements live in the
+            // hierarchy files. Adding only the first left the release without the
+            // file that actually carries them.
+            const hits = excluded.filter(x => objectKey(x.type, x.name, x.parent) === key)
+            if (!hits.length) return { ok: false, refused: true, error: `Cannot add ${label}: it is not an unowned "left on DEV" item in this release.` }
+            const owned = hits.find(h => h.owner)
+            if (owned) return { ok: false, refused: true, error: `Cannot add ${label}: it belongs to change set "${owned.owner.sessionName}". ${RELEASE_FIRST(owned.owner.sessionName, target)}` }
+            const files = hits.map(h => h.file ?? h.files?.[0] ?? null).filter(Boolean)
+            if (!files.length) return { ok: false, refused: true, error: `Cannot add ${label}: the release has no file for it.` }
+            for (const h of hits) {
+                included.push({ ...h, file: h.file ?? h.files?.[0], action: h.action ?? 'A' })
+                excluded.splice(excluded.indexOf(h), 1)
             }
-            for (const a of wanted) {
-                const label = `${a.type} ${a.name}${a.parent ? ` (${a.parent})` : ''}`
-                const key = objectKey(a.type, a.name, a.parent)
-                // EVERY changed file of the object, not the first one: a dimension is
-                // its own file PLUS one per hierarchy, and the elements live in the
-                // hierarchy files. Adding only the first left the release without the
-                // file that actually carries them.
-                const hits = excluded.filter(x => objectKey(x.type, x.name, x.parent) === key)
-                if (!hits.length) return { ok: false, refused: true, error: `Cannot add ${label}: it is not an unowned "left on DEV" item in this release.` }
-                const owned = hits.find(h => h.owner)
-                if (owned) return { ok: false, refused: true, error: `Cannot add ${label}: it belongs to change set "${owned.owner.sessionName}". ${RELEASE_FIRST(owned.owner.sessionName, target)}` }
-                const files = hits.map(h => h.file ?? h.files?.[0] ?? null).filter(Boolean)
-                if (!files.length) return { ok: false, refused: true, error: `Cannot add ${label}: the release has no file for it.` }
-                for (const h of hits) {
-                    included.push({ ...h, file: h.file ?? h.files?.[0], action: h.action ?? 'A' })
-                    excluded.splice(excluded.indexOf(h), 1)
-                }
-                // `files` only when an object is more than one file, so a single-file
-                // object keeps the record it always had.
-                addedByUser.push({ type: hits[0].type, name: hits[0].name, parent: hits[0].parent ?? null, file: files[0], ...(files.length > 1 ? { files } : {}), by })
+            // `files` only when an object is more than one file, so a single-file
+            // object keeps the record it always had.
+            addedByUser.push({ type: hits[0].type, name: hits[0].name, parent: hits[0].parent ?? null, file: files[0], ...(files.length > 1 ? { files } : {}), by })
+            for (const inc2 of included) {
+                if (files.includes(inc2.file)) inc2.byUser = true
             }
         }
+    
 
         // Objects the approver chose to keep the target's version of.
         // Review offers this when a view or subset changed on BOTH sides: the
@@ -502,18 +654,17 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         // removed from this release entirely — not "applied last", gone — and
         // recorded, so it is never a silent decision.
         const excludedByUser = []
-        if (!catchUp) {
-            for (const x of excludeObjects) {
-                const key = objectKey(x.type, x.name, x.parent)
-                const i = included.findIndex(inc => objectKey(inc.type, inc.name, inc.parent) === key)
-                const label = `${x.type} ${x.name}${x.parent ? ` (${x.parent})` : ''}`
-                if (i < 0) {
-                    return { ok: false, refused: true, error: `Cannot keep ${target}'s version of ${label}: it is not in this release.` }
-                }
-                const [gone] = included.splice(i, 1)
-                excludedByUser.push({ type: gone.type, name: gone.name, parent: gone.parent ?? null, file: gone.file ?? null, reason: `kept ${target}'s version`, by })
+        for (const x of excludeObjects) {
+            const key = objectKey(x.type, x.name, x.parent)
+            const i = included.findIndex(inc => objectKey(inc.type, inc.name, inc.parent) === key)
+            const label = `${x.type} ${x.name}${x.parent ? ` (${x.parent})` : ''}`
+            if (i < 0) {
+                return { ok: false, refused: true, error: `Cannot keep ${target}'s version of ${label}: it is not in this release.` }
             }
+            const [gone] = included.splice(i, 1)
+            excludedByUser.push({ type: gone.type, name: gone.name, parent: gone.parent ?? null, file: gone.file ?? null, reason: `kept ${target}'s version`, by })
         }
+    
 
         // A subset is stored inside its dimension's hierarchy file through
         // `Subsets@Code.links`. Creating or deleting one changes that file, so a
@@ -524,79 +675,160 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         // Declared here: the hierarchy carried with a subset is recorded as a
         // dependency, and the closure below adds more.
         const addedAsDependency = []
-        if (!catchUp) {
-            const dims = new Set(included.filter(i => i.type === 'subset' && i.parent).map(i => i.parent))
-            for (const dim of dims) {
-                for (const c of changed) {
-                    const obj = objectFromFile(c.file)
-                    if (!obj || obj.type !== 'dimension' || obj.name !== dim) continue
-                    if (included.some(x => x.file === c.file)) continue
+        const dims = new Set(included.filter(i => i.type === 'subset' && i.parent).map(i => i.parent))
+        for (const dim of dims) {
+            for (const c of changed) {
+                const obj = objectFromFile(c.file)
+                if (!obj || obj.type !== 'dimension' || obj.name !== dim) continue
+                if (included.some(x => x.file === c.file)) continue
 
-                    // It may differ from the base only in its subset list. Any other
-                    // difference is somebody else's work, shipped unreviewed.
-                    if (c.action !== 'D') {
-                        let baseJson = null
-                        let devJson = null
-                        try {
-                            baseJson = JSON.parse(git(work, 'show', `${base}:${c.file}`))
-                            devJson = JSON.parse(git(work, 'show', `${devCommit}:${c.file}`))
-                        } catch { baseJson = null; devJson = null }
-                        if (baseJson && devJson) {
-                            const d = hierarchyDiffBeyondSubsets(baseJson, devJson)
-                            if (d.differs) {
-                                const parts = []
-                                if (d.elementsAdded.length) parts.push(`${d.elementsAdded.length} element${d.elementsAdded.length === 1 ? '' : 's'} added (${d.elementsAdded.slice(0, 5).join(', ')}${d.elementsAdded.length > 5 ? '…' : ''})`)
-                                if (d.elementsRemoved.length) parts.push(`${d.elementsRemoved.length} removed (${d.elementsRemoved.slice(0, 5).join(', ')}${d.elementsRemoved.length > 5 ? '…' : ''})`)
-                                if (d.otherFields.length) parts.push(`${d.otherFields.join(', ')} changed`)
-                                return {
-                                    ok: false, refused: true,
-                                    error: `Refused: ${dim} has other changes on DEV that aren't in this change set (${parts.join('; ')}). Deploy those first, or include the dimension in this change set.`,
-                                }
+                // It may differ from the base only in its subset list. Any other
+                // difference is somebody else's work, shipped unreviewed.
+                if (c.action !== 'D') {
+                    let baseJson = null
+                    let devJson = null
+                    try {
+                        baseJson = JSON.parse(git(work, 'show', `${base}:${c.file}`))
+                        devJson = JSON.parse(git(work, 'show', `${devCommit}:${c.file}`))
+                    } catch { baseJson = null; devJson = null }
+                    if (baseJson && devJson) {
+                        const d = hierarchyDiffBeyondSubsets(baseJson, devJson)
+                        if (d.differs) {
+                            const parts = []
+                            if (d.elementsAdded.length) parts.push(`${d.elementsAdded.length} element${d.elementsAdded.length === 1 ? '' : 's'} added (${d.elementsAdded.slice(0, 5).join(', ')}${d.elementsAdded.length > 5 ? '…' : ''})`)
+                            if (d.elementsRemoved.length) parts.push(`${d.elementsRemoved.length} removed (${d.elementsRemoved.slice(0, 5).join(', ')}${d.elementsRemoved.length > 5 ? '…' : ''})`)
+                            if (d.otherFields.length) parts.push(`${d.otherFields.join(', ')} changed`)
+                            return {
+                                ok: false, refused: true,
+                                error: `Refused: ${dim} has other changes on DEV that aren't in this change set (${parts.join('; ')}). Deploy those first, or include the dimension in this change set.`,
                             }
                         }
                     }
-                    included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
-                    addedAsDependency.push({
-                        type: 'dimension', name: dim, parent: null, file: c.file,
-                        neededBy: `subset in ${dim} (the hierarchy lists its subsets)`,
-                    })
+                }
+                included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
+                addedAsDependency.push({
+                    type: 'dimension', name: dim, parent: null, file: c.file,
+                    neededBy: `subset in ${dim} (the hierarchy lists its subsets)`,
+                })
+            }
+        }
+
+        // A view changes its CUBE's file too: the cube lists its views
+        // (`Views@Code.links`). Without the cube file the release adds the view on
+        // the target and leaves the cube file stale — which drift reports as a
+        // modification and which pauses every later deploy. Same guard as a
+        // hierarchy: the cube may differ from the base only in its view list.
+        const cubes = new Set(included.filter(i => i.type === 'view' && i.parent).map(i => i.parent))
+        for (const cube of cubes) {
+            for (const c of changed) {
+                const obj = objectFromFile(c.file)
+                if (!obj || obj.type !== 'cube' || obj.name !== cube) continue
+                if (included.some(x => x.file === c.file)) continue
+
+                if (c.action !== 'D') {
+                    let baseJson = null
+                    let devJson = null
+                    try {
+                        baseJson = JSON.parse(git(work, 'show', `${base}:${c.file}`))
+                        devJson = JSON.parse(git(work, 'show', `${devCommit}:${c.file}`))
+                    } catch { baseJson = null; devJson = null }
+                    if (baseJson && devJson) {
+                        const d = cubeDiffBeyondViews(baseJson, devJson)
+                        if (d.differs) {
+                            return {
+                                ok: false, refused: true,
+                                error: `Refused: ${cube} has other changes on DEV that aren't in this change set (${d.fields.join(', ')} changed). Deploy those first, or include the cube in this change set.`,
+                            }
+                        }
+                    }
+                }
+                included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
+                addedAsDependency.push({
+                    type: 'cube', name: cube, parent: null, file: c.file,
+                    neededBy: `view in ${cube} (the cube lists its views)`,
+                })
+            }
+        }
+    
+
+        // A hierarchy this change set CREATED or DELETED is a file of its own plus a
+        // link in the dimension file (Part G.2). Ensure both are in the release even
+        // when the only recorded change was the hierarchy itself.
+        if (liveRef) {
+            for (const [dimName, rec] of records.dimensions) {
+                if (!(rec.hierarchies?.size)) continue
+                const ensure = (file) => {
+                    if (included.some(i => sameName(i.file, file))) return
+                    const ch = changed.find(c => sameName(c.file, file) && c.action !== 'D')
+                    if (!ch) return
+                    const obj = objectFromFile(ch.file)
+                    if (!obj) return
+                    included.push({ ...obj, file: ch.file, oldFile: ch.oldFile, action: ch.action })
+                }
+                // The index that lists the hierarchies.
+                ensure(`dimensions/${dimName}.json`)
+                for (const [hierarchy, info] of rec.hierarchies) {
+                    if (info?.action === 'create') ensure(`dimensions/${dimName}.hierarchies/${hierarchy}.json`)
                 }
             }
+        }
 
-            // A view changes its CUBE's file too: the cube lists its views
-            // (`Views@Code.links`). Without the cube file the release adds the view on
-            // the target and leaves the cube file stale — which drift reports as a
-            // modification and which pauses every later deploy. Same guard as a
-            // hierarchy: the cube may differ from the base only in its view list.
-            const cubes = new Set(included.filter(i => i.type === 'view' && i.parent).map(i => i.parent))
-            for (const cube of cubes) {
-                for (const c of changed) {
-                    const obj = objectFromFile(c.file)
-                    if (!obj || obj.type !== 'cube' || obj.name !== cube) continue
-                    if (included.some(x => x.file === c.file)) continue
+        // Every hierarchy file this release carries, by dimension. Used to keep the
+        // dimension's `Hierarchies@Code.links` truthful: a new file is linked, a file
+        // the release deletes loses its link, and a hierarchy only the target has
+        // stays in Live's index.
+        const hierarchyFiles = new Map()
+        for (const i of included) {
+            const m = String(i.file ?? '').match(/^dimensions\/([^/]+)\.hierarchies\/([^/]+)\.json$/i)
+            if (m) hierarchyFiles.set(normPath(i.file), { dimension: m[1], hierarchy: m[2], action: i.action, file: i.file })
+        }
 
-                    if (c.action !== 'D') {
-                        let baseJson = null
-                        let devJson = null
-                        try {
-                            baseJson = JSON.parse(git(work, 'show', `${base}:${c.file}`))
-                            devJson = JSON.parse(git(work, 'show', `${devCommit}:${c.file}`))
-                        } catch { baseJson = null; devJson = null }
-                        if (baseJson && devJson) {
-                            const d = cubeDiffBeyondViews(baseJson, devJson)
-                            if (d.differs) {
-                                return {
-                                    ok: false, refused: true,
-                                    error: `Refused: ${cube} has other changes on DEV that aren't in this change set (${d.fields.join(', ')} changed). Deploy those first, or include the cube in this change set.`,
-                                }
+        // Part G.7 — attribute definitions and values. Only this change set's
+        // records; a value the target changed too stops the build with all three
+        // values named. Computed before "nothing to ship", because an attribute-only
+        // change still has to deploy.
+        let attributePlan = { defs: [], values: [], already: [], stops: [], notes: [] }
+        if (liveRef) {
+            attributePlan = planAttributeChanges(records, {
+                live: liveAttrs ?? {}, base: baseAttrs ?? {},
+                haveBase: !!baseAttrsFiles && Object.keys(baseAttrsFiles).length > 0,
+            })
+            attributePlan.notes = [...liveAttrNotes, ...(attributePlan.notes ?? [])]
+            if (attributePlan.stops.length) {
+                return {
+                    ok: false, refused: true,
+                    error: `Build release stopped: ${attributePlan.stops.join('; ')}. Nothing was built.`,
+                    stops: attributePlan.stops,
+                }
+            }
+        }
+
+        // Part G.6 / D.3 — a rule, process or cube STRUCTURE changed on the target
+        // stops an ordinary release: shipping DEV's whole file would undo it. The
+        // fix is the carry-back (Part D.4) or deploying the target's change first.
+        // A cube whose only difference is its view list is not a structure change.
+        if (liveRef) {
+            for (const inc of included) {
+                const liveText = showAt(liveRef, inc.file)
+                const baseText = showAt(base, inc.file)
+                if (liveText == null || baseText == null || liveText === baseText) continue
+                if (/\.rules$/i.test(inc.file) || inc.type === 'process') {
+                    return {
+                        ok: false, refused: true,
+                        error: `Build release stopped: ${inc.type} ${inc.name} changed on ${target} after its last deploy. Bring ${target}'s version onto DEV in a carry-back change set first, or deploy that change before this one. Nothing was built.`,
+                        stops: [`${inc.type} ${inc.name} changed on ${target}`],
+                    }
+                }
+                if (inc.type === 'cube' && /^cubes\/[^/]+\.json$/i.test(inc.file)) {
+                    try {
+                        if (cubeDiffBeyondViews(JSON.parse(baseText), JSON.parse(liveText)).differs) {
+                            return {
+                                ok: false, refused: true,
+                                error: `Build release stopped: the structure of cube ${inc.name} changed on ${target} after its last deploy. Make the change on DEV in a new change set and deploy it first. Nothing was built.`,
+                                stops: [`cube ${inc.name} structure changed on ${target}`],
                             }
                         }
-                    }
-                    included.push({ ...obj, file: c.file, oldFile: c.oldFile, action: c.action })
-                    addedAsDependency.push({
-                        type: 'cube', name: cube, parent: null, file: c.file,
-                        neededBy: `view in ${cube} (the cube lists its views)`,
-                    })
+                    } catch { /* unreadable: the pull will say so itself */ }
                 }
             }
         }
@@ -644,7 +876,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         }
         const warnings = leftOnDev
             .filter(x => x.type === 'dimension')
-            .map(x => `DEV differs from ${target} on ${x.name}, and this release does not carry it — its elements stay as they are on ${target}. A loss of 0 does not mean "no change".`)
+            .map(x => `${x.name} is different on DEV and this release does not send it. ${target} keeps its own copy.`)
 
         // Replacing a dimension also recreates that dimension's SUBSETS from the
         // release tree. A STATIC subset still listing an element this deploy removes
@@ -683,10 +915,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         // target has nothing to deploy: record it as done, with the reason, so the
         // ordering check lets later sets through. (A catch-up is different — it is
         // a whole-model reset and a no-op means it was not needed.)
-        if (included.length === 0) {
-            if (catchUp) {
-                return { ok: false, refused: true, error: `Nothing differs between ${target}'s recorded commit and ${session?.server ?? 'the source'} — there is no catch-up to release.` }
-            }
+        if (included.length === 0 && !((attributePlan.defs?.length ?? 0) + (attributePlan.values?.length ?? 0))) {
             const reason = leftOnDev.length
                 ? `nothing to deploy: this change set owns nothing that changed (${leftOnDev.length} object${leftOnDev.length === 1 ? ' is' : 's are'} changed on DEV but not in this release)`
                 : `nothing to deploy: this change set's objects already match ${target}`
@@ -701,18 +930,288 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
 
         // Apply: base + only this change set's files.
         git(work, 'checkout', '-q', base)
+        const targetNotes = []
+        const indexNotes = []
+        const typeChangesNeedingYes = []
+        const writeTreeFile = (file, text) => {
+            const full = path.join(work, file)
+            fs.mkdirSync(path.dirname(full), { recursive: true })
+            fs.writeFileSync(full, text)
+        }
+
+        // ── Carry the target's own changes for data objects ──────────────────
+        // The pull makes the target match this tree. If the tree holds the last
+        // deployed copy of a dimension the target has since changed (an overnight
+        // load added accounts, say), the pull would delete them. So for DATA
+        // objects — dimensions, hierarchies, subsets, views, chores — the tree
+        // starts from the target's live copy, and the change set's records are
+        // applied on top below.
+        //
+        // Code is deliberately excluded: rules, processes and cube structure must
+        // go through DEV, so a change to one on the target still blocks the deploy
+        // instead of being carried silently.
+        const carriesTargetFile = (file) => {
+            const f = String(file ?? '')
+            if (/^dimensions\//.test(f)) return true         // hierarchy + subset files
+            if (/^cubes\/[^/]+\.views\//.test(f)) return true
+            if (/^chores\//.test(f)) return true
+            return false
+        }
+        const carriedFromLive = []
+        if (liveRef) {
+            const liveFiles = new Set(git(work, 'ls-tree', '-r', '--name-only', liveRef).split('\n').filter(Boolean))
+            const baseFiles = git(work, 'ls-tree', '-r', '--name-only', base).split('\n').filter(Boolean)
+            const owned = new Set(included.map(i => i.file))
+            for (const f of liveFiles) {
+                if (!carriesTargetFile(f) || owned.has(f)) continue
+                const text = showAt(liveRef, f)
+                if (text == null) continue
+                // Only what the target actually changed: the rest is already the
+                // same file in the base tree, and a long list of untouched files
+                // would bury the ones that matter.
+                if (showAt(base, f) === text) continue
+                writeTreeFile(f, text)
+                carriedFromLive.push(f)
+            }
+            // A data file the target no longer has must not reappear on it.
+            for (const f of baseFiles) {
+                if (!carriesTargetFile(f) || owned.has(f) || liveFiles.has(f)) continue
+                try { fs.rmSync(path.join(work, f), { force: true }) } catch { /* absent */ }
+                carriedFromLive.push(`-${f}`)
+            }
+        }
+        const parseAt = (ref, file) => {
+            const text = ref ? showAt(ref, file) : null
+            if (text == null) return null
+            try { return JSON.parse(text) } catch { return null }
+        }
         for (const inc of included) {
-            if (inc.action === 'D') git(work, 'rm', '--quiet', '--', inc.file)
-            else {
-                if (inc.action === 'R' && inc.oldFile) {
-                    try { git(work, 'rm', '--quiet', '--', inc.oldFile) } catch { /* already gone in base */ }
+            if (inc.action === 'D') { git(work, 'rm', '--quiet', '--', inc.file); continue }
+            if (inc.action === 'R' && inc.oldFile) {
+                try { git(work, 'rm', '--quiet', '--', inc.oldFile) } catch { /* already gone in base */ }
+            }
+
+            // ── Dimensions and hierarchies: Live plus this change set's records ──
+            const parts = liveRef ? dimensionFileParts(inc.file) : null
+            if (parts) {
+                const rec = findDimensionRecord(records.dimensions, parts.dimension)
+                const liveDoc = parseAt(liveRef, inc.file)
+                if (!liveDoc) {
+                    // New on the target: DEV After Close's file, unchanged.
+                    git(work, 'checkout', devCommit, '--', inc.file)
+                    inc.fromLive = false
+                    continue
                 }
-                git(work, 'checkout', devCommit, '--', inc.file)
-                // An MDX view carries its expression in a sibling .mdx file — include
-                // it so the release can apply (and verify) the actual MDX.
-                if (inc.type === 'view' && /\.views\/.+\.json$/.test(inc.file)) {
-                    const mdx = inc.file.replace(/\.json$/, '.mdx')
-                    try { git(work, 'checkout', devCommit, '--', mdx) } catch { /* native view — no MDX */ }
+                if (!rec && !inc.byUser) {
+                    // Included only because a link/index needs it, and this change set
+                    // recorded nothing about it: keep the TARGET's own copy (Part G.3).
+                    writeTreeFile(inc.file, showAt(liveRef, inc.file))
+                    inc.fromLive = true
+                    continue
+                }
+                if (rec?.whole || (!rec && inc.byUser)) {
+                    // A whole-dimension change has no per-element records to replay.
+                    // If the target also changed this dimension since its last deploy,
+                    // carrying DEV's file would silently undo the target's work — stop
+                    // and ask for a change that can be replayed element by element.
+                    if (rec?.whole && dimensionChangedOnTarget(work, base, liveRef, parts.dimension)) {
+                        const stops = [`${parts.dimension}: the target changed ${parts.dimension} and this change set only recorded '${parts.dimension} changed' — redo the change so it is recorded per element`]
+                        return {
+                            ok: false, refused: true,
+                            error: `Build release stopped: ${stops.join('; ')}. Nothing was built.`,
+                            stops,
+                        }
+                    }
+                    // Nobody else changed it: DEV's file is safe to carry. Named in
+                    // the result, never silently.
+                    git(work, 'checkout', devCommit, '--', inc.file)
+                    inc.fromLive = false
+                    if (rec?.whole) targetNotes.push(`${parts.dimension}: whole-dimension change (${rec.wholeReason ?? 'no per-element records'}) — DEV's file carried`)
+                    else targetNotes.push(`${parts.dimension}: included by hand — DEV's file carried`)
+                    continue
+                }
+
+                // The dimension file is the INDEX of its hierarchies. Start from Live
+                // (so a hierarchy the target added stays) and keep the links truthful:
+                // a hierarchy this release carries but Live does not is linked, and one
+                // the release deletes loses its link (Part G.2).
+                if (!parts.hierarchyFile) {
+                    const liveText = showAt(liveRef, inc.file)
+                    let doc
+                    try { doc = JSON.parse(liveText) } catch {
+                        writeTreeFile(inc.file, liveText)
+                        inc.fromLive = true
+                        continue
+                    }
+                    const links = Array.isArray(doc['Hierarchies@Code.links']) ? [...doc['Hierarchies@Code.links']] : null
+                    if (links) {
+                        const resolveLink = (link) => normPath(path.posix.normalize(path.posix.join(path.posix.dirname(inc.file), link)))
+                        const hasLink = (hierarchy) => links.some(l => typeof l === 'string' &&
+                            resolveLink(l) === resolveLink(`${parts.dimension}.hierarchies/${hierarchy}.json`))
+                        const addLink = (hierarchy) => {
+                            if (hasLink(hierarchy)) return false
+                            links.push(`${parts.dimension}.hierarchies/${hierarchy}.json`)
+                            return true
+                        }
+                        const removeLink = (hierarchy) => {
+                            const target = resolveLink(`${parts.dimension}.hierarchies/${hierarchy}.json`)
+                            const kept = links.filter(l => typeof l !== 'string' || resolveLink(l) !== target)
+                            const changed = kept.length !== links.length
+                            links.splice(0, links.length, ...kept)
+                            return changed
+                        }
+                        const changedLinks = []
+                        // Recorded creations/deletions, then any hierarchy file the
+                        // release carries/removes for this dimension.
+                        for (const [hierarchy, info] of rec?.hierarchies ?? []) {
+                            if (info?.action === 'create' && addLink(hierarchy)) changedLinks.push(`linked new hierarchy ${hierarchy}`)
+                            if (info?.action === 'delete' && removeLink(hierarchy)) changedLinks.push(`removed the link to deleted hierarchy ${hierarchy}`)
+                        }
+                        for (const info of hierarchyFiles.values()) {
+                            if (!sameName(info.dimension, parts.dimension)) continue
+                            if (info.action === 'D') {
+                                if (removeLink(info.hierarchy)) changedLinks.push(`removed the link to deleted hierarchy ${info.hierarchy}`)
+                            } else if (addLink(info.hierarchy)) {
+                                changedLinks.push(`linked new hierarchy ${info.hierarchy}`)
+                            }
+                        }
+                        if (changedLinks.length) {
+                            doc['Hierarchies@Code.links'] = links
+                            indexNotes.push(`${parts.dimension}: ${[...new Set(changedLinks)].join(', ')}`)
+                        }
+                    }
+                    writeTreeFile(inc.file, JSON.stringify(doc, null, '\t') + '\n')
+                    inc.fromLive = true
+                    continue
+                }
+
+                const isDefault = sameName(parts.hierarchy, parts.dimension)
+                const hierAction = hierarchyAction(rec, parts.hierarchy)
+                if (hierAction === 'create') {
+                    // The change set created the hierarchy: carry DEV After Close's
+                    // file, never apply default-hierarchy records to it.
+                    git(work, 'checkout', devCommit, '--', inc.file)
+                    inc.fromLive = false
+                    targetNotes.push(`${parts.dimension}: new hierarchy ${parts.hierarchy} carried from DEV`)
+                    continue
+                }
+                if (hierAction === 'delete') {
+                    // Normally the file is a D and was removed above; keep the tree
+                    // consistent if it was not.
+                    try { git(work, 'rm', '--quiet', '--', inc.file) } catch { /* already gone */ }
+                    continue
+                }
+
+                const allOps = rec?.elements ?? []
+                const scoped = allOps.filter(o => o.hierarchy && sameName(o.hierarchy, parts.hierarchy))
+                const unscoped = allOps.filter(o => !o.hierarchy)
+                const ops = isDefault ? [...scoped, ...unscoped] : scoped
+                if (!ops.length) {
+                    // Older rows carry no hierarchy name. If this alternate hierarchy
+                    // itself changed on DEV we cannot tell whether those rows belong
+                    // to it: stop and name the dimension rather than take Live silently.
+                    if (!isDefault && unscoped.length) {
+                        const baseText = showAt(base, inc.file)
+                        const devText = showAt(devCommit, inc.file)
+                        if (baseText != null && devText != null && baseText !== devText) {
+                            const stops = [`${parts.dimension}: this change set's element records do not name a hierarchy, and ${parts.hierarchy} changed on DEV — rebuild the change from a hierarchy-aware record`]
+                            return {
+                                ok: false, refused: true,
+                                error: `Build release stopped for ${parts.dimension}: ${stops.join('; ')}. Nothing was built.`,
+                                stops,
+                            }
+                        }
+                    }
+                    writeTreeFile(inc.file, showAt(liveRef, inc.file))
+                    inc.fromLive = true
+                    continue
+                }
+                const baseDoc = parseAt(base, inc.file)
+                const r = applyDimensionChanges(liveDoc, { ...rec, elements: ops }, { baseDoc })
+                if (r.stops.length) {
+                    return {
+                        ok: false, refused: true,
+                        error: `Build release stopped for ${parts.dimension}: ${r.stops.join('; ')}. Nothing was built.`,
+                        stops: r.stops,
+                    }
+                }
+                writeTreeFile(inc.file, JSON.stringify(r.doc, null, '\t') + '\n')
+                inc.fromLive = true
+                // Part G.4 — the IDE wrote this file, so check it against Live before
+                // it can reach the tree. A bug here must stop the release.
+                const writtenProblems = checkWrittenHierarchy(liveDoc, r.doc, { elements: ops })
+                if (writtenProblems.length) {
+                    return {
+                        ok: false, refused: true,
+                        error: `Build release stopped for ${parts.dimension}: the file the IDE wrote does not match the target plus this change set's records — ${writtenProblems.slice(0, 5).join('; ')}. Nothing was built.`,
+                        stops: writtenProblems,
+                    }
+                }
+                // Named, in a sentence a person reads: this line is the release's
+                // account of what it took from the target and what it changed.
+                const names = (xs, max = 5) => xs.slice(0, max).join(', ') + (xs.length > max ? `, +${xs.length - max} more` : '')
+                if (r.targetAdded.length) {
+                    const one = r.targetAdded.length === 1
+                    targetNotes.push(`${parts.dimension}: kept ${names(r.targetAdded)} — ${one ? 'it was' : 'they were'} added on ${target} after the last deploy.`)
+                }
+                if (r.targetRemoved.length) {
+                    const one = r.targetRemoved.length === 1
+                    targetNotes.push(`${parts.dimension}: ${names(r.targetRemoved)} ${one ? 'stays' : 'stay'} deleted — ${one ? 'it was' : 'they were'} deleted on ${target} after the last deploy.`)
+                }
+                if (r.applied.length) {
+                    targetNotes.push(`${parts.dimension}: ${r.applied.length === 1 ? '1 change' : `${r.applied.length} changes`} from this change set applied.`)
+                }
+                for (const t of r.typeChanges) {
+                    typeChangesNeedingYes.push({ dimension: parts.dimension, hierarchy: parts.hierarchy, element: t.element, from: t.from, to: t.to })
+                }
+                continue
+            }
+
+            // ── Chores: Live plus this change set's recorded schedule ──────────
+            const choreMatch = liveRef ? inc.file.match(/^chores\/(.+)\.(json|ti)$/) : null
+            if (choreMatch) {
+                const liveText = showAt(liveRef, inc.file)
+                if (liveText == null) { git(work, 'checkout', devCommit, '--', inc.file); inc.fromLive = false; continue }
+                const name = choreMatch[1]
+                const change = records.objects.choreSchedules?.get(String(name).toLowerCase()) ?? null
+                const baseDoc = parseAt(base, inc.file)
+                const r = applyChoreChanges(JSON.parse(liveText), change, { baseJson: baseDoc })
+                if (r.stops.length) {
+                    return { ok: false, refused: true, error: `Build release stopped for chore ${name}: ${r.stops.join('; ')}. Nothing was built.`, stops: r.stops }
+                }
+                writeTreeFile(inc.file, JSON.stringify(r.doc, null, '\t') + '\n')
+                inc.fromLive = true
+                if (r.applied.length) targetNotes.push(`chore ${name}: ${r.applied.join(', ')}`)
+                continue
+            }
+
+            git(work, 'checkout', devCommit, '--', inc.file)
+            inc.fromLive = false
+            // An MDX view carries its expression in a sibling .mdx file — include
+            // it so the release can apply (and verify) the actual MDX.
+            if (inc.type === 'view' && /\.views\/.+\.json$/.test(inc.file)) {
+                const mdx = inc.file.replace(/\.json$/, '.mdx')
+                try { git(work, 'checkout', devCommit, '--', mdx) } catch { /* native view — no MDX */ }
+            }
+        }
+
+        // A recorded delete removes its parent's link (Part G.5) — otherwise the
+        // parent still names a file the release deliberately does not carry.
+        if (liveRef) {
+            for (const del of records.deletes ?? []) {
+                if (del.type === 'subset') {
+                    const prefix = `dimensions/${del.parent}.hierarchies/`
+                    for (const inc of included) {
+                        if (!inc.file?.startsWith(prefix) || !inc.file.endsWith('.json')) continue
+                        if (removeLinkedFile(work, inc.file, `dimensions/${del.parent}.hierarchies/${path.posix.basename(inc.file, '.json')}.subsets/${del.name}.json`)) {
+                            indexNotes.push(`${del.parent}: link to deleted subset ${del.name} removed`)
+                        }
+                    }
+                } else if (del.type === 'view') {
+                    const parentFile = `cubes/${del.parent}.json`
+                    if (included.some(i => i.file === parentFile) && removeLinkedFile(work, parentFile, `cubes/${del.parent}.views/${del.name}.json`)) {
+                        indexNotes.push(`${del.parent}: link to deleted view ${del.name} removed`)
+                    }
                 }
             }
         }
@@ -724,7 +1223,15 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         const existsOnDev = (file) => {
             try { git(work, 'cat-file', '-e', `${devCommit}:${file}`); return true } catch { return false }
         }
+        const existsInLive = (file) => {
+            if (!liveRef) return false
+            try { git(work, 'cat-file', '-e', `${liveRef}:${file}`); return true } catch { return false }
+        }
         for (;;) {
+            // Files the IDE wrote above (Live's copy plus this change set's records)
+            // must be staged before the closure reads the tree: an untracked
+            // dependency written here would otherwise be "missing" on every pass.
+            git(work, 'add', '-A')
             const releaseFiles = git(work, 'ls-files').split('\n').filter(Boolean)
             const missing = linkClosure(releaseFiles, (file) => {
                 try { return fs.readFileSync(path.join(work, file), 'utf8') } catch { return null }
@@ -732,14 +1239,35 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             if (missing.length === 0) break
             let added = 0
             for (const m of missing) {
-                if (!existsOnDev(m.file)) {
-                    return { ok: false, refused: true, error: `${m.neededBy} links ${m.file}, which does not exist on DEV.` }
-                }
                 const obj = objectFromFile(m.file)
-                const owner = obj ? ownerOf(otherLogs, obj) : null
-                // A catch-up ships everything, so another set's ownership of a
-                // linked file is not a refusal there; an ordinary release refuses.
-                if (owner && !catchUp) {
+                // Part G.5: a file the index names that the release does not carry
+                // comes from the target's own Live copy first — the target already has
+                // it, and a pull never changes subsets or views.
+                if (liveRef && existsInLive(m.file)) {
+                    writeTreeFile(m.file, showAt(liveRef, m.file))
+                    addedAsDependency.push({
+                        type: obj?.type ?? 'file', name: obj?.name ?? path.posix.basename(m.file),
+                        parent: obj?.parent ?? null, file: m.file, neededBy: m.neededBy, from: 'live',
+                    })
+                    added++
+                    continue
+                }
+                if (!existsOnDev(m.file)) {
+                    return { ok: false, refused: true, error: `${m.neededBy} links ${m.file}, which does not exist on DEV or on ${target}.` }
+                }
+                const owner = obj ? ownerOf(otherLogs, obj, target) : null
+                // In Live mode a DEV-only file is carried only when this change set
+                // owns it; otherwise the link is removed and Review lists it. The
+                // legacy path keeps the old refusal (and its tests).
+                if (liveRef) {
+                    const owned = obj ? csetObjectKeys.has(objectKey(obj.type, obj.name, obj.parent)) : false
+                    if (!owned || (owner && owner.sessionName !== session.name)) {
+                        if (removeLinkedFile(work, m.neededBy, m.file)) {
+                            indexNotes.push(`${m.neededBy}: link to ${m.file} removed — ${obj ? `${obj.type} ${obj.name}` : 'file'} is not in this change set`)
+                        }
+                        continue
+                    }
+                } else if (owner) {
                     return { ok: false, refused: true, error: `${m.neededBy} needs ${m.file}, which belongs to change set "${owner.sessionName}". ${RELEASE_FIRST(owner.sessionName, target)}` }
                 }
                 git(work, 'checkout', devCommit, '--', m.file)
@@ -757,6 +1285,33 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
                 added++
             }
             if (added === 0) break
+        }
+
+        // A cube file from DEV keeps DEV's view index, minus entries the release
+        // does not carry. TM1's pull does not remove a view the index omits (check 8),
+        // so a target's own views stay safe without being carried.
+        if (liveRef) {
+            const present = new Set(git(work, 'ls-files').split('\n').filter(Boolean))
+            for (const inc of included) {
+                if (inc.type !== 'cube' || inc.fromLive) continue
+                if (!/^cubes\/[^/]+\.json$/.test(inc.file)) continue
+                try {
+                    const full = path.join(work, inc.file)
+                    const doc = JSON.parse(fs.readFileSync(full, 'utf8'))
+                    const value = doc['Views@Code.links']
+                    if (!Array.isArray(value)) continue
+                    const kept = value.filter(link => {
+                        if (typeof link !== 'string' || !link) return true
+                        const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(inc.file), link))
+                        return present.has(resolved)
+                    })
+                    if (kept.length !== value.length) {
+                        doc['Views@Code.links'] = kept
+                        fs.writeFileSync(full, JSON.stringify(doc, null, '\t') + '\n')
+                        indexNotes.push(`${inc.name}: ${value.length - kept.length} view link${value.length - kept.length === 1 ? '' : 's'} not carried removed from the index`)
+                    }
+                } catch { /* unreadable: the pull will say so itself */ }
+            }
         }
         // Keeping the target's version only holds if nothing else in the release
         // needs that object: the link closure above may have pulled it back in as a
@@ -776,71 +1331,73 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
 
         // Order on shared objects. A release must not ship a version of an object
         // that is older than one already deployed, nor one that would be undone by
-        // a later change waiting on DEV. Catch-ups ship everything and keep their
-        // own rule.
-        if (!catchUp) {
-            const LOG_TYPES = {
-                dimension: ['dimension', 'attribute'],
-                cube: ['cube', 'rules'],
-                process: ['process'],
-                chore: ['chore'],
-                subset: ['subset'],
-                view: ['view'],
-            }
-            // One entry per OBJECT: a process is two files (.json + .ti), and an
-            // MDX view is two as well — without this the same conflict is named twice.
-            const seenObj = new Set()
-            const objs = []
-            for (const i of included) {
-                if (!i?.type || !LOG_TYPES[i.type] || !i.name) continue
-                const parent = (i.type === 'subset' || i.type === 'view') ? (i.parent ?? null) : null
-                const key = objectKey(i.type, i.name, parent)
-                if (seenObj.has(key)) continue
-                seenObj.add(key)
-                objs.push({ type: i.type, name: i.name, parent, logTypes: LOG_TYPES[i.type] })
-            }
-
-            let rows = []
-            try {
-                const items = []
-                for (const o of objs) for (const lt of o.logTypes) items.push({ object_type: lt, object_name: o.name, detail: o.parent })
-                const ordering = cl.getObjectOrdering(session.server, session.id, items)
-                for (const o of objs) {
-                    const relevant = ordering.filter(x => x.object_name === o.name && (x.detail ?? null) === o.parent)
-                    const mineAt = relevant.map(x => x.mineAt).filter(Boolean).sort().pop() ?? session.closed_at ?? new Date().toISOString()
-                    const bySession = new Map()
-                    for (const r of relevant) {
-                        for (const other of r.others) {
-                            const at = bySession.get(other.session_id)
-                            if (!at || other.at > at.at) bySession.set(other.session_id, { ...other, at: other.at })
-                        }
-                    }
-                    for (const other of bySession.values()) {
-                        rows.push({
-                            label: `${o.type} ${o.name}`,
-                            mineAt,
-                            other: {
-                                id: other.session_id, name: other.session_name ?? '(unnamed)', at: other.at,
-                                deployed: !!other.deployed_target, covered: !!other.covered_by,
-                                retired: !!other.wont_deploy_at, noChange: !!other.no_change_at,
-                            },
-                        })
-                    }
-                }
-            } catch (e) {
-                // Fail closed: an ordering check that silently skipped would be the
-                // exact bug it exists to prevent.
-                return { ok: false, refused: true, error: `Refused: could not check the deploy order of these objects (${sanitize(e.message, token)}). Nothing was built.` }
-            }
-
-            const conflict = sharedObjectOrdering(rows, target)
-            if (conflict) {
-                return { ok: false, refused: true, error: conflict.message, ordering: { older: conflict.older.map(r => r.label), newer: conflict.newer.map(r => r.label) } }
-            }
+        // a later change waiting on DEV. For a whole object (rule, process, view,
+        // subset, cube) any other undeployed set that changed it stops the release
+        // in either direction — that rule is in sharedObjectOrdering and applies
+        // whether or not the target has a live- branch.
+        const LOG_TYPES = {
+            dimension: ['dimension', 'attribute'],
+            cube: ['cube', 'rules'],
+            process: ['process'],
+            chore: ['chore'],
+            subset: ['subset'],
+            view: ['view'],
+        }
+        // One entry per OBJECT: a process is two files (.json + .ti), and an
+        // MDX view is two as well — without this the same conflict is named twice.
+        const seenObj = new Set()
+        const objs = []
+        for (const i of included) {
+            if (!i?.type || !LOG_TYPES[i.type] || !i.name) continue
+            const parent = (i.type === 'subset' || i.type === 'view') ? (i.parent ?? null) : null
+            const key = objectKey(i.type, i.name, parent)
+            if (seenObj.has(key)) continue
+            seenObj.add(key)
+            objs.push({ type: i.type, name: i.name, parent, logTypes: LOG_TYPES[i.type] })
         }
 
+        let rows = []
+        try {
+            const items = []
+            for (const o of objs) for (const lt of o.logTypes) items.push({ object_type: lt, object_name: o.name, detail: o.parent })
+            const ordering = cl.getObjectOrdering(session.server, session.id, items)
+            for (const o of objs) {
+                const relevant = ordering.filter(x => x.object_name === o.name && (x.detail ?? null) === o.parent)
+                const mineAt = relevant.map(x => x.mineAt).filter(Boolean).sort().pop() ?? session.closed_at ?? new Date().toISOString()
+                const bySession = new Map()
+                for (const r of relevant) {
+                    for (const other of r.others) {
+                        const at = bySession.get(other.session_id)
+                        if (!at || other.at > at.at) bySession.set(other.session_id, { ...other, at: other.at })
+                    }
+                }
+                for (const other of bySession.values()) {
+                    rows.push({
+                        type: o.type,
+                        label: `${o.type} ${o.name}`,
+                        mineAt,
+                        other: {
+                            id: other.session_id, name: other.session_name ?? '(unnamed)', at: other.at,
+                            deployed: deployedTo(other, target) || !!other.covered_by, covered: !!other.covered_by,
+                            retired: !!other.wont_deploy_at, noChange: !!other.no_change_at,
+                        },
+                    })
+                }
+            }
+        } catch (e) {
+            // Fail closed: an ordering check that silently skipped would be the
+            // exact bug it exists to prevent.
+            return { ok: false, refused: true, error: `Refused: could not check the deploy order of these objects (${sanitize(e.message, token)}). Nothing was built.` }
+        }
+
+        const conflict = sharedObjectOrdering(rows, target)
+        if (conflict) {
+            return { ok: false, refused: true, error: conflict.message, ordering: { older: conflict.older.map(r => r.label), newer: conflict.newer.map(r => r.label), shared: conflict.shared.map(r => r.label) } }
+        }
+    
+
         git(work, 'add', '-A')
-        git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
+        git(work, '-c', `user.name=${gitUser}`, '-c', `user.email=${gitIdentity.email()}`, 'commit', '-q', '--allow-empty', '-m', `Release ${changeSet?.name ?? 'change set'} → ${target}`)
         const releaseCommit = git(work, 'rev-parse', 'HEAD').trim()
 
         // Replace an undeployed release on the same base — force-with-lease so we
@@ -857,30 +1414,11 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
         let coveredSets = []
         let openSets = []
         let targetOnly = []
-        if (catchUp) {
-            const includedKeys = new Set(included
-                .map(i => objectKey(i.type, i.name, i.parent))
-                .filter(k => !k.startsWith('other::')))
-            for (const s of otherLogs) {
-                if (s.wont_deploy_at || s.covered_by || s.deployed_target) continue
-                const touches = s.entries.some(e => {
-                    const type = ENTRY_TO_OBJECT[e.object_type]
-                    if (!type) return false
-                    const parent = (e.object_type === 'subset' || e.object_type === 'view') ? e.detail : null
-                    return includedKeys.has(objectKey(type, e.object_name, parent))
-                })
-                if (!touches) continue
-                const item = { id: s.id, name: s.name, user: s.user ?? null, entries: s.entries.length, closed_at: s.closed_at ?? null }
-                if (s.closed_at) coveredSets.push(item)
-                else openSets.push(item)
-            }
-            try { targetOnly = await targetOnlyObjects(target, work, devCommit, { ideToken }) } catch { targetOnly = [] }
-        }
-
         return {
             ok: true, target, base, devCommit, releaseCommit,
             changeSet: { id: changeSet?.id ?? null, name: changeSet?.name ?? null, server: changeSet?.server ?? null },
             included: included.map(i => ({ type: i.type, name: i.name, parent: i.parent, file: i.file, action: i.action })),
+            carriedFromTarget: carriedFromLive,
             leftOnDev,
             warnings,
             excluded: excluded.map(x => ({ type: x.type, name: x.name, parent: x.parent, file: x.file, owner: x.owner ?? null })),
@@ -889,7 +1427,17 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
             excludedByUser,
             runs: processRuns,
             noFile,
-            ...(catchUp ? { catchUp: true, coveredSets, openSets, targetOnly } : {}),
+            // Part G/H: what came from the target, what the release left alone on
+            // the target's index, type changes Review must ask about, and the
+            // attribute writes Deploy applies after the pull.
+            targetNotes,
+            indexNotes,
+            liveCommit: liveRef ?? null,
+            liveAttrsCommit: liveAttrsCommit ?? null,
+            targetRemovals: targetNotes.filter(n => / (stays|stay) deleted — /.test(n)),
+            typeChanges: typeChangesNeedingYes,
+            attributePlan,
+            fromLive: !!liveRef,
         }
     } catch (e) {
         return { ok: false, error: sanitize(e.message, token) }
@@ -898,7 +1446,7 @@ async function buildRelease(changeSet, target, { token, gitUser = gitIdentity.us
     }
 }
 
-module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, cubeDiffBeyondViews, releasableCovers, sharedObjectOrdering, hierarchyDiffBeyondSubsets, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
+module.exports = { buildRelease, objectFromFile, viewSubsetConflicts, cubeDiffBeyondViews, releasableCovers, sharedObjectOrdering, hierarchyDiffBeyondSubsets, parseNameStatus, ENTRY_TO_OBJECT, objectKey, expectedPlanKeys, ownerOf, deployedTo, NO_BASE_ERROR, changedObjects, checkDependencies, splitTi, verifyRelease, applyReleaseComplement, linkClosure }
 
 // TM1 Git exports an MDX view as TWO files: the .json (which links to its text) and
 // the .mdx (the text). Changing the view's MDX changes only the .mdx — its .json is
@@ -1052,7 +1600,7 @@ function splitTi(text) {
 // Dependency check BEFORE approval: run TM1 CheckRules on the target for every
 // included rule (a wrong reference can mean it belongs to another change set),
 // and TI lint for every included process. Blocks on any failure.
-async function checkDependencies(releaseCommit, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken, catchUp = false } = {}) {
+async function checkDependencies(releaseCommit, target, { token, gitUser = gitIdentity.user(), repoUrl, ideToken } = {}) {
     if (!repoUrl) {
         try { repoUrl = (await makeClient(target, ideToken).post('GitStatus', { Username: gitUser, Password: token }))?.URL } catch { /* below */ }
     }
@@ -1079,7 +1627,6 @@ async function checkDependencies(releaseCommit, target, { token, gitUser = gitId
         // A catch-up creates the target's objects as part of the pull; checking
         // rules against the old target would fail on cubes/elements it is about
         // to add. The link closure above is the only pre-deploy dependency check.
-        if (catchUp) return { ok: blockers.length === 0, blockers }
 
         const c = makeClient(target, ideToken)
         for (const ch of changed) {

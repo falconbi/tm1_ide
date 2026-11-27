@@ -2,6 +2,8 @@
 
 const { z } = require('zod')
 const { recordProcessRun } = require('../../../core/process-run')
+const { serverLabel, beginCapture, requiresChangeSet } = require('../../../core/process-capture')
+const changeLog = require('../../../core/change-log')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DEVELOPMENT — WRITE (existing tools, now change-set gated + logged)
@@ -112,12 +114,34 @@ function register(server, { client, ok, esc: odataKey, logChange, requireChangeS
             timeout_ms: z.number().int().positive().optional().describe('Optional HTTP timeout for this run (default 120s). Long TIs need this raised.'),
         },
         async ({ process, parameters, timeout_ms }) => {
-            const result = await client().executeProcess(process, parameters ?? {}, timeout_ms ? { timeout: timeout_ms } : {})
+            const c = client()
+            // Part F.1: on DEV a run must be recorded in an open change set, and its
+            // element/attribute changes captured before/after.
+            const label = await serverLabel(SERVER, { client: c })
+            const gate = requiresChangeSet(label.label, !!changeLog.getActiveSession(SERVER, AGENT_USER))
+            if (gate.required) throw new Error(gate.reason)
+            let capture = null
+            if (label.label === 'DEV') capture = await beginCapture(SERVER, c, process, { user: AGENT_USER })
+            let result
+            let captured = null
+            try {
+                result = await c.executeProcess(process, parameters ?? {}, timeout_ms ? { timeout: timeout_ms } : {})
+            } finally {
+                if (capture) {
+                    try { captured = await capture.complete() }
+                    catch (e) { captured = { error: e.message } }
+                }
+            }
             const status = result?.ProcessExecuteStatusCode ?? result?.Status ?? 'completed'
             recordProcessRun({
                 server: SERVER, user: AGENT_USER, name: process, kind: 'process',
                 params: parameters ?? null, status,
                 duration: result?.Times?.ExecutionTimeInMilliseconds ?? null,
+                extra: capture ? {
+                    capturesDimensions: capture.dims,
+                    cubeDataNotDeployed: captured?.cubeDataNotDeployed ?? [],
+                    ...(captured?.error ? { captureError: captured.error } : {}),
+                } : null,
             })
             return ok({ status, result })
         }

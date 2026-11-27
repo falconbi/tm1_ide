@@ -554,9 +554,24 @@ class TM1Client {
     }
 
     async executeProcess(name, params = {}, opts = {}) {
-        const paramArray = Array.isArray(params)
-            ? params
-            : Object.entries(params).map(([Name, Value]) => ({ Name, Value: String(Value) }))
+        // TM1 expects Parameters: [{ Name, Value }]. Accept an object, an array of
+        // those objects, or a flat [name, value, name, value] array (the shape the
+        // backup helper used) — a flat array sent as-is is rejected with
+        // "NameValuePair ... Expecting Object but was String".
+        let paramArray
+        if (Array.isArray(params)) {
+            const allObjects = params.length > 0 && params.every(p => p && typeof p === 'object' && !Array.isArray(p) && 'Name' in p)
+            if (params.length === 0 || allObjects) {
+                paramArray = params
+            } else {
+                paramArray = []
+                for (let i = 0; i < params.length; i += 2) {
+                    paramArray.push({ Name: String(params[i]), Value: String(params[i + 1] ?? '') })
+                }
+            }
+        } else {
+            paramArray = Object.entries(params ?? {}).map(([Name, Value]) => ({ Name, Value: String(Value) }))
+        }
         // ExecuteWithReturn returns status + ErrorLogFile reference inline — better than tm1.Execute
         return this.post(
             `Processes('${odataKey(name)}')/tm1.ExecuteWithReturn?$expand=ErrorLogFile`,
@@ -570,16 +585,18 @@ class TM1Client {
     // and treat a non-success status as a failure — a backup that did not happen must never
     // read as one that did (the process itself calls ProcessError when its archive is not
     // confirmed, so the deploy that asked for it stops).
-    async backupData({ keep = 5, targetDir = null, format = null } = {}) {
+    async backupData({ keep = 5, targetDir = null, format = null, fileName = null } = {}) {
         const name = BACKUP.name
         const existing = await this.getProcess(name).catch(e => {
             if (e.response?.status === 404) return null
             throw e
         })
         if (!existing) await this.createOrReplaceProcess(BACKUP)
-        const params = ['pKeep', Number(keep) || 5]
-        if (targetDir) params.push('pTargetDir', String(targetDir))
-        if (format) params.push('pFormat', String(format))
+        const params = { pKeep: Number(keep) || 5 }
+        if (targetDir) params.pTargetDir = String(targetDir)
+        if (format) params.pFormat = String(format)
+        // The deploy records the archive by the exact name it asked for (Part I.3).
+        if (fileName) params.pBackupFile = String(fileName)
         const result = await this.executeProcess(name, params)
         const status = result?.ProcessExecuteStatusCode ?? result?.['odata.ProcessExecuteStatusCode']
         const ok = status === undefined || status === 0 || status === 'CompletedSuccessfully' || status === 'HasMinorErrors'

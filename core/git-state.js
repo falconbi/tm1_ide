@@ -2,7 +2,7 @@
 
 // ── Git deploy state (what each server last received) ───────────────────────
 // TM1's DeployedCommit is "the last git operation's target", not "what the
-// server last received" — a push to prod-live clobbers it. So the IDE records
+// server last received" — a push to live-<target> clobbers it. So the IDE records
 // what it actually deployed (per server), and the drift check uses that as its
 // reference.
 //
@@ -48,4 +48,28 @@ function lastDeployed(server) {
     return load()[server] ?? null
 }
 
-module.exports = { recordDeploy, lastDeployed, load, FILE }
+// Part M — "Start again" clears what this IDE remembers about a server, in both
+// places (the local file and the model-owned state document). It does not delete
+// the old repository; that stays as the archive.
+async function clearDeployState(server, { ideToken } = {}) {
+    const d = load()
+    const hadLocal = Object.prototype.hasOwnProperty.call(d, server)
+    delete d[server]
+    save(d)
+    let model = false
+    let modelError = null
+    try {
+        const store = require('./model-store')
+        if (await store.isMigrated(server, 'deployState', { ideToken })) {
+            const state = (await store.readDoc(server, 'deployState', 'state.json', { ideToken })) ?? {}
+            if (state[server]) {
+                delete state[server]
+                await store.writeDoc(server, 'deployState', 'state.json', state, { ideToken })
+                model = true
+            }
+        }
+    } catch (e) { modelError = e.message }
+    return { server, local: hadLocal, model, modelError }
+}
+
+module.exports = { recordDeploy, lastDeployed, clearDeployState, load, FILE }

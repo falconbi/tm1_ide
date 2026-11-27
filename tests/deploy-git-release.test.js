@@ -244,15 +244,33 @@ test('deploy is refused when the target has drifted (snapshot refreshed first)',
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
     // A non-dimension object still blocks outright: the carried rule applies only
     // to a dimension the release already has every element of.
-    driftEntries = [{ status: 'M', file: 'cubes/WFP Assumptions.rules' }]
+    // The pull DOES write cubes/A, so a hand-edit there would be replaced: it blocks.
+    driftEntries = [{ status: 'M', file: 'cubes/A.rules' }]
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
     const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
     assert.equal(out.refused, true, JSON.stringify(out).slice(0, 800))
     assert.equal(out.executed, false)
     assert.equal(out.drift, 'drifted')
-    assert.match(out.error, /drifted/i)
-    assert.match(out.error, /Re-apply the change on DEV/i)
-    assert.match(out.error, /paused until drift is clean/)
+    assert.match(out.error, /changed after the last deploy/i)
+    assert.match(out.error, /Rules for cube A/)
+    assert.match(out.error, /carry-back/i)
+    assert.match(out.error, /waiting until this is fixed/)
+  } finally { driftEntries = []; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
+})
+
+test('drift on an object the pull Skips does not block the deploy', async () => {
+  const r = repo()
+  try {
+    baseCommit = r.base
+    const s = cl.startSession('Drift-skip', 'DEV1', 'admin')
+    cl.setSessionCommit(s.id, r.releaseCommit)
+    cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
+    // A hand-edit on cubes/X, which this pull does not write at all.
+    driftEntries = [{ status: 'M', file: 'cubes/X.rules' }]
+    ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
+    assert.notEqual(out.refused, true, JSON.stringify(out).slice(0, 800))
+    assert.equal((out.driftIgnored ?? []).length, 1)
   } finally { driftEntries = []; fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
 
@@ -269,20 +287,18 @@ test('execute refuses any deploy that is not a built release', async () => {
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
 
-test('execute accepts a catch-up session\'s release commit (Rule 1 unchanged)', async () => {
+test('a catch-up record cannot be deployed — the feature was removed', async () => {
   const r = repo()
   try {
     baseCommit = r.base
     const s = cl.startSession('Catch-up: TG1 level with DEV1 (2026-11-18)', 'DEV1', 'admin', 'catch-up')
-    assert.equal(s.kind, 'catch-up')
     cl.setSessionCommit(s.id, r.releaseCommit)
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
     const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
-    assert.equal(out.executed, true, JSON.stringify(out))
-    assert.equal(out.refused, undefined)
-    assert.equal(out.release, true)
-    assert.equal(out.releaseCommit, r.releaseCommit)
+    assert.equal(out.executed, false)
+    assert.equal(out.refused, true)
+    assert.match(out.error, /catch-up has been removed/i)
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
 
@@ -335,7 +351,7 @@ test('an unrecognised pull-plan operation refuses the deploy', async () => {
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })
 
-test('no backup process and no stated time — the deploy is refused before anything is sent', async () => {
+test('with no backup process configured, the IDE backup process runs — a typed time is no longer accepted (Part I.3)', async () => {
   const r = repo()
   try {
     baseCommit = r.base
@@ -344,11 +360,12 @@ test('no backup process and no stated time — the deploy is refused before anyt
     cl.setSessionRelease(s.id, r.releaseCommit, 'TG1')
 
     ctx = { bare: r.bare, releaseCommit: r.releaseCommit, sessionId: s.id, ops: ["Update Cubes('A')"] }
-    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't' })
-    assert.equal(out.executed, false)
-    assert.equal(out.refused, true)
-    assert.match(out.error, /last backed up/i)
-    // Save Data is what runs first: it is recorded even though the deploy stopped.
+    const out = await execute('TG1', { session: s.id, token: 'x', gitUser: 't', backupAt: '2026-11-01T00:00:00Z' })
+    // The default process is the IDE's own, and it is recorded with the exact name.
+    assert.equal(out.backup?.process, '}IDE.Backup', JSON.stringify(out))
+    assert.match(out.backup?.fileName ?? '', /^TG1_\d{4}-\d{2}-\d{2}_\d{4}\.zip$/)
+    assert.equal(out.backup?.kind, 'process')
+    // Save Data runs first, before the backup.
     assert.equal(out.saveData?.ok, true)
   } finally { fs.rmSync(r.bare, { recursive: true, force: true }); fs.rmSync(r.w, { recursive: true, force: true }) }
 })

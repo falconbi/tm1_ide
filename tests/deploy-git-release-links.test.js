@@ -250,36 +250,6 @@ test('ownerOf still matches non-parented objects by type and name', () => {
   assert.deepEqual(ownerOf(logs, { type: 'cube', name: 'Sales' }), { sessionName: 'Other', user: 'x' })
 })
 
-test('a catch-up applies a rename by removing the old path from the base', async () => {
-  const bare = bareInit(BARE())
-  const w = W()
-  try {
-    g(w, 'init', '-q'); g(w, 'remote', 'add', 'origin', bare)
-    write(w, 'processes/Old.json', JSON.stringify({ Name: 'Old', 'Code@Code.link': 'Old.ti' }))
-    write(w, 'processes/Old.ti', '# old\n')
-    const base = commitAll(w, 'base')
-    g(w, 'mv', 'processes/Old.json', 'processes/New.json')
-    write(w, 'processes/New.json', JSON.stringify({ Name: 'New' }))
-    g(w, 'rm', '-q', 'processes/Old.ti')
-    const dev = commitAll(w, 'rename')
-    g(w, 'branch', '-M', 'dev'); g(w, 'push', '-q', 'origin', 'dev:dev')
-    fakeBase = base
-    const s = cl.startSession('Catch rename', 'DEV-REN', 'admin', 'catch-up')
-    cl.setSessionCommit(s.id, dev)
-    const r = await buildRelease(s, 'TGR-REN', { token: 'x', gitUser: 't', repoUrl: bare, catchUp: true })
-    assert.equal(r.ok, true, JSON.stringify(r))
-    const vw = W()
-    try {
-      g(vw, 'init', '-q'); g(vw, 'remote', 'add', 'origin', bare)
-      g(vw, 'fetch', '-q', 'origin', 'refs/heads/release-TGR-REN:rel')
-      const files = g(vw, 'ls-tree', '-r', '--name-only', 'rel').split('\n')
-      assert.ok(files.includes('processes/New.json'))
-      assert.ok(!files.includes('processes/Old.json'), 'old base JSON is removed')
-      assert.ok(!files.includes('processes/Old.ti'), 'old base TI is removed')
-    } finally { fs.rmSync(vw, { recursive: true, force: true }) }
-  } finally { fs.rmSync(bare, { recursive: true, force: true }); fs.rmSync(w, { recursive: true, force: true }) }
-})
-
 test('expectedPlanKeys allows the parent dimension/cube of a subset/view change', () => {
   const { expectedPlanKeys, objectKey } = require(path.join(__dirname, '..', 'core', 'git-release'))
   const keys = expectedPlanKeys([

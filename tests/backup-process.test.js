@@ -15,7 +15,8 @@ const { TM1Client } = require('../core/tm1-client')
 test('the definition is a hidden }IDE process with its own parameters', () => {
     assert.equal(BACKUP.name, '}IDE.Backup')
     const params = Object.fromEntries((BACKUP.parameters ?? []).map(p => [p.Name, p]))
-    assert.deepEqual(Object.keys(params).sort(), ['pFormat', 'pKeep', 'pTargetDir'])
+    assert.deepEqual(Object.keys(params).sort(), ['pBackupFile', 'pFormat', 'pKeep', 'pTargetDir'])
+    assert.equal(params.pBackupFile.Value, '', 'a deploy passes the exact name; empty keeps the numbered name')
     assert.equal(params.pTargetDir.Value, '..\\backup')
     assert.equal(params.pFormat.Value, 'zip')
     assert.equal(params.pKeep.Value, 5)
@@ -61,7 +62,8 @@ test('the client installs the process on demand and runs it with its parameters'
     c.createOrReplaceProcess = async (p) => { calls.push(['create', p.name]) }
     c.executeProcess = async (name, params) => { calls.push(['run', name, params]); return { ProcessExecuteStatusCode: 'CompletedSuccessfully' } }
     const r = await c.backupData({ keep: 3 })
-    assert.deepEqual(calls, [['create', '}IDE.Backup'], ['run', '}IDE.Backup', ['pKeep', 3]]])
+    // executeProcess takes a name→value object; it builds TM1's [{ Name, Value }] itself.
+    assert.deepEqual(calls, [['create', '}IDE.Backup'], ['run', '}IDE.Backup', { pKeep: 3 }]])
     assert.equal(r.ok, true)
 })
 

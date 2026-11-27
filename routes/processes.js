@@ -2,6 +2,7 @@
 
 const { debugProcess } = require('../core/process-debug')
 const { runProcess, recordProcessRun } = require('../core/process-run')
+const { serverLabel, beginCapture, requiresChangeSet } = require('../core/process-capture')
 
 function register(app, deps) {
     const { ai, cl, fail, gateReadOnly, gateWrite, getProcessFacts, invalidateCubeSources, joinContinuations, listProcessSummaries, makeClient, obfuscate, odataKey, processCode, processSummaries, scanIdentity, summaryPrompt } = deps
@@ -149,14 +150,44 @@ app.post('/api/process/run', async (req, res) => {
     if (!procName) return res.status(400).json({ error: 'name required' })
     try {
         const client = makeClient(req.query.server, req.ideToken)
-        const result = await runProcess(client, { name: procName, params: req.body.params })
+        // Part F.1: a TI run on DEV needs an open change set, because the run's
+        // element/attribute changes must be recorded to be deployable. A server
+        // whose Git label is not DEV keeps the old rule; an unlinked server's type
+        // is unknown, and the rule is not applied to it.
+        let label = { label: null }
+        try {
+            label = await serverLabel(req.query.server, { token: require('../core/git-secrets').getToken(), ideToken: req.ideToken })
+        } catch { /* unknown label */ }
+        const active = cl.getActiveSession(req.query.server, req.user)
+        const gate = requiresChangeSet(label.label, !!active)
+        if (gate.required) return res.status(409).json({ error: gate.reason })
+        let capture = null
+        if (label.label === 'DEV') capture = await beginCapture(req.query.server, client, procName, { user: req.user })
+        let result
+        let captured = null
+        try {
+            result = await runProcess(client, { name: procName, params: req.body.params })
+        } finally {
+            if (capture) {
+                try { captured = await capture.complete() }
+                catch (e) { captured = { error: e.message } }
+            }
+        }
         recordProcessRun({
             server: req.query.server, user: req.user, name: procName,
             params: req.body.params ?? null,
-            status: result.ok ? 'completed' : 'failed',
-            duration: result.duration ?? null,
+            status: result?.ok ? 'completed' : 'failed',
+            duration: result?.duration ?? null,
+            extra: capture ? {
+                capturesDimensions: capture.dims,
+                // Dimensions changed by the run that the process text did not name
+                // (the target was built at run time). Recorded by the sweep.
+                ...(captured?.swept?.length ? { capturesUnnamedDimensions: captured.swept } : {}),
+                cubeDataNotDeployed: captured?.cubeDataNotDeployed ?? [],
+                ...(captured?.error ? { captureError: captured.error } : {}),
+            } : null,
         })
-        if (!result.ok) return res.status(result.status).json(result.body)
+        if (!result?.ok) return res.status(result.status ?? 500).json(result.body ?? { error: 'run failed' })
         res.json(result)
     } catch (e) { fail(res, e) }
 })

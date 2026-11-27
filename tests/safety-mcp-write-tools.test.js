@@ -93,11 +93,8 @@ const ARGS = {
     create_chore:          { name: 'Nightly', steps: [{ process: 'Load Sales' }] },
     set_chore_state:       { name: 'Nightly', activate: true },
     delete_object:         { type: 'chore', name: 'Nightly' },
-    seed_baseline:         { label: 'test' },
-    set_baseline_head:     { file: '2026-10-15T00-00-00-000Z.json' },
     start_change_set:      { name: 'AI: test' },
     close_change_set:      {},
-    package_change_set:    {},
     update_cube_rules:     { cube: 'Sales', rules: "['Total'] = N: 1;" },
     update_process:        { process: 'Load Sales', prolog: "vCube = 'Sales';" },
     run_process:           { process: 'Load Sales' },
@@ -117,7 +114,7 @@ for (const tool of Object.keys(ARGS)) {
     test(`write tool runs: ${tool}`, async () => {
         const h = setup({ mode: 'build', builder: yesTm1(), cl: fakeCl(), assertions: fakeAssertions })
         // Tools that need an open change set get one first (start_change_set itself, and those that report on it).
-        if (['close_change_set', 'package_change_set'].includes(tool)) await h.call('start_change_set', { name: 'AI: test' })
+        if (tool === 'close_change_set') await h.call('start_change_set', { name: 'AI: test' })
         const r = await h.call(tool, ARGS[tool])
         assert.doesNotMatch(r.text, WIRING, `${tool} is mis-wired: ${r.text}`)
         assert.equal(r.isError, false, `${tool} failed: ${r.text}`)

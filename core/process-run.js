@@ -31,7 +31,7 @@ function maskRunParams(params) {
 // Record one run in the active change set. A run is a record, not a metadata
 // change: object_type stays 'process-run' (never in ENTRY_TO_OBJECT), so it can
 // never make a release carry the process file itself.
-function recordProcessRun({ server, user, name, kind = 'process', params = null, status = 'completed', duration = null, log = null }) {
+function recordProcessRun({ server, user, name, kind = 'process', params = null, status = 'completed', duration = null, log = null, extra = null }) {
     const cl = log ?? require('./change-log')
     const session = cl.getActiveSession(server, user)
     if (!session) return { recorded: false }
@@ -40,7 +40,7 @@ function recordProcessRun({ server, user, name, kind = 'process', params = null,
         action: 'PROCESS_RUN',
         objectType: 'process-run',
         objectName: name,
-        detail: { name, kind, params: maskRunParams(params), status, duration: duration ?? null },
+        detail: { name, kind, params: maskRunParams(params), status, duration: duration ?? null, ...(extra && typeof extra === 'object' ? extra : {}) },
         user,
     })
     return { recorded: true, session: session.name }

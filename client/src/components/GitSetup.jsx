@@ -1,5 +1,4 @@
 import { request } from '@/lib/api'
-import { useFirstPullAnalysis } from '@/hooks/useApi'
 import { useState, useEffect } from 'react'
 
 // Git connection setup — link a server to an EXISTING GitHub repo (no repo
@@ -17,15 +16,11 @@ export default function GitSetup({ server, onClose, embedded = false }) {
   const [tokenSet, setTokenSet] = useState(false)
   const [readiness, setReadiness] = useState(null)
   const [linked, setLinked] = useState(false)
-  const [showAnalysis, setShowAnalysis] = useState(false)
-  const [confirm, setConfirm] = useState('')
   const [first, setFirst] = useState(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState(null)
   const [statusError, setStatusError] = useState(null)
   const [showLinkForm, setShowLinkForm] = useState(false)
-  const analysisQuery = useFirstPullAnalysis(server, 'dev', { enabled: showAnalysis && linked && deployment === 'PROD' })
-  const analysis = analysisQuery.data
 
   const run = async (action, body, route) => {
     setBusy(action); setError(null)
@@ -73,10 +68,6 @@ export default function GitSetup({ server, onClose, embedded = false }) {
     } catch (e) { setError(e.message) }
     finally { setBusy('') }
   }
-  const doFirstPush = async () => {
-    const d = await run('push', { server }, '/api/git/setup/first-push')
-    if (d) setFirst(d)
-  }
   // Direct 'commit current state' — no change set. For realigning a server
   // whose contents were replaced/copied, so the repo matches reality. Only for
   // non-PROD servers (a PROD commit would push the wrong thing to the working branch).
@@ -85,9 +76,18 @@ export default function GitSetup({ server, onClose, embedded = false }) {
     const d = await run('commit', { source: server, message: `Commit current state of ${server}` }, '/api/deploy/git/push')
     if (d) setFirst(d)
   }
-  const doFirstPull = async () => {
-    const d = await run('pull', { server, confirm }, '/api/git/setup/first-pull')
-    if (d) { setFirst(d); setShowAnalysis(false) }
+  // Part C.1 — a TEST/PROD target writes its OWN objects into Git; nothing is
+  // pulled onto the server. This is the step that used to be "first pull".
+  const doSetupStart = async () => {
+    const d = await run('start', { server, repo: status?.repoUrl ?? repo, deployment }, '/api/git/setup/start')
+    if (d) setFirst({ ...d, note: d.note ?? `${server} wrote its own copy into Git.` })
+  }
+  // The attrs-<server> branch is written by the IDE only (TM1 never exports
+  // attributes), so a server linked before setup ran has no attribute baseline
+  // for its first close. Write just that branch; leave objects and history alone.
+  const doStartAttrs = async () => {
+    const d = await run('attrs', { server, attrsOnly: true }, '/api/git/setup/start')
+    if (d) setFirst({ ...d, note: d.changed === false ? `Attributes of ${server} were already on ${status?.attrsBranch ?? `attrs-${server}`}.` : `Attributes of ${server} written to ${d.branch ?? status?.attrsBranch ?? `attrs-${server}`}${d.commit ? ` (${d.commit})` : ''}.` })
   }
 
   const inputCls = 'bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring'
@@ -117,11 +117,11 @@ export default function GitSetup({ server, onClose, embedded = false }) {
                 <p>· A GitHub <span className="text-foreground">fine-grained personal access token</span> with <span className="text-foreground">Contents: Read &amp; write</span> on that repo (Settings → Developer settings → Fine-grained tokens).</p>
                 <p className="text-foreground">Then, in order:</p>
                 <p>1. <span className="text-foreground">Repository</span> — paste the repo's <span className="font-mono">…/your-for-model.git</span> URL.</p>
-                <p>2. <span className="text-foreground">What is this server</span> — DEV (builds &amp; pushes to the repo) · TEST or PROD (receives deploys; the first pull replaces every object, so it needs an explicit typed confirmation).</p>
+                <p>2. <span className="text-foreground">What is this server</span> — DEV (builds &amp; pushes to the repo) · TEST or PROD (writes its own objects into Git as Last Deployed; nothing is pulled onto it).</p>
                 <p>3. <span className="text-foreground">Token</span> — paste it. It is stored only on this server — never shown, logged or sent back. You'll see <span className="text-emerald-700">token set ✓</span>.</p>
                 <p>4. <span className="text-foreground">Check readiness</span> — must pass before linking (view/set/member-name problems would break the pull).</p>
                 <p>5. <span className="text-foreground">Link to repo (GitInit)</span> — ties this server to the repo as its deployment.</p>
-                <p>6. <span className="text-foreground">First move</span> — DEV/TEST: <span className="text-foreground">commit this server to the repo</span>. PROD: <span className="text-foreground">show what the first pull will replace</span>, review the list, then type exactly <span className="font-mono">I understand this overwrites {server}</span> to apply it.</p>
+                <p>6. <span className="text-foreground">First move</span> — DEV: <span className="text-foreground">Start DEV</span> (the server writes <span className="font-mono">dev</span>, the IDE writes <span className="font-mono">attrs-{server}</span>). TEST/PROD: <span className="text-foreground">the server writes its own copy</span> (Start TEST/PROD). Nothing is pulled onto either server.</p>
                 <p>Already-linked servers (like DEV/PROD here) skip all of this — this screen just shows their link.</p>
               </div>
             </details>
@@ -132,11 +132,18 @@ export default function GitSetup({ server, onClose, embedded = false }) {
               <div className="border border-border rounded-md p-3 text-xs space-y-1">
                 <p className="text-emerald-700">Linked to <span className="font-mono">{status.repoUrl}</span> as <span className="font-semibold">{status.deployment}</span> · remote {status.connected ? 'connected ✓' : 'not connected ✗'}</p>
                 <p><span className="text-muted-foreground">Token:</span> {tokenLabel}</p>
-                {String(status.deployment ?? '').toUpperCase() === 'PROD'
-                  ? <p className="text-amber-600">Its first pull is still a full overwrite — use Deploy → Review to see the object list before confirming.</p>
-                  : <p className="text-muted-foreground">Ready to build and commit.</p>}
+                {String(status.deployment ?? '').toUpperCase() === 'DEV'
+                  ? <p className="text-muted-foreground">Ready to build and commit.</p>
+                  : <p className="text-muted-foreground">{status.deployment} already wrote its own copy; nothing is pulled onto it.</p>}
                 <button onClick={() => setShowLinkForm(true)} className={text + ' mt-1'}>Link to a different repo</button>
               </div>
+              {status?.attrsBranch && Array.isArray(status.branches) && !status.branches.includes(status.attrsBranch) && (
+                <div className="border border-amber-600/40 rounded-md p-3 space-y-2">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Attributes baseline missing</p>
+                  <p className="text-[10px] text-muted-foreground/70">This server is linked but has no <span className="font-mono">{status.attrsBranch}</span> branch. TM1 Git never writes attributes, so without it the first close has no attribute baseline.</p>
+                  <button onClick={doStartAttrs} disabled={busy === 'attrs'} className={primary}>{busy === 'attrs' ? 'Writing…' : 'Write attributes'}</button>
+                </div>
+              )}
               {String(status.deployment ?? '').toUpperCase() !== 'PROD' && (
                 <div className="border border-border rounded-md p-3 space-y-2">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Commit current state (no change set)</p>
@@ -162,7 +169,7 @@ export default function GitSetup({ server, onClose, embedded = false }) {
                     <button key={d} onClick={() => setDeployment(d)} className={text + (deployment === d ? ' bg-muted text-foreground' : '')}>{d}</button>
                   ))}
                 </div>
-                <p className="text-[10px] text-muted-foreground/70">{deployment === 'PROD' ? 'PROD: the first pull replaces every object — you confirm that explicitly.' : deployment === 'TEST' ? 'TEST: same as PROD — a full-overwrite first pull, confirmed.' : 'DEV: this server pushes to the working branch.'}</p>
+                <p className="text-[10px] text-muted-foreground/70">{deployment === 'DEV' ? 'DEV: this server pushes to the working branch.' : `${deployment}: the server writes its own objects into Git — nothing is pulled onto it.`}</p>
               </div>
               {/* 3. token */}
               <div className="border border-border rounded-md p-3 space-y-2">
@@ -193,64 +200,28 @@ export default function GitSetup({ server, onClose, embedded = false }) {
                 )}
                 {linked && <p className="text-emerald-700 text-xs">Linked ✓ — repo {status?.repoUrl} as {status?.deployment}.</p>}
               </div>
-              {/* 5. first move */}
-              {linked && deployment === 'PROD' && (
+              {/* 5. first move — a target writes its OWN objects into Git; nothing
+                  is pulled onto it (Part C.1). */}
+              {linked && deployment !== 'DEV' && (
                 <div className="border border-border rounded-md p-3 space-y-2">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">5 · First pull (full overwrite)</p>
-                  {!showAnalysis ? (
-                    <button onClick={() => setShowAnalysis(true)} className={text}>Show what the first pull will replace</button>
-                  ) : analysisQuery.isLoading ? (
-                    <p className="text-xs text-muted-foreground">Checking the target against the repo…</p>
-                  ) : analysisQuery.isError ? (
-                    <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">Could not check the pull: {analysisQuery.error?.message ?? 'request failed'}. The pull is refused until this can be read.</p>
-                  ) : analysis?.complete === false ? (
-                    <p className="text-xs text-red-600 border border-red-600/40 rounded px-3 py-2">Could not check the pull: {analysis.reason}. The pull is refused until this can be read.</p>
-                  ) : analysis ? (
-                    <>
-                      <p className="text-xs text-amber-600">This first pull replaces every object on {server}. Plan: {analysis.plan?.create ?? 0} create, {analysis.plan?.update ?? 0} update, {analysis.plan?.delete ?? 0} delete, {analysis.plan?.skip ?? 0} skip.</p>
-
-                      <div className="text-[11px] space-y-1">
-                        <p className="text-muted-foreground">Only on the target (not in the repo):</p>
-                        {[['cubes', analysis.targetOnly?.cubes], ['dimensions', analysis.targetOnly?.dimensions], ['processes', analysis.targetOnly?.processes], ['chores', analysis.targetOnly?.chores]].map(([label, names]) => (
-                          names?.length ? <p key={label}><span className="text-foreground">{label}:</span> {names.join(', ')}</p> : null
-                        ))}
-                        {![...(analysis.targetOnly?.cubes ?? []), ...(analysis.targetOnly?.dimensions ?? []), ...(analysis.targetOnly?.processes ?? []), ...(analysis.targetOnly?.chores ?? [])].length && (
-                          <p className="text-muted-foreground">Nothing — every target object is in the repo.</p>
-                        )}
-                      </div>
-
-                      {analysis.elementLoss?.length ? (
-                        <div className="text-[11px] space-y-1">
-                          <p className="text-amber-600">Elements the target would lose:</p>
-                          <table className="w-full text-left border border-border rounded">
-                            <thead><tr className="text-muted-foreground"><th className="px-2 py-1">Dimension</th><th className="px-2 py-1">Hierarchy</th><th className="px-2 py-1">Count</th><th className="px-2 py-1">Sample</th></tr></thead>
-                            <tbody>
-                              {analysis.elementLoss.map(l => (
-                                <tr key={`${l.dimension}/${l.hierarchy}`} className="border-t border-border">
-                                  <td className="px-2 py-1">{l.dimension}</td>
-                                  <td className="px-2 py-1">{l.hierarchy}</td>
-                                  <td className="px-2 py-1">{l.count}</td>
-                                  <td className="px-2 py-1 text-muted-foreground">{l.sample?.join(', ')}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <p className="text-[11px] text-emerald-700">No element loss — every target element is in the repo.</p>
-                      )}
-
-                      <button onClick={() => analysisQuery.refetch()} className={text}>Refresh analysis</button>
-                      <input value={confirm} onChange={e => setConfirm(e.target.value)} placeholder={`Type exactly: ${analysis.confirmText}`} className={inputCls + ' w-full'} />
-                      <button onClick={doFirstPull} disabled={busy === 'pull' || confirm.trim() !== analysis.confirmText} className={primary}>Apply the first pull</button>
-                    </>
-                  ) : null}
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">5 · {deployment} writes its own copy</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    TM1 on {server} writes its own objects into Git as {deployment} Last Deployed, and the IDE writes its attributes.
+                    Nothing is put onto {server} — there is no first pull.
+                  </p>
+                  <button onClick={doSetupStart} disabled={busy === 'start'} className={primary}>
+                    {busy === 'start' ? 'Writing…' : `Start ${deployment}`}
+                  </button>
                 </div>
               )}
-              {linked && deployment !== 'PROD' && (
+              {linked && deployment === 'DEV' && (
                 <div className="border border-border rounded-md p-3 space-y-2">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">5 · First commit</p>
-                  <button onClick={doFirstPush} disabled={busy === 'push' || readinessBlocked} title={readinessBlocked ? 'Fix the readiness blockers first' : ''} className={primary}>{busy === 'push' ? 'Pushing…' : 'Commit this server to the repo'}</button>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">5 · First move</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    TM1 on {server} writes its own objects into <span className="font-mono">dev</span>, and the IDE writes its
+                    attributes to <span className="font-mono">attrs-{server}</span>. Nothing is pulled onto {server}.
+                  </p>
+                  <button onClick={doSetupStart} disabled={busy === 'start' || readinessBlocked} title={readinessBlocked ? 'Fix the readiness blockers first' : ''} className={primary}>{busy === 'start' ? 'Starting…' : 'Start DEV'}</button>
                 </div>
               )}
             </>

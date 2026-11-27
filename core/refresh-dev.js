@@ -19,9 +19,8 @@
 const { makeClient } = require('./adapter-registry')
 const { TM1Client } = require('./tm1-client')
 const cl = require('./change-log')
-const settings = require('./deploy-settings')
 const { resolveBase, openBase, baseHierarchy, baseChore } = require('./deploy-base')
-const { originOf } = require('./refresh-origins')
+const { originOf, ORIGIN } = require('./refresh-origins')
 const { classifyDimension, summarise, applyDimension } = require('./refresh-dimension')
 
 const TYPE = { N: 'Numeric', S: 'String', A: 'Alias', C: 'Consolidated' }
@@ -97,11 +96,35 @@ async function readDimensionStrict(tm1, dim, hierarchy = dim) {
 
 // Read both servers and return one entry per dimension that differs. Control
 // objects (}…) are skipped: they are not model changes a deploy ships.
+// ── Clashes: both sides changed one thing, differently ─────────────────────
+// The sync takes PROD's value by default, so a clash means a developer's change is
+// about to be replaced. Name the object, both values and the developer's change
+// set so the preview can show it and the sync can tell them.
+const clashKey = (type, name, parent) => type === 'dimension' || type === 'chore'
+    ? `${type}:${name}`
+    : `${type}:${name}:${parent}`
+
+function clashOwner(source, { objectType, objectName, detail = null, anyDetail = false }) {
+    try { return cl.getObjectOwner(source, { objectType, objectName, detail, anyDetail }) }
+    catch { return null }
+}
+
+function addClash(list, source, { type, name, parent = null, item, kind, prodValue, devValue, logObject }) {
+    const owner = clashOwner(source, logObject)
+    const clash = {
+        key: clashKey(type, name, parent), type, name, parent: parent ?? null,
+        item, kind,
+        prodValue: prodValue ?? null, devValue: devValue ?? null,
+        changeSet: owner ? { id: owner.id, name: owner.name, user: owner.user ?? null } : null,
+    }
+    list.push(clash)
+    return clash
+}
+
 async function planRefresh(source, target, { ideToken, baseCommit = null } = {}) {
     const dev = new TM1Client(source, makeClient(source, ideToken))
     const prod = new TM1Client(target, makeClient(target, ideToken))
     const dims = (await dev.getModelDimensions()).map(d => d?.Name ?? d).filter(Boolean)
-    const approved = (await settings.get(target, { ideToken }).catch(() => ({})))?.attributeValues ?? {}
 
     // The baseline: what the target was last given. Without it nothing can be
     // ticked (apply refuses), and every difference is shown as "unknown".
@@ -122,6 +145,7 @@ async function planRefresh(source, target, { ideToken, baseCommit = null } = {})
     } catch (e) { base = { ok: false, reason: e.message } }
 
     const items = []
+    const clashes = []
     for (const dim of dims) {
         const [a, b] = await Promise.all([
             readDimension(prod, dim),
@@ -139,9 +163,9 @@ async function planRefresh(source, target, { ideToken, baseCommit = null } = {})
         try {
             const [pa, da] = await Promise.all([prod.getElementAttributes(dim), dev.getElementAttributes(dim)])
             const defs = diffAttributeDefinitions(pa, da)
-            // Only the attributes an admin confirmed PROD's load maintains may have
-            // their VALUES copied (A3). Never wholesale.
-            const confirmed = new Set(approved[dim] ?? [])
+            // Part N.5: the Protection list is retired. Values are no longer copied
+            // here; the release carries only its recorded attribute values (Part G.7).
+            const confirmed = new Set()
             const prodNames = new Set((a.elements ?? []).map(elName).filter(Boolean))
             const devNames = new Set((b.elements ?? []).map(elName).filter(Boolean))
             let valueElements = 0
@@ -173,6 +197,25 @@ async function planRefresh(source, target, { ideToken, baseCommit = null } = {})
         const typeRisk = [...parents]
             .filter(p => p && devType.get(p) === 'Numeric' && prodType.get(p) === 'Consolidated')
             .map(p => ({ element: p, from: 'Numeric', to: 'Consolidated' }))
+        // A clash inside a dimension is per element, not per dimension: name the
+        // element, both types/parents and the developer's change set.
+        const dimClashes = []
+        for (const t of c.typeConflicts) {
+            dimClashes.push(addClash(clashes, source, {
+                type: 'dimension', name: dim,
+                item: `element ${t.name} (type) in ${dim}`, kind: 'element type',
+                prodValue: t.prod, devValue: t.dev,
+                logObject: { objectType: 'dimension', objectName: dim, anyDetail: true },
+            }))
+        }
+        for (const m of c.moveConflicts) {
+            dimClashes.push(addClash(clashes, source, {
+                type: 'dimension', name: dim,
+                item: `element ${m.child} (parent) in ${dim}`, kind: 'move',
+                prodValue: m.toParent, devValue: m.fromParent,
+                logObject: { objectType: 'dimension', objectName: dim, anyDetail: true },
+            }))
+        }
         items.push({
             dimension: dim,
             offered: !!offered,
@@ -181,6 +224,7 @@ async function planRefresh(source, target, { ideToken, baseCommit = null } = {})
             // What the person needs to see, one line per kind (2,295 grey rows in a
             // list help nobody) — the UI expands a count into the elements.
             summary: summarise(c),
+            clashes: dimClashes,
             typeRisk,
             attributes,
             baseKnown: !!reader,
@@ -210,7 +254,16 @@ async function planRefresh(source, target, { ideToken, baseCommit = null } = {})
                 : 'unknown'
             const offer = origin === 'target-changed' || origin === 'target-added' || origin === 'conflict' || origin === 'dev-added'
             if (!offer && !d.devMustStayOff) continue
-            chores.push({ name, onTarget: !!pc, onDev: !!dc, origin, choice: origin === 'conflict' || origin === 'unknown' ? null : 'take', ...d })
+            const item = { name, onTarget: !!pc, onDev: !!dc, origin, choice: origin === 'conflict' || origin === 'unknown' ? null : 'take', ...d }
+            if (origin === 'conflict') {
+                item.clash = addClash(clashes, source, {
+                    type: 'chore', name,
+                    item: `chore ${name}`, kind: 'schedule',
+                    prodValue: sched(pc), devValue: sched(dc),
+                    logObject: { objectType: 'chore', objectName: name },
+                })
+            }
+            chores.push(item)
         }
     } catch { /* no chore access — carry on with dimensions */ }
 
@@ -229,10 +282,40 @@ async function planRefresh(source, target, { ideToken, baseCommit = null } = {})
         coverage.hierarchies = await planHierarchies(source, target, { ideToken, reader })
     } catch { /* no hierarchy access — the rest still planned */ }
 
+    // One clash row per conflicting subset, view or hierarchy, with both values
+    // and the change set whose DEV version PROD's value would replace.
+    for (const s of coverage.subsets) {
+        if (s.origin !== ORIGIN.CONFLICT) continue
+        s.clash = addClash(clashes, source, {
+            type: 'subset', name: s.name, parent: s.dimension,
+            item: `subset ${s.name} (${s.dimension})`, kind: 'content',
+            prodValue: s.prodValue, devValue: s.devValue,
+            logObject: { objectType: 'subset', objectName: s.name, detail: s.dimension },
+        })
+    }
+    for (const v of coverage.views) {
+        if (v.origin !== ORIGIN.CONFLICT) continue
+        v.clash = addClash(clashes, source, {
+            type: 'view', name: v.name, parent: v.cube,
+            item: `view ${v.name} (${v.cube})`, kind: 'content',
+            prodValue: v.prodValue, devValue: v.devValue,
+            logObject: { objectType: 'view', objectName: v.name, detail: v.cube },
+        })
+    }
+    for (const h of coverage.hierarchies) {
+        if (h.origin !== ORIGIN.CONFLICT) continue
+        h.clash = addClash(clashes, source, {
+            type: 'hierarchy', name: h.name, parent: h.dimension,
+            item: `hierarchy ${h.name} (${h.dimension})`, kind: 'content',
+            prodValue: h.prodValue, devValue: h.devValue,
+            logObject: { objectType: 'dimension', objectName: h.dimension, anyDetail: true },
+        })
+    }
+
     return {
         source, target,
         base: { ok: !!reader, commit: base.commit ?? null, source: base.source ?? null, override: !!base.override, reason: base.reason ?? null, branch: base.branch ?? null, local: base.local ?? null },
-        dimensions: items, chores, ...coverage,
+        dimensions: items, chores, ...coverage, clashes,
     }
 }
 

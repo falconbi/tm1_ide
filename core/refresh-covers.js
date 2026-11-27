@@ -221,6 +221,7 @@ async function planCovers(source, target, { ideToken, reader = null } = {}) {
                     onTarget: !!p, onDev: !!d,
                     mode: (p ?? d)?.mode ?? null,
                     n: (p ?? d)?.mode === 'static' ? ((p ?? d)?.members ?? []).length : null,
+                    prodValue: canonSubset(p), devValue: canonSubset(d),
                     adding: origin === ORIGIN.TARGET_ADDED,
                     removing: deleting,
                     differs: true,
@@ -262,6 +263,7 @@ async function planCovers(source, target, { ideToken, reader = null } = {}) {
                 type: 'view', name, cube, origin,
                 onTarget: !!p, onDev: !!d,
                 mode: (p ?? d)?.mode ?? null,
+                prodValue: canonView(p), devValue: canonView(d),
                 usesSubsets: subsetsUsedBy(p ?? d),
                 unreadable: (p ?? d)?.mode === 'native' ? unreadableAxes(p ?? d) : [],
                 adding: origin === ORIGIN.TARGET_ADDED,
@@ -402,4 +404,5 @@ module.exports = {
     planCovers, applyCovers,
     readSubset, readView, writeSubset, writeView,
     diffSubsetSpec, diffViewSpec, unreadableAxes, subsetsUsedBy, normMdx,
+    canonSubset, canonView,
 }

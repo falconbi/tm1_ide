@@ -115,7 +115,7 @@ export default function SessionControl({ deploy = null }) {
           title={activeSession ? `Change set: ${activeSession.name}` : 'Change sets'}
         >
           {activeSession
-            ? `Change set: ${activeSession.name} · ${activeSession.entry_count ?? 0} changes`
+            ? `Change set: ${activeSession.name} · ${activeSession.entry_count ?? 0} change${(activeSession.entry_count ?? 0) === 1 ? '' : 's'}`
             : 'Change sets'}
         </span>
       </button>

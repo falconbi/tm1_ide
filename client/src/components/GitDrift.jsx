@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import HelpPanel from '@/components/HelpPanel'
 import { humanizeFile } from '@/lib/tm1-terms'
 
-// Drift view (#3): PROD pushes its live state to prod-live; the diff vs its
+// Drift view (#3): PROD pushes its live state to live-<target>; the diff vs its
 // deployed commit shows what's drifted on PROD (out-of-band edits, PROD-only
 // objects). Drift pauses deploys — there is no automated Revert/Promote (retired);
 // the fix is to re-apply the change on DEV in a change set and release it.
@@ -46,29 +46,19 @@ export default function GitDrift({ server, onClose, embedded = false }) {
     finally { setBusy('') }
   }
 
-  // Opening the return dialog asks the server what it would remove, in the same
-  // words the first pull uses ("removes N elements in M dimensions") — the count
-  // is part of what has to be typed, so it cannot be confirmed unread.
-  const openReturn = async () => {
-    const t = drift?.server ?? target
-    setRet({ confirm: '', reason: '', busy: false, error: null, result: null, loading: true })
-    try {
-      const r = await request(`/api/deploy/git/return/preview?target=${encodeURIComponent(t)}`, { headers: authHeader() })
-      const d = await r.json()
-      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
-      setRet(x => ({ ...x, loading: false, preview: d }))
-    } catch (e) {
-      setRet(x => ({ ...x, loading: false, error: e.message }))
-    }
+  // Recovery is a restore from the backup taken before the deploy (Part J).
+  // Return-to-last-release is gone: it lost the deploy's data and took no backup.
+  const openRestore = () => {
+    setRet({ backupName: '', confirm: '', busy: false, error: null, result: null })
   }
 
-  const doReturn = async () => {
+  const doRestore = async () => {
     setRet(r => ({ ...r, busy: true, error: null, result: null }))
     try {
-      const r = await request('/api/deploy/git/return', {
+      const r = await request('/api/deploy/git/restore-from-backup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
-        body: JSON.stringify({ target: drift?.server ?? target, confirm: ret.confirm, reason: ret.reason }),
+        body: JSON.stringify({ target: drift?.server ?? target, backupName: ret.backupName, confirm: ret.confirm }),
       })
       const d = await r.json()
       if (!r.ok || d.error) throw new Error(d.error || r.statusText)
@@ -152,10 +142,10 @@ export default function GitDrift({ server, onClose, embedded = false }) {
                       it last received.
                     </p>
                     <button
-                      onClick={openReturn}
+                      onClick={openRestore}
                       className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded border border-red-600/40 text-red-600 hover:bg-red-500/10"
                     >
-                      <Undo2 size={11} /> Return {drift.server} to its last release…
+                      <Undo2 size={11} /> {drift.server} restored from a backup…
                     </button>
                   </div>
                 )}
@@ -183,7 +173,7 @@ export default function GitDrift({ server, onClose, embedded = false }) {
           <div className="w-[520px] max-w-[calc(100vw-32px)] bg-background border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
               <Undo2 size={14} className="text-red-600" />
-              <span className="text-sm font-semibold">Return {drift?.server} to its last release</span>
+              <span className="text-sm font-semibold">{drift?.server} restored from backup</span>
               <div className="flex-1" />
               {!ret.busy && <button onClick={() => setRet(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={14} /></button>}
             </div>
@@ -191,61 +181,30 @@ export default function GitDrift({ server, onClose, embedded = false }) {
               {!ret.result && (
                 <>
                   <p className="text-xs leading-relaxed">
-                    This puts <span className="font-semibold">{drift?.server}</span> back to the model it received from its
-                    last recorded release (<span className="font-mono">{String(drift?.deployed ?? '').slice(0, 10)}</span>).
-                    Every object in that release is restored.
+                    Restore the data folder outside the IDE first, then name the backup here. The IDE moves
+                    <span className="font-semibold"> {drift?.server}</span>'s release line, deploy note and attributes back to that
+                    backup's tag and marks the bad deploy reverted. Nothing is deleted from Git.
                   </p>
-                  <div className="border border-amber-600/40 bg-amber-500/5 rounded px-3 py-2 space-y-1">
-                    <p className="text-[11px] font-semibold text-amber-700">What it cannot undo</p>
-                    <p className="text-[11px] text-muted-foreground">· Data values loaded since then — a pull never touches cell data.</p>
-                    <p className="text-[11px] text-muted-foreground">· Objects created after the release — a pull never deletes.</p>
-                    <p className="text-[11px] text-muted-foreground">· Anything outside Git (attribute values written over REST).</p>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">Backup name (from the deploy report)</label>
+                    <input value={ret.backupName} onChange={e => setRet(r => ({ ...r, backupName: e.target.value }))}
+                      placeholder="e.g. PROD_2026-11-27_1000.zip"
+                      className="w-full bg-muted border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground">Why (recorded in the deploy history)</label>
-                    <input value={ret.reason} onChange={e => setRet(r => ({ ...r, reason: e.target.value }))}
-                      placeholder="e.g. a pull failed part-way and the target is half-updated"
-                      className="w-full bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
-                  </div>
-                  {ret.loading && <p className="text-[11px] text-muted-foreground">Reading what this would remove…</p>}
-                  {ret.preview?.elementLoss?.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-[11px] text-amber-700">
-                        Elements the target would lose: <span className="font-semibold">{ret.preview.loss.elements}</span> in{' '}
-                        <span className="font-semibold">{ret.preview.loss.dimensions}</span> dimension{ret.preview.loss.dimensions === 1 ? '' : 's'}
-                      </p>
-                      <table className="w-full text-left text-[11px] border border-border rounded">
-                        <thead><tr className="text-muted-foreground"><th className="px-2 py-1">Dimension</th><th className="px-2 py-1">Hierarchy</th><th className="px-2 py-1">Count</th><th className="px-2 py-1">Sample</th></tr></thead>
-                        <tbody>
-                          {ret.preview.elementLoss.map(l => (
-                            <tr key={`${l.dimension}/${l.hierarchy}`} className="border-t border-border">
-                              <td className="px-2 py-1">{l.dimension}</td>
-                              <td className="px-2 py-1 text-muted-foreground">{l.hierarchy}</td>
-                              <td className="px-2 py-1">{l.count}</td>
-                              <td className="px-2 py-1 text-muted-foreground">{l.sample?.join(', ')}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {ret.preview && ret.preview.elementLoss?.length === 0 && (
-                    <p className="text-[11px] text-emerald-700">No element loss — every object on the target is in that release.</p>
-                  )}
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground">Type this to confirm</label>
+                    <label className="text-[11px] text-muted-foreground">Type the target name to confirm</label>
                     <input value={ret.confirm} onChange={e => setRet(r => ({ ...r, confirm: e.target.value }))}
-                      placeholder={ret.preview ? `Type exactly: ${ret.preview.confirmText}` : 'Reading the target…'}
+                      placeholder={drift?.server ?? ''}
                       className="w-full bg-muted border border-border rounded px-2 py-1 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
                   </div>
                   {ret.error && <p className="text-[11px] text-red-600 border border-red-600/40 rounded px-2 py-1">{ret.error}</p>}
                   <div className="flex items-center gap-2 pt-1">
                     <button
-                      onClick={doReturn}
-                      disabled={ret.busy || ret.loading || !ret.preview || ret.confirm.trim() !== ret.preview?.confirmText}
+                      onClick={doRestore}
+                      disabled={ret.busy || !ret.backupName.trim() || ret.confirm.trim() !== (drift?.server ?? '')}
                       className="px-3 py-1.5 text-xs rounded bg-red-700 text-white hover:bg-red-600 disabled:opacity-40"
                     >
-                      {ret.busy ? 'Returning…' : `Return ${drift?.server}`}
+                      {ret.busy ? 'Restoring…' : `Restore ${drift?.server}`}
                     </button>
                     <button onClick={() => setRet(null)} disabled={ret.busy} className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted">Cancel</button>
                     <span className="text-[10px] text-muted-foreground ml-auto">Administrators only</span>
@@ -255,15 +214,9 @@ export default function GitDrift({ server, onClose, embedded = false }) {
               {ret.result && (
                 <>
                   <div className="border border-emerald-600/30 bg-emerald-600/5 rounded px-3 py-2 space-y-1">
-                    <p className="text-xs font-semibold text-emerald-700">
-                      {ret.result.already ? 'Already holding the last release' : 'Returned to the last release'}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {ret.result.already
-                        ? `${drift?.server} already matched its last release — nothing was changed.`
-                        : `${(ret.result.applied ?? []).length} object(s) restored. Drift should now be clean; check it above.`}
-                    </p>
-                    {ret.result.historyError && <p className="text-[11px] text-amber-700">{ret.result.historyError}</p>}
+                    <p className="text-xs font-semibold text-emerald-700">Restored to {ret.result.tag}</p>
+                    <p className="text-[11px] text-muted-foreground">{ret.result.note}</p>
+                    {(ret.result.warnings ?? []).map((w, i) => <p key={i} className="text-[11px] text-amber-700">{w}</p>)}
                   </div>
                   <button onClick={() => setRet(null)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600">Done</button>
                 </>

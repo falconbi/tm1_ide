@@ -119,7 +119,7 @@ test("doubled quotes inside a name resolve in TI and in rules", () => {
 
 test('comments do not create writes, reads or rule sources', () => {
     const p = fixture.proc('P commented', "# CellPutN(1, 'Target', 'Jan', 'Amount');\n# CellGetN('Source');\n")
-    assert.deepEqual(scanProcess(p, ctx), { writes: [], reads: [], calls: [], dimWrites: [] })
+    assert.deepEqual(scanProcess(p, ctx), { writes: [], reads: [], calls: [], dimWrites: [], attrWrites: [], subsetOps: [], viewOps: [] })
     assert.deepEqual(scanRules("# DB('Ghost')\n[] = N: 1;"), {
         calc: [], calcEvidence: {}, feeders: [], feederEvidence: {},
     })

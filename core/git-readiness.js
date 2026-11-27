@@ -300,7 +300,7 @@ function _planCounts(operations) {
 // model) and RETURN TO LAST RELEASE (the same overwrite, aimed at an older tree).
 // The typed confirmation is generated here so neither can drift into a weaker
 // sentence than the other.
-async function compareTargetWithRepo(server, { commit, repoUrl, token, gitUser = gitIdentity.user(), ideToken, client } = {}) {
+async function compareTargetWithRepo(server, { commit, repoUrl, token, gitUser = gitIdentity.user(), ideToken, client, ignoreElements = null } = {}) {
     const c = client ?? _clientFor(server, { ideToken })
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'tm1compare-'))
     try {
@@ -346,7 +346,9 @@ async function compareTargetWithRepo(server, { commit, repoUrl, token, gitUser =
                 const targetElements = targetHierarchies.get(hierarchy)
                 if (!targetElements) continue
                 const inRepo = new Set(repoElements)
-                const missing = targetElements.filter(e => !inRepo.has(e))
+                // Elements the change set deliberately deletes are not "loss": the
+                // target still has them, the release is supposed to remove them.
+                const missing = targetElements.filter(e => !inRepo.has(e) && !(ignoreElements && ignoreElements(dim, e)))
                 if (missing.length) {
                     elementLoss.push({ dimension: dim, hierarchy, count: missing.length, sample: missing.slice(0, 8) })
                 }

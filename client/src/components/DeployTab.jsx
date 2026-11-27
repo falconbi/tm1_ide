@@ -1,39 +1,51 @@
-import { useState } from 'react'
-import { History, HardDriveDownload, FileCode2, GitCompare, Activity, GitBranch, HelpCircle, Rocket, ShieldCheck } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { History, FileCode2, GitCompare, Activity, GitBranch, HelpCircle, Rocket, RefreshCw, ServerCog } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store'
-import { useChangeSetSummary } from '@/hooks/useApi'
+import { useChangeSetSummary, useServerLogins } from '@/hooks/useApi'
 import HelpPanel from '@/components/HelpPanel'
 import DeployHistory from '@/components/DeployHistory'
-import DeployProtection from '@/components/DeployProtection'
 import LensDeploy from '@/components/LensDeploy'
 import GitDrift from '@/components/GitDrift'
 import ModelHealth from '@/components/ModelHealth'
 import GitSetup from '@/components/GitSetup'
-import DeployBaselines from '@/components/DeployBaselines'
 import DeployRelease from '@/components/DeployRelease'
+import DeploySync from '@/components/DeploySync'
+import DeployAdmin from '@/components/DeployAdmin'
 
 const NAV = [
-  { id: 'release',   label: 'Ready to ship', icon: Rocket, title: 'Change sets that can be released and deployed' },
+  { id: 'release',   label: 'Ready to deploy', icon: Rocket, title: 'Change sets that can be released and deployed' },
   { id: 'history',   label: 'History',      icon: History },
   { id: 'lenses',    label: 'Lenses',       icon: FileCode2, title: 'Ship model-owned Lenses to a target' },
-  { id: 'baselines', label: 'Baselines',    icon: HardDriveDownload, title: 'Bootstrap or recover a baseline' },
   { id: 'drift',     label: 'Drift',        icon: GitCompare, title: 'Compare a target with the version it was last given' },
   { id: 'health',    label: 'Model health', icon: Activity, title: 'Run the model tests and check readiness' },
-  { id: 'protection', label: 'Protection',   icon: ShieldCheck, title: 'Backup before every deploy' },
+  { id: 'sync',      label: 'Sync DEV',      icon: RefreshCw, title: 'Bring PROD\'s own changes onto DEV, separately from a deploy' },
   { id: 'setup',     label: 'GitHub setup', icon: GitBranch, title: 'Link a server to a GitHub repository' },
+  { id: 'admin',     label: 'Admin',         icon: ServerCog, title: 'Re-clone TEST, start again, or prepare DEV for restore' },
 ]
 
 export default function DeployTab() {
-  const { server, openDeployWizard } = useStore()
-  const [view, setView] = useState('release')
+  const { server } = useStore()
+  const [view, setView] = useState(() => useStore.getState().deployView ?? 'release')
   const [showHelp, setShowHelp] = useState(false)
+  const deployView = useStore(s => s.deployView)
+  // A screen can send the person here on a named view (Part Q / pre-deploy check).
+  useEffect(() => {
+    if (!deployView) return
+    setView(deployView)
+    useStore.getState().setDeployView(null)
+  }, [deployView])
   // Same shared definition the Release screen uses, so the badge cannot lie.
   const { ready } = useChangeSetSummary(server)
+  // The three resets are server-admin actions; hide the tab from everyone else.
+  // Sync DEV is admin-only server-side too (it writes to DEV and needs admin on both).
+  const { data: logins = [] } = useServerLogins()
+  const isAdmin = logins.some(l => String(l?.name ?? '').toLowerCase() === String(server ?? '').toLowerCase() && l?.isAdmin)
+  const nav = isAdmin ? NAV : NAV.filter(n => n.id !== 'admin' && n.id !== 'sync')
 
   if (!server) return <div className="p-4 text-sm text-muted-foreground">Select a server first.</div>
 
-  const title = NAV.find(n => n.id === view)?.label ?? 'History'
+  const title = nav.find(n => n.id === view)?.label ?? 'History'
   const openAssertions = () => window.dispatchEvent(new CustomEvent('tm1-open-assertions'))
 
   return (
@@ -54,13 +66,7 @@ export default function DeployTab() {
 
       <div className="flex flex-1 min-h-0">
         <div className="w-44 shrink-0 border-r border-border/50 flex flex-col py-3 gap-0.5 overflow-y-auto">
-          <button
-            onClick={() => openDeployWizard({ catchUp: true })}
-            className="flex items-center gap-2 px-4 py-2 text-xs text-left text-amber-600 hover:text-amber-500 hover:bg-muted/50 transition-colors"
-          >
-            <GitBranch size={13} /> Catch up a server…
-          </button>
-          {NAV.map(n => (
+          {nav.map(n => (
             <button
               key={n.id}
               onClick={() => setView(n.id)}
@@ -81,11 +87,17 @@ export default function DeployTab() {
             {view === 'release'   && <DeployRelease key={`release:${server}`} server={server} />}
             {view === 'history'   && <DeployHistory key={`history:${server}`} />}
             {view === 'lenses'    && <LensDeploy key={`lenses:${server}`} source={server} />}
-            {view === 'baselines' && <DeployBaselines key={`baselines:${server}`} defaultServer={server} />}
             {view === 'drift'     && <GitDrift key={`drift:${server}`} server={server} embedded onClose={() => {}} />}
             {view === 'health'    && <ModelHealth key={`health:${server}`} server={server} embedded onClose={() => {}} onOpenAssertions={openAssertions} />}
-            {view === 'protection' && <DeployProtection key={`protection:${server}`} />}
+            {view === 'sync' && isAdmin && <DeploySync key={`sync:${server}`} source={server} />}
+            {view === 'sync' && !isAdmin && (
+              <p className="p-6 text-xs text-muted-foreground">
+                Sync DEV from PROD is an admin action — it writes to {server} and needs admin on {server} and the target.
+                Ask an admin to run it.
+              </p>
+            )}
             {view === 'setup'     && <GitSetup key={`setup:${server}`} server={server} embedded onClose={() => {}} />}
+            {view === 'admin' && isAdmin && <DeployAdmin key={`admin:${server}`} server={server} />}
           </div>
         </div>
       </div>

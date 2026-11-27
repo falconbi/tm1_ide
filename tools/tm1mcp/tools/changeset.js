@@ -8,58 +8,6 @@ const { z } = require('zod')
 
 function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, ok, client }) {
     server.tool(
-        'seed_baseline',
-        'Snapshot the current server state as a new deployment baseline (append-only — nothing is overwritten). ' +
-        'Run this at the start of a release window and again AFTER a deploy. The snapshot is stamped with the ' +
-        'change-log position so releases window on change-set id, not a timestamp. Use list_baselines / ' +
-        'set_baseline_head to inspect history or roll the reference point back.',
-        {
-            label: z.string().optional().describe('Short label for this baseline, e.g. "post rev D" or "release 2026-09"'),
-        },
-        async ({ label }) => {
-            let seed
-            try { ({ seed } = require('../../../tools/tm1deploy/src/snapshot')) }
-            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`, { cause: e }) }
-            const extraMeta = { last_entry_id: cl.getMaxEntryId(SERVER) }
-            if (label) extraMeta.label = label
-            const result = await seed(SERVER, null, null, extraMeta)
-            const c = result?._meta?.counts ?? {}
-            return ok(`Baseline seeded from "${SERVER}" at ${result?._meta?.seeded_at ?? 'now'} ` +
-                `(change-log position ${result?._meta?.last_entry_id ?? '?'}${label ? `, "${label}"` : ''}) — ` +
-                `${c.dimensions ?? '?'} dims, ${c.cubes ?? '?'} cubes, ${c.processes ?? '?'} processes. Append-only; HEAD moved to it.`)
-        }
-    )
-
-    server.tool(
-        'list_baselines',
-        'List this server\'s append-only baseline history — timestamp, label, change-log position, object counts, and which one is HEAD.',
-        {},
-        async () => {
-            try {
-                const { listBaselines } = require('../../../tools/tm1deploy/src/diff')
-                const rows = listBaselines(SERVER)
-                return rows.length ? ok(rows) : ok(`No baselines for "${SERVER}" yet — run seed_baseline.`)
-            } catch (e) { throw new Error(`list failed: ${e.message}`, { cause: e }) }
-        }
-    )
-
-    server.tool(
-        'set_baseline_head',
-        'Move the baseline HEAD to an earlier snapshot from list_baselines. Reference-only — it does not touch the server, ' +
-        'it changes which baseline diff / release / drift compare against. Use it to recover from a mistimed seed_baseline.',
-        {
-            file: z.string().describe('Baseline file name from list_baselines, e.g. "2026-09-07T01-30-00-000Z.json"'),
-        },
-        async ({ file }) => {
-            try {
-                const { setBaselineHead } = require('../../../tools/tm1deploy/src/diff')
-                const r = setBaselineHead(SERVER, file)
-                return ok(`HEAD for "${SERVER}" → ${r.head} (position ${r._meta?.last_entry_id ?? '?'}, seeded ${r._meta?.seeded_at ?? '?'}).`)
-            } catch (e) { throw new Error(`set failed: ${e.message}`, { cause: e }) }
-        }
-    )
-
-    server.tool(
         'start_change_set',
         'Open a new change set on this server. Call this FIRST, before any model changes. Every create/update/delete is recorded against the open change set so it can be reviewed and deployed through the IDE pipeline.',
         {
@@ -100,7 +48,21 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                 }
             }
             const { closeChangeSet } = require('../../../core/change-set-service')
+            const { preCloseCheck, finalizeDevClose } = require('../../../core/close-check')
+            let closeCheck
+            try { closeCheck = await preCloseCheck(SERVER, s.id, { client: client() }) }
+            catch (e) { closeCheck = { ok: true, warning: e.message } }
+            if (closeCheck.ok === false) {
+                return ok({
+                    refused: `Cannot close: ${(closeCheck.stops ?? [closeCheck.error]).join('; ')}`,
+                    stops: closeCheck.stops ?? [],
+                    attributeTypeChanges: closeCheck.attributeTypeChanges ?? [],
+                    deletedUsage: closeCheck.deletedUsage ?? [],
+                })
+            }
             await closeChangeSet(s.id, { user: AGENT_USER, tests, client: client() })
+            let finalized
+            try { finalized = await finalizeDevClose(SERVER, s.id, { user: AGENT_USER }) } catch (e) { finalized = { ok: false, error: e.message } }
 
             // Overlap warning: another open change set touched the same objects.
             let overlapLine = ''
@@ -113,8 +75,9 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                 }
             } catch { /* overlap is advisory */ }
 
-            return ok(`Change set "${s.name}" (id ${s.id}) closed with ${entries.length} object change(s).${assertLine}${overlapLine}\n` +
-                `Next: package_change_set to build the deployable, then check_deploy_risk / check_target_drift against a target. Deploy is a human step (IDE Deploy panel).`)
+            return ok(`Change set "${s.name}" (id ${s.id}) closed with ${entries.length} object change(s).${assertLine}${overlapLine}` +
+                `${finalized?.commit ? `\nDEV After Close: ${finalized.commit}.` : finalized?.error ? `\nDEV After Close failed: ${finalized.error}` : ''}\n` +
+                `Next: pre_deploy_check, then Build Release in the IDE. Deploy is a human step.`)
         }
     )
 
@@ -131,78 +94,6 @@ function register(server, { SERVER, AGENT_USER, cl, assertions, runAssertions, o
                 (grouped[e.object_type] ??= []).push({ action: e.action, name: e.object_name, detail: e.detail })
             }
             return ok({ change_set: { id: s.id, name: s.name, started_at: s.started_at }, object_count: entries.length, changes: grouped })
-        }
-    )
-
-    server.tool(
-        'diff_change_set',
-        'Diff the open change set against the deployment baseline (if one has been seeded in the IDE). Use this to self-review before handing the model off for deployment.',
-        {},
-        async () => {
-            const s = cl.getActiveSession(SERVER, AGENT_USER)
-            if (!s) return ok(`No change set is open on "${SERVER}" for ${AGENT_USER}.`)
-            const entries = cl.getSessionLog(s.id)
-            let diffMod
-            try { diffMod = require('../../../tools/tm1deploy/src/diff') } catch { diffMod = null }
-            if (!diffMod || !diffMod.loadBaseline(null, SERVER)) {
-                return ok({
-                    note: `No baseline seeded for "${SERVER}" yet — call seed_baseline first for a full diff. Raw change set contents:`,
-                    changes: entries.map(e => ({ type: e.object_type, action: e.action, name: e.object_name, detail: e.detail })),
-                })
-            }
-            try {
-                const result = await diffMod.diff(SERVER, entries, undefined, null)
-                return ok(result)
-            } catch (e) {
-                throw new Error(`diff failed: ${e.message}`, { cause: e })
-            }
-        }
-    )
-
-    server.tool(
-        'package_change_set',
-        'Build a deployable package from the open change set (or, with release:true, every object changed since the baseline was seeded). Writes a self-contained folder under data/packages/ — the same artifact the IDE Deploy panel produces, including a bundled baseline. Does NOT deploy anything. Hand the returned path to a human to review and deploy, or run check_deploy_risk against a target first.',
-        {
-            release: z.boolean().optional().describe('Package every object changed since the baseline, not just the open change set'),
-        },
-        async ({ release }) => {
-            let pack
-            try { ({ pack } = require('../../../tools/tm1deploy/src/packager')) }
-            catch (e) { throw new Error(`Deploy tooling not available: ${e.message}`, { cause: e }) }
-
-            let entries, name
-            if (release) {
-                let base = null
-                try {
-                    const { loadBaseline } = require('../../../tools/tm1deploy/src/diff')
-                    base = loadBaseline(null, SERVER)
-                } catch { /* no baseline — fall back to all-time */ }
-                const sinceId = base?._meta?.last_entry_id
-                entries = sinceId != null
-                    ? cl.getEntriesSinceId(SERVER, sinceId)
-                    : cl.getEntriesSince(SERVER, base?._meta?.seeded_at ?? null)
-                name = `Release ${new Date().toISOString().slice(0, 10)}`
-            } else {
-                const s = cl.getActiveSession(SERVER, AGENT_USER)
-                if (!s) return ok(`No change set is open on "${SERVER}" for ${AGENT_USER}. Open one, or call with release:true.`)
-                entries = cl.getSessionLog(s.id)
-                name = s.name
-            }
-            if (!entries.length) return ok(`Nothing to package — no recorded changes${release ? ' since the baseline' : ' in the open change set'}.`)
-
-            try {
-                const result = await pack(SERVER, entries, name, {}, null)
-                if (!result.packaged) {
-                    return ok({ packaged: 0, outputDir: null, note: 'Every changed object already matches the baseline — nothing to deploy.' })
-                }
-                return ok({
-                    packaged:  result.packaged,
-                    skipped:   result.skipped,
-                    outputDir: result.outputDir,
-                    objects:   (result.manifest?.objects ?? []).map(o => ({ type: o.type, name: o.name, detail: o.detail ?? undefined, outcome: o.outcome })),
-                    next: 'Review this package. Deploy it from the IDE (Import Package tab if on another machine), or run check_deploy_risk / check_target_drift against a target first. This tool does not deploy.',
-                })
-            } catch (e) { throw new Error(`package failed: ${e.message}`, { cause: e }) }
         }
     )
 }

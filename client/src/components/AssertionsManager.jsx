@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 // assertions. List loads on open (cheap GET); runs are button-triggered.
 const authHeader = () => ({ 'x-ide-token': localStorage.getItem('tm1-token') ?? '' })
 
-const emptyForm = () => ({ description: '', why: '', mdx: '', expected: '', tolerance: '0.01', tags: '', kind: 'behaviour', severity: 'block' })
+const emptyForm = () => ({ description: '', why: '', mdx: '', expected: '', tolerance: '0.01', tags: '', kind: 'behaviour', severity: 'block', scope: 'logic', fixture: false, setup: '' })
 
 export default function AssertionsManager({ server, onClose }) {
   const [list,    setList]    = useState(null)
@@ -37,7 +37,7 @@ export default function AssertionsManager({ server, onClose }) {
 
   const beginAdd = () => { setForm(emptyForm()); setEditId(null); setAdding(true) }
   const beginEdit = a => {
-    setForm({ description: a.description ?? '', why: a.why ?? '', mdx: a.mdx ?? '', expected: String(a.expected ?? ''), tolerance: String(a.tolerance ?? '0.01'), tags: (a.tags ?? []).join(', '), kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block' })
+    setForm({ description: a.description ?? '', why: a.why ?? '', mdx: a.mdx ?? '', expected: String(a.expected ?? ''), tolerance: String(a.tolerance ?? '0.01'), tags: (a.tags ?? []).join(', '), kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block', scope: a.scope ?? 'logic', fixture: a.fixture === true, setup: a.setup?.process ?? '' })
     setEditId(a.id); setAdding(false)
   }
   const cancelForm = () => { setForm(emptyForm()); setAdding(false); setEditId(null) }
@@ -51,6 +51,9 @@ export default function AssertionsManager({ server, onClose }) {
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       kind: form.kind === 'control' ? 'control' : 'behaviour',
       severity: form.severity === 'warn' ? 'warn' : 'block',
+      scope: form.scope === 'quality' ? 'quality' : 'logic',
+      fixture: !!form.fixture,
+      setup: form.setup?.trim() ? form.setup.trim() : (editId ? null : undefined),
       changeSet: editId ? undefined : activeSessionId,
     }
     try {
@@ -156,8 +159,21 @@ export default function AssertionsManager({ server, onClose }) {
                 <label className="text-[10px] text-muted-foreground w-8 shrink-0 ml-2">Tags</label>
                 <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="comma, separated" className={cn(input, 'flex-1')} />
               </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-muted-foreground w-20 shrink-0">Scope</label>
+                <select value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value }))} className={cn(input, 'w-24')}>
+                  <option value="logic">logic</option>
+                  <option value="quality">quality</option>
+                </select>
+                <label className="flex items-center gap-1 text-[10px] text-muted-foreground ml-2">
+                  <input type="checkbox" checked={!!form.fixture} onChange={e => setForm(f => ({ ...f, fixture: e.target.checked }))} />
+                  needs its own data
+                </label>
+                <label className="text-[10px] text-muted-foreground w-10 shrink-0 ml-2">Setup</label>
+                <input value={form.setup} onChange={e => setForm(f => ({ ...f, setup: e.target.value }))} placeholder="process name (optional)" className={cn(input, 'flex-1')} />
+              </div>
               <div className="text-[10px] text-muted-foreground leading-relaxed">
-                <span className="text-foreground">Kind</span> — behaviour: a specific value on DEV. control: a rule that must always hold (DEV + PROD). &nbsp; <span className="text-foreground">Severity</span> — block: stops the flow. warn: just flags.
+                <span className="text-foreground">Scope</span> — logic: runs at close, and on PROD only when it needs no data. quality: a PROD/TEST data check, never gates. &nbsp; <span className="text-foreground">Fixture</span> — the test writes its own data (Setup process) and runs only where that data lives. &nbsp; <span className="text-foreground">Severity</span> — block: stops the flow. warn: just flags.
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={submit} className="flex items-center gap-1 px-3 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"><Check size={12} /> Save</button>
@@ -180,6 +196,8 @@ export default function AssertionsManager({ server, onClose }) {
                     <span className="block text-[10px] text-muted-foreground mt-0.5">
                       <span className={cn('font-semibold', (a.kind ?? 'behaviour') === 'control' ? 'text-amber-600' : 'text-foreground/70')}>{a.kind ?? 'behaviour'}</span>
                       <span className={cn('ml-1', (a.severity ?? 'block') === 'warn' ? 'text-amber-600' : 'text-foreground/70')}>· {(a.severity ?? 'block')}</span>
+                      <span className={cn('ml-1', (a.scope ?? 'logic') === 'quality' ? 'text-sky-600' : 'text-foreground/70')}>· {a.scope ?? 'logic'}</span>
+                      {a.fixture && <span className="ml-1 text-violet-600">· fixture</span>}
                       {` · expected ${a.expected}${a.tolerance != null ? ` ± ${a.tolerance}` : ''}`}
                       {a.tags?.length > 0 && ` · ${a.tags.map(t => `# ${t}`).join('  ')}`}
                     </span>
@@ -225,6 +243,15 @@ export default function AssertionsManager({ server, onClose }) {
                         <option value="warn">warn</option>
                       </select>
                       <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} className={cn(input, 'flex-1')} />
+                      <select value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value }))} className={cn(input, 'w-24')}>
+                        <option value="logic">logic</option>
+                        <option value="quality">quality</option>
+                      </select>
+                      <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <input type="checkbox" checked={!!form.fixture} onChange={e => setForm(f => ({ ...f, fixture: e.target.checked }))} />
+                        fixture
+                      </label>
+                      <input value={form.setup} onChange={e => setForm(f => ({ ...f, setup: e.target.value }))} placeholder="setup process" className={cn(input, 'w-40')} />
                       <button onClick={submit} className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90"><Check size={11} /> Save</button>
                       <button onClick={cancelForm} className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-muted">Cancel</button>
                     </div>

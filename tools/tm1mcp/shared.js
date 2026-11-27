@@ -165,7 +165,7 @@ function requireChangeSet() {
 }
 
 // ── Target allowlist for the read-only check tools ────────────────────────────
-// check_deploy_risk / check_target_drift accept any `target` name and would
+// pre_deploy_check accepts any `target` name and would
 // otherwise open a read connection to whatever server the AI names — including
 // PROD. Refuse any target not in: the bound SERVER ∪ TM1_MCP_ALLOWED_TARGETS
 // (comma-separated env override) ∪ config/servers.json "mcpAllowTargets".

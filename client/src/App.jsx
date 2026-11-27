@@ -24,10 +24,11 @@ import UserManagement from '@/components/UserManagement'
 import ServerLoginDialog from '@/components/ServerLoginDialog'
 import CatalogAdmin from '@/components/CatalogAdmin'
 import AssertionsManager from '@/components/AssertionsManager'
-import DeployWizard from '@/components/DeployWizard'
 import DeployFlow from '@/components/DeployFlow'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import DeployReport from '@/components/DeployReport'
 import { useIsSimple, useServerLogins } from '@/hooks/useApi'
+import { get } from '@/lib/api'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -49,11 +50,12 @@ function AdminOnly({ server, children }) {
 }
 
 export default function App() {
-  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, deployWizard, closeDeployWizard, server, token, clearAuth } = useStore()
+  const { loadForge, formatSettingsOpen, setFormatSettingsOpen, openTab, server, token, clearAuth } = useStore()
   const layout         = useStore(s => s.layout)
   // Keyed on the change set: opening the flow for another set must start clean
   // without a reset effect.
   const shipSessionId  = useStore(s => s.ship?.session?.id ?? 'none')
+  const shipTarget     = useStore(s => s.ship?.target ?? '')
   const revealTarget   = useStore(s => s.revealTarget)
 
   // Recursive render of the nested-split layout tree.
@@ -155,6 +157,22 @@ const [showCatalog, setShowCatalog]           = useState(false)
 
   useEffect(() => { if (token) loadForge() }, [token])
 
+  // Parts K.2 / E.6 — on connect, warn when DEV no longer matches its last write
+  // into `dev` while a change set is open, and about any chore left switched on.
+  useEffect(() => {
+    if (!token || !server) return
+    let live = true
+    get(`/api/deploy/connect-check?server=${encodeURIComponent(server)}`)
+      .then(d => {
+        if (!live) return
+        for (const w of d?.warnings ?? []) {
+          toast.warning(w.message, { id: `connect-${w.code}`, duration: 10_000 })
+        }
+      })
+      .catch(() => { /* a warning that cannot run is not an error */ })
+    return () => { live = false }
+  }, [token, server])
+
   // Closing the browser tab must not silently discard unsaved editor buffers.
   useEffect(() => {
     const warn = (e) => {
@@ -233,6 +251,7 @@ const [showCatalog, setShowCatalog]           = useState(false)
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <ErrorBoundary>
         <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
 
           {/* ── Header ───────────────────────────────────────────────────── */}
@@ -390,12 +409,12 @@ const [showCatalog, setShowCatalog]           = useState(false)
         <AdminOnly server={server}>{showUserMgmt && <UserManagement server={server} onClose={() => setShowUserMgmt(false)} />}</AdminOnly>
         {showCatalog && <CatalogAdmin server={server} onClose={() => setShowCatalog(false)} />}
         {showAssertions && <AssertionsManager server={server} onClose={() => setShowAssertions(false)} />}
-        <DeployFlow key={shipSessionId} />
+        <DeployFlow key={`${shipSessionId}:${shipTarget}`} />
         <DeployReport />
-        {deployWizard && <DeployWizard server={server} initialSession={deployWizard.session} release={!!deployWizard.release} catchUp={!!deployWizard.catchUp} catchUpTarget={deployWizard.catchUpTarget ?? null} onClose={closeDeployWizard} onOpenTests={() => { setShowAssertions(true); closeDeployWizard() }} />}
         <PeriodBuilder open={showPeriodBuilder} onClose={() => setShowPeriodBuilder(false)} />
         <ServerLoginDialog />
         <Toaster position="bottom-right" duration={3000} />
+        </ErrorBoundary>
       </TooltipProvider>
     </QueryClientProvider>
   )

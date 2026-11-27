@@ -1,7 +1,7 @@
 'use strict'
 
 function register(app, deps) {
-    const { _GI, _GITOK, cl, deployLoadBaseline, deploySeed, fail, fs, gateReadOnly, gitSecrets, listServers, makeClient, path, requireTm1Admin } = deps
+    const { _GI, _GITOK, cl, deployLoadBaseline, deploySeed, fail, fs, gateReadOnly, gateWrite, gitSecrets, listServers, makeClient, path, requireTm1Admin } = deps
 
 app.post('/api/deploy/pre-delete-check', async (req, res) => {
     try {
@@ -106,6 +106,42 @@ app.post('/api/deploy/git/prepare', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Part D — the pre-deploy check. Read-only on the target and DEV: the target
+// writes its own objects into Git, the IDE writes its attributes branch, and the
+// two snapshots are compared with what the target last received. It does not
+// build a release or change anything on either server.
+app.post('/api/deploy/pre-check', async (req, res) => {
+    try {
+        const { target, source, windowMinutes } = req.body ?? {}
+        if (!target) return res.status(400).json({ error: 'target required' })
+        const { preDeployCheck } = require('../core/pre-deploy')
+        let ownAccount = null
+        try { ownAccount = require('../core/paw-connect').getServerCredentials(req.ideToken, target)?.username ?? null } catch { /* unknown */ }
+        res.json(await preDeployCheck(target, {
+            source: source ?? null, session: req.body?.session ?? null,
+            token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
+            windowMinutes: Number(windowMinutes) || 30, ownAccount,
+        }))
+    } catch (e) { fail(res, e) }
+})
+
+// Part D.4 — bring PROD's version of a rule or process onto DEV, in a new
+// `carry-back` change set. Writes only to DEV, through TM1's REST API.
+app.post('/api/deploy/carry-back', async (req, res) => {
+    try {
+        const { source, target, objects, name } = req.body ?? {}
+        if (!source || !target) return res.status(400).json({ error: 'source (DEV) and target required' })
+        if (!gateWrite(res, source)) return
+        const { bringToDev } = require('../core/carry-back')
+        const r = await bringToDev({
+            target, dev: source, objects: Array.isArray(objects) ? objects : [], user: req.user, name: name ?? null,
+        }, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken })
+        if (r.refused) return res.status(409).json(r)
+        if (r.ok === false) return res.status(400).json(r)
+        res.json(r)
+    } catch (e) { fail(res, e) }
+})
+
 app.post('/api/deploy/git/execute', async (req, res) => {
     try {
         // Not gated by read-only: a recorded approval (enforced inside execute(),
@@ -115,17 +151,46 @@ app.post('/api/deploy/git/execute', async (req, res) => {
         if (!target) return res.status(400).json({ error: 'target required' })
         const result = await execute(target, { branch, token: _GITOK(), ideToken: req.ideToken, source, by: req.user, session, backupAt })
         if (result?.missingSource) return res.status(400).json({ error: result.error })
-        if (result?.approvalSession && result?.executed && result?.controlOk) {
+        // A deploy that reached the target is recorded either way: `complete` only
+        // when every after-pull step landed, `incomplete` when one did not
+        // (Part I.8). The change set then says exactly that until an admin fixes it.
+        if (result?.approvalSession && result?.executed) {
             try {
-                cl.markSessionDeployed(result.approvalSession, target)
-                // A clean catch-up deploy also marks the older sets it carried as
-                // covered, so in-order releasing starts clean.
-                const { markCoveredAfterDeploy } = require('../core/change-set-service')
-                result.coveredDeployed = await markCoveredAfterDeploy(result.approvalSession, { ideToken: req.ideToken })
+                const clean = !!result.controlOk
+                    && !(result.incomplete?.length)
+                    && !(result.subsetsViews?.errors?.length)
+                    && !result.incompleteCheckError
+                    && !result.needsChecking
+                cl.markSessionDeployed(result.approvalSession, target, {
+                    status: clean ? 'complete' : 'incomplete',
+                    status_reason: clean ? null : (result.needsChecking
+                        ? `Needs checking: DEV's tests on ${target} failed — ${(result.needsCheckingTests ?? []).join(', ') || 'see the deploy report'}`
+                        : (result.error ?? 'one or more after-pull steps failed')),
+                    release_commit: result.releaseCommit ?? null,
+                    base_commit: result.baseCommit ?? null,
+                    attrs_commit: result.attrsCommit ?? null,
+                    backup_tag: result.backup?.tag ?? null,
+                    by: req.user ?? null,
+                })
             } catch { /* the deploy itself stands; the link is best-effort */ }
         }
         res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Part Q.3 — the developer has tested by hand on the target and confirms it.
+// This writes only the deploy record (never the model or security).
+app.post('/api/deploy/git/signoff', async (req, res) => {
+    try {
+        const { target, commit, note } = req.body ?? {}
+        if (!target || !commit) return res.status(400).json({ error: 'target and commit required' })
+        const { updateSignoff } = require('../core/deploy-records')
+        const rec = await updateSignoff(target, commit, {
+            by: req.user ?? null, note: note ?? null,
+        }, { ideToken: req.ideToken })
+        if (!rec) return res.status(404).json({ error: `No deploy record for ${target} at ${commit}.` })
+        res.json(rec)
+    } catch (e) { fail(res, e) }
 })
 
 // Refresh DEV from PROD, dimensions first. The plan compares both servers live;
@@ -257,57 +322,28 @@ app.post('/api/deploy/git/loss', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Return a target to the release it last received. The recovery for a pull that
-// died part-way. Admin only, under the deploy lock, with the target name typed
-// as the confirmation, and recorded in the target's deploy history.
-// What a return would remove, in the same words the first pull uses. Read-only.
-app.get('/api/deploy/git/return/preview', async (req, res) => {
+// Part J — recovery is a restore from the backup taken before the deploy, not
+// "return to last release" (removed: it lost the deploy's data and took no
+// backup). Admin only; chooses the backup by name; moves the release line, the
+// deploy note and the attributes branch back to that backup's tag.
+app.post('/api/deploy/git/restore-from-backup', async (req, res) => {
     try {
-        const { target } = req.query
+        const { target, backupName, confirm } = req.body
         if (!target) return res.status(400).json({ error: 'target required' })
         if (!(await requireTm1Admin(req, res, target))) return
-        const { returnPreview } = require('../core/git-rollback')
-        res.json(await returnPreview(target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken }))
-    } catch (e) {
-        res.status(e.refused ? 409 : 500).json({ error: e.message })
-    }
-})
-
-app.post('/api/deploy/git/return', async (req, res) => {
-    try {
-        const { target, confirm, reason } = req.body
-        if (!target) return res.status(400).json({ error: 'target required' })
-        if (!(await requireTm1Admin(req, res, target))) return
-        const { returnToLastRelease } = require('../core/git-rollback')
-        const r = await returnToLastRelease(target, {
-            token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
-            by: req.user ?? null, confirm, reason,
+        if (!String(backupName ?? '').trim()) {
+            return res.status(400).json({ error: 'Choose the backup by name (the file the deploy recorded, e.g. PROD_2026-11-27_1000.zip).' })
+        }
+        if (String(confirm ?? '').trim() !== target) {
+            return res.status(400).json({ error: `Type the target name (${target}) to confirm the restore.` })
+        }
+        const { restoreFromBackup } = require('../core/restore-backup')
+        const r = await restoreFromBackup(target, {
+            backupName, token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken, by: req.user ?? null,
         })
-        // A restore is a deployment-shaped event: write the same kind of report.
-        try {
-            const { record } = require('../core/deploy-records')
-            r.report = await record({
-                target,
-                outcome: 'restored',
-                executed: true,
-                source: null,
-                branch: `restore-${target}`,
-                baseCommit: r.from ?? null,
-                targetCommit: r.to ?? null,
-                shippedObjects: [],
-                drift: null,
-                error: null,
-                errorNote: null,
-                restoredFrom: r.from ?? null,
-                restoreCommit: r.restoreCommit ?? null,
-                applied: r.applied ?? [],
-            }, { ideToken: req.ideToken, startedAt: new Date().toISOString() })
-        } catch { /* the restore itself stands */ }
+        if (!r.ok) return res.status(409).json({ error: r.error, ...r })
         res.json(r)
-    } catch (e) {
-        const status = e.refused ? 409 : 500
-        res.status(status).json({ error: e.message })
-    }
+    } catch (e) { fail(res, e) }
 })
 
 app.post('/api/deploy/git/push', async (req, res) => {
@@ -342,40 +378,6 @@ app.post('/api/deploy/git/push', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Targets with a recorded deployed commit — the only ones a catch-up can bring
-// level. Admin-only: the catch-up is an explicit, reviewed whole-model release.
-app.get('/api/deploy/git/catch-up/targets', async (req, res) => {
-    try {
-        const source = req.query.source
-        if (!source) return res.status(400).json({ error: 'source required' })
-        if (!(await requireTm1Admin(req, res, source))) return
-        const { lastDeployed } = require('../core/git-state')
-        const targets = (listServers() ?? [])
-            .filter(t => t !== source)
-            .map(target => ({ target, ...(lastDeployed(target) ?? {}) }))
-            .filter(t => t.lastDeployedCommit)
-            .map(({ target, lastDeployedCommit, at }) => ({ target, lastDeployedCommit, at: at ?? null }))
-        res.json({ source, targets })
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-// Start a catch-up: a TM1 admin types the sentence and the server creates the
-// closed, empty catch-up change set. It builds like any other release after.
-app.post('/api/deploy/git/catch-up', async (req, res) => {
-    try {
-        const { source, target, confirm } = req.body
-        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
-        if (!(await requireTm1Admin(req, res, source))) return
-        const { startCatchUp } = require('../core/git-catchup')
-        const r = await startCatchUp({
-            source, target, confirm, user: req.user,
-            token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
-        })
-        if (r.refused) return res.status(409).json({ error: r.error })
-        res.json(r)
-    } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
 app.post('/api/deploy/git/release', async (req, res) => {
     try {
         const { target, session } = req.body
@@ -385,8 +387,35 @@ app.post('/api/deploy/git/release', async (req, res) => {
         if (changeSet.wont_deploy_at) {
             return res.status(409).json({ error: `Change set "${changeSet.name}" is retired as a phantom change set — restore it before releasing.` })
         }
-        const catchUp = changeSet.kind === 'catch-up'
-        if (catchUp && !(await requireTm1Admin(req, res, changeSet.server))) return
+        if (changeSet.kind === 'sync') {
+            return res.status(409).json({ error: `"${changeSet.name}" is a sync change set — it brings PROD's changes onto DEV and is never deployed. Build a release for the change set that owns the work.` })
+        }
+        // Part D.4.3/4.4 — a carry-back is already on PROD. Building a release
+        // for PROD is a no-op (PROD needs nothing); it deploys to TEST normally.
+        if (changeSet.kind === 'carry-back') {
+            const label = await require('../core/test-cycle').labelOf(target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken })
+            if (label === 'PROD' || (!label && /prod/i.test(String(target)))) {
+                return res.json({
+                    ok: true, noChange: true, alreadyOnProd: true, target,
+                    reason: `"${changeSet.name}" is already on PROD — it brought PROD's own text onto DEV. PROD needs nothing; deploy it to TEST normally.`,
+                })
+            }
+        }
+        // Part A.6: a target that already received this change set needs no new
+        // release. (An `incomplete` deploy may be rebuilt — the fix may be a
+        // corrected release, and the pre-deploy check will see the target's own
+        // corrections as its changes.)
+        if (cl.hasCompleteDeploy(changeSet.id, target)) {
+            return res.status(409).json({ error: `"${changeSet.name}" is already deployed to ${target} — build a release for another target, or start a new change set.` })
+        }
+        // Catch-up was removed: the only way to bring a server level is a normal
+        // change set built from that server's own copy (step 4). An old catch-up
+        // record cannot be rebuilt.
+        if (changeSet.kind === 'catch-up') {
+            return res.status(409).json({
+                error: `Catch-up has been removed. "${changeSet.name}" is a historical record; start a normal change set and deploy it.`,
+            })
+        }
         const { buildRelease } = require('../core/git-release')
         const addObjects = Array.isArray(req.body.addObjects) ? req.body.addObjects : []
         // "Keep <target>'s version" at Review: the objects the approver decided
@@ -394,7 +423,7 @@ app.post('/api/deploy/git/release', async (req, res) => {
         const excludeObjects = Array.isArray(req.body.excludeObjects) ? req.body.excludeObjects : []
         const r = await buildRelease(changeSet, target, {
             token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken,
-            addObjects, excludeObjects, by: req.user ?? null, catchUp,
+            addObjects, excludeObjects, by: req.user ?? null,
             resetIncludes: req.body.resetIncludes === true,
         })
         if (r.refused) return res.status(409).json({ error: r.error })
@@ -406,8 +435,11 @@ app.post('/api/deploy/git/release', async (req, res) => {
             addedByUser: r.addedByUser,
             addedAsDependency: r.addedAsDependency,
             excludedByUser: r.excludedByUser,
-            coveredSets: catchUp ? (r.coveredSets ?? []).map(s => s.id) : undefined,
-            targetOnly: catchUp ? r.targetOnly : undefined,
+            targetNotes: r.targetNotes,
+            attrsPlan: r.attributePlan,
+            liveCommit: r.liveCommit,
+            attrsLiveCommit: r.liveAttrsCommit,
+            by: req.user ?? null,
         })
         res.json(r)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -427,9 +459,12 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         }
         let tests = null
         try { tests = linkedSession.close_tests ? JSON.parse(linkedSession.close_tests) : null } catch { tests = null }
-        // A catch-up is created closed and empty; it has no change set to test.
-        // Every ordinary release still needs a recorded, clean test result.
-        if (linkedSession.kind !== 'catch-up' && (!tests || tests.blocking > 0)) {
+        // Every release needs a recorded, clean test result. (A catch-up record has
+        // none, and cannot be approved: catch-up was removed.)
+        if (linkedSession.kind === 'catch-up') {
+            return res.status(409).json({ error: `Catch-up has been removed — "${linkedSession.name}" cannot be approved. Start a normal change set.` })
+        }
+        if (!tests || tests.blocking > 0) {
             return res.status(409).json({ error: `Refused: the change set for commit ${commit} has failing block-severity tests. Fix and re-close before approving.` })
         }
         // Dependency check before approval: rules must CheckRules clean on the target
@@ -437,19 +472,9 @@ app.post('/api/deploy/git/approve', async (req, res) => {
         // change set (release that change set first, then rebuild this release).
         if (linkedSession.release_commit) {
             const { checkDependencies } = require('../core/git-release')
-            const dep = await checkDependencies(linkedSession.release_commit, target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken, catchUp: linkedSession.kind === 'catch-up' })
+            const dep = await checkDependencies(linkedSession.release_commit, target, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken })
             if (!dep.ok) {
                 return res.status(409).json({ error: `Refused: the release has failing dependencies — ${(dep.blockers ?? []).map(b => `${b.object}: ${b.message}`).join(' | ') || dep.error}`, blockers: dep.blockers ?? [] })
-            }
-        }
-        const parseList = (text) => { try { return text ? JSON.parse(text) : [] } catch { return [] } }
-        const keyOf = (o) => `${o.type}|${o.name}|${o.parent ?? ''}|${o.hierarchy ?? ''}`
-        const requestedDeletes = linkedSession.kind === 'catch-up' && Array.isArray(req.body.deletes) ? req.body.deletes : []
-        if (requestedDeletes.length) {
-            const allowed = new Set(parseList(linkedSession.release_target_only).map(keyOf))
-            const bad = requestedDeletes.filter(d => !allowed.has(keyOf(d)))
-            if (bad.length) {
-                return res.status(409).json({ error: `Refused: ${bad.map(keyOf).join(', ')} is not in this catch-up's target-only list.` })
             }
         }
         // What the person was shown and said yes to, when the Ship dialog stopped
@@ -477,6 +502,7 @@ app.post('/api/deploy/git/approve', async (req, res) => {
                 })),
             }
             : null
+        const parseList = (text) => { try { return text ? JSON.parse(text) : [] } catch { return [] } }
         const rec = await approvals.append({
             id: new Date().toISOString(), approved_at: new Date().toISOString(),
             approver: req.user ?? 'unknown', notes: note ?? '',
@@ -486,7 +512,6 @@ app.post('/api/deploy/git/approve', async (req, res) => {
             excludedByUser: parseList(linkedSession.release_excluded_by_user),
             lossAck,
             typeAck,
-            deletes: requestedDeletes,
         }, { ideToken: req.ideToken })
         res.json(rec)
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -535,7 +560,9 @@ app.get('/api/git/setup/status', async (req, res) => {
         const server = req.query?.server
         if (!server) return res.status(400).json({ error: 'server required', tokenSource })
         const st = await makeClient(server, req.ideToken).post('GitStatus', { Username: _GI().user(), Password: _GITOK() })
-        res.json({ linked: !!st?.URL, repoUrl: st?.URL ?? null, deployment: st?.Deployment ?? null, connected: st?.Remote?.Connected ?? false, tokenSource })
+        const { attrsBranch } = require('../core/git-attrs')
+        const branches = st?.Remote?.Branches ?? []
+        res.json({ linked: !!st?.URL, repoUrl: st?.URL ?? null, deployment: st?.Deployment ?? null, connected: st?.Remote?.Connected ?? false, branches, attrsBranch: attrsBranch(server), tokenSource })
     } catch (e) {
         res.status(502).json({
             error: `${e.message} — the token may have expired; it needs Contents: Read and write on the repo`,
@@ -604,6 +631,129 @@ app.post('/api/git/setup/first-pull', async (req, res) => {
     } catch (e) { fail(res, e) }
 })
 
+// Part C — setup. Link (if needed), let TM1 write its OWN objects into Git, record
+// a target's own write as Last Deployed, and write the attributes initialisation
+// commit. Nothing is pulled onto the server.
+app.post('/api/git/setup/start', async (req, res) => {
+    try {
+        const { server, repo, deployment, force, attrsOnly } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const mod = require('../core/git-setup')
+        const opts = { repo, deployment, force, gitUser: _GI().user(), token: _GITOK(), ideToken: req.ideToken, by: req.user ?? null }
+        const r = attrsOnly ? await mod.startAttrs(server, opts) : await mod.setupServer(server, opts)
+        if (r.refused) return res.status(409).json({ error: r.error })
+        if (r.ok === false) return res.status(500).json({ error: r.error })
+        res.json(r)
+    } catch (e) { fail(res, e) }
+})
+
+// Part M — start again with a new repository for one server. Refuses while a
+// closed, undeployed change set exists; clears the deploy note in both places.
+app.post('/api/deploy/start-again', async (req, res) => {
+    try {
+        const { server } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!(await requireTm1Admin(req, res, server))) return
+        const { startAgain } = require('../core/deploy-admin')
+        const r = await startAgain(server, { ideToken: req.ideToken, by: req.user ?? null })
+        if (r.refused) return res.status(409).json({ error: r.error, ...r })
+        res.json(r)
+    } catch (e) { fail(res, e) }
+})
+
+// Part K.2 / E.6 — read-only warnings shown when the IDE connects to a server.
+app.get('/api/deploy/connect-check', async (req, res) => {
+    try {
+        const { server } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { connectCheck } = require('../core/connect-check')
+        res.json(await connectCheck(server, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken }))
+    } catch (e) { fail(res, e) }
+})
+
+// Part L — the open TEST cycle and its change sets, derived from what happened.
+// Read-only; the Deploy tab shows it for the selected target.
+app.get('/api/deploy/test-cycle', async (req, res) => {
+    try {
+        const { server } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { deriveCycle, labelOf } = require('../core/test-cycle')
+        const label = await labelOf(server, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken })
+        res.json({ ...deriveCycle(server), server, label })
+    } catch (e) { fail(res, e) }
+})
+
+// Part L.3 — TEST was re-cloned from PROD outside the IDE. Any admin may run it.
+app.post('/api/deploy/reclone-test', async (req, res) => {
+    try {
+        const { server } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!(await requireTm1Admin(req, res, server))) return
+        const { recloneTest } = require('../core/deploy-admin')
+        const r = await recloneTest(server, {
+            token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken, by: req.user ?? null,
+        })
+        if (r.ok === false) return res.status(409).json({ error: r.error, ...r })
+        res.json(r)
+    } catch (e) { fail(res, e) }
+})
+
+// Part K.1 — prepare DEV for a restore/re-clone. Refuses while a set is open.
+app.post('/api/deploy/prepare-dev-restore', async (req, res) => {
+    try {
+        const { server } = req.body
+        if (!server) return res.status(400).json({ error: 'server required' })
+        if (!(await requireTm1Admin(req, res, server))) return
+        const { prepareDevRestore } = require('../core/deploy-admin')
+        const r = prepareDevRestore(server)
+        if (r.refused) return res.status(409).json({ error: r.error, ...r })
+        res.json(r)
+    } catch (e) { fail(res, e) }
+})
+
+app.get('/api/git/setup/label', async (req, res) => {
+    try {
+        const { server } = req.query
+        if (!server) return res.status(400).json({ error: 'server required' })
+        const { gitLabel } = require('../core/git-setup')
+        res.json({ server, ...(await gitLabel(server, { token: _GITOK(), gitUser: _GI().user(), ideToken: req.ideToken })) })
+    } catch (e) { fail(res, e) }
+})
+
+// Part E — Sync DEV from PROD. Separate from a deploy: writes PROD's own changes
+// onto DEV in a `sync` change set (which owns nothing and is never deployed),
+// closes it, and records DEV After Close. Admin only; default is take PROD's.
+app.post('/api/deploy/sync', async (req, res) => {
+    try {
+        const { source, target, untick } = req.body ?? {}
+        if (!source || !target) return res.status(400).json({ error: 'source (DEV) and target (PROD) required' })
+        if (!(await requireTm1Admin(req, res, source))) return
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { syncDevFromProd } = require('../core/sync-dev')
+        const r = await syncDevFromProd(source, target, {
+            ideToken: req.ideToken, token: _GITOK(), gitUser: _GI().user(),
+            by: req.user ?? null, user: req.user ?? null,
+            untick: Array.isArray(untick) ? untick : [],
+        })
+        if (r.error && r.refused) return res.status(409).json({ error: r.error, ...r })
+        res.json(r)
+    } catch (e) { fail(res, e) }
+})
+
+// Preview the sync: PROD's own changes, before anything is written, so the admin
+// can untick items. Read-only.
+app.get('/api/deploy/sync/plan', async (req, res) => {
+    try {
+        const { source, target } = req.query
+        if (!source || !target) return res.status(400).json({ error: 'source and target required' })
+        if (!(await requireTm1Admin(req, res, source))) return
+        if (!(await requireTm1Admin(req, res, target))) return
+        const { planRefresh } = require('../core/refresh-dev')
+        const plan = await planRefresh(source, target, { ideToken: req.ideToken })
+        res.json({ source, target, ...plan })
+    } catch (e) { fail(res, e) }
+})
+
 app.post('/api/deploy/seed', async (req, res) => {
     try {
         const { server, label } = req.body
@@ -623,7 +773,6 @@ app.get('/api/deploy/git/history', async (req, res) => {
         const state = require('../core/git-state').load()[target] ?? null
         const approvals = await require('../core/git-approvals').readFor(target, { ideToken: req.ideToken })
         // Link each approval to its change set so History can show the kind
-        // (a catch-up reads "Catch-up", not an ordinary change set).
         const enriched = approvals.map(a => {
             const session = a.session ? cl.getSession(a.session) : null
             return { ...a, sessionName: session?.name ?? null, sessionKind: session?.kind ?? null }

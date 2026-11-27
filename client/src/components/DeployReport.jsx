@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { FileText, X, Loader2, Copy, AlertTriangle, CheckCircle2, Ban } from 'lucide-react'
 import { request, authHeader } from '@/lib/api'
@@ -50,7 +50,7 @@ function toMarkdown(r) {
   if (r.finishedAt) lines.push(`- When: ${fmt(r.finishedAt)}${r.durationMs != null ? ` · ${(r.durationMs / 1000).toFixed(1)}s` : ''}`)
   if (r.error) lines.push(`- Message: ${r.error}`)
   lines.push('')
-  lines.push(`## What shipped (${r.objects?.length ?? 0})`)
+  lines.push(`## What was deployed (${r.objects?.length ?? 0})`)
   if (!r.objects?.length) lines.push('_No object list recorded._')
   for (const o of r.objects ?? []) lines.push(`- ${o.type} · ${label(o)}`)
   if (r.checks) {
@@ -79,6 +79,26 @@ function toMarkdown(r) {
     lines.push('## Objects not confirmed')
     for (const x of r.incomplete) lines.push(`- ${x}`)
   }
+  if (r.feeders) {
+    lines.push('')
+    lines.push('## Feeders reprocessed')
+    for (const c of r.feeders.cubes ?? []) lines.push(`- ${c.cube}: ${c.ms} ms`)
+    for (const c of r.feeders.failed ?? []) lines.push(`- FAILED ${c.cube}: ${c.error}`)
+  }
+  if (r.devTests) {
+    lines.push('')
+    lines.push('## Logic checks on the target')
+    lines.push(r.devTests.error ? `- errored: ${r.devTests.error}` : `- ${r.devTests.passed} of ${r.devTests.total} passed`)
+    for (const f of r.devTests.failures ?? []) lines.push(`- FAILED: ${f.description}`)
+  }
+  if (r.userSummary) {
+    lines.push('')
+    lines.push('## To send to users')
+    lines.push(r.userSummary)
+  }
+  lines.push('')
+  lines.push('## Sign-off')
+  lines.push(r.signoff ? `- Tested on ${r.target} by ${r.signoff.by} at ${fmt(r.signoff.at)}` : '- Awaiting sign-off')
   return lines.join('\n')
 }
 
@@ -95,6 +115,7 @@ export default function DeployReport() {
   const { deployReport, closeDeployReport } = useStore()
   const target = deployReport?.target ?? null
   const commit = deployReport?.commit ?? null
+  const [signing, setSigning] = useState(false)
 
   // Server state in a query: opening the panel is a read, not a local state machine.
   const q = useQuery({
@@ -125,11 +146,37 @@ export default function DeployReport() {
   const rec = data?.record ?? null
   const outcome = rec ? OUTCOME[rec.outcome] : null
 
+  const signOff = async () => {
+    setSigning(true)
+    try {
+      const r = await request('/api/deploy/git/signoff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ target, commit: rec?.commit ?? commit }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || d.error) throw new Error(d.error || r.statusText)
+      toast.success('Signed off')
+      await q.refetch()
+    } catch (e) { toast.error(e.message) }
+    finally { setSigning(false) }
+  }
+
   const copyMarkdown = async () => {
     const md = rec ? toMarkdown(rec) : `# Deploy report — ${target}\n\nNo record was kept for ${short(commit)}.`
     try {
       await navigator.clipboard.writeText(md)
       toast.success('Report copied as markdown')
+    } catch {
+      toast.error('Could not copy — select the text instead')
+    }
+  }
+
+  const copySummary = async () => {
+    if (!rec?.userSummary) return
+    try {
+      await navigator.clipboard.writeText(rec.userSummary)
+      toast.success('Message to users copied')
     } catch {
       toast.error('Could not copy — select the text instead')
     }
@@ -199,7 +246,7 @@ export default function DeployReport() {
 
               <div className="border border-border rounded-md overflow-hidden">
                 <div className="px-3 py-1.5 bg-muted/30 border-b border-border text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-                  What shipped ({rec.objects?.length ?? 0})
+                  What was deployed ({rec.objects?.length ?? 0})
                 </div>
                 {(rec.objects?.length ?? 0) === 0
                   ? <p className="px-3 py-2 text-[11px] text-muted-foreground italic">No object list was recorded for this deployment.</p>
@@ -266,6 +313,50 @@ export default function DeployReport() {
                   {rec.incomplete.map((x, i) => <p key={i} className="text-[11px]">{x}</p>)}
                 </div>
               )}
+
+              {(rec.feeders || rec.devTests) && (
+                <div className="border border-border rounded-md p-3 space-y-1">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">After the deploy</p>
+                  {rec.feeders && (
+                    <p className="text-[11px]">
+                      Feeders: {(rec.feeders.cubes ?? []).map(c => `${c.cube} (${c.ms} ms)`).join(', ') || 'no cube rules changed'}
+                      {(rec.feeders.failed ?? []).length ? <span className="text-red-600"> · failed: {rec.feeders.failed.map(f => f.cube).join(', ')}</span> : null}
+                    </p>
+                  )}
+                  {rec.devTests && (
+                    rec.devTests.error
+                      ? <p className="text-[11px] text-red-600">DEV tests could not run: {rec.devTests.error}</p>
+                      : <p className={cn('text-[11px]', rec.devTests.failed ? 'text-red-600' : 'text-emerald-700')}>
+                          Logic checks on {rec.target}: {rec.devTests.passed} of {rec.devTests.total} passed{rec.devTests.failed ? ` — failed: ${(rec.devTests.failures ?? []).map(f => f.description).join(', ')}` : ''}
+                        </p>
+                  )}
+                </div>
+              )}
+
+              <div className={cn('border rounded-md p-3 space-y-1', rec.signoff ? 'border-emerald-600/30 bg-emerald-600/5' : 'border-amber-600/40 bg-amber-500/5')}>
+                <p className={cn('text-[10px] uppercase tracking-wide font-semibold', rec.signoff ? 'text-emerald-700' : 'text-amber-700')}>
+                  {rec.signoff ? 'Signed off' : 'Awaiting sign-off'}
+                </p>
+                {rec.signoff
+                  ? <p className="text-[11px]">Tested on {rec.target} by <span className="font-medium">{rec.signoff.by}</span> · {fmt(rec.signoff.at)}</p>
+                  : (
+                    <>
+                      <p className="text-[11px] text-muted-foreground">Test this by hand on {rec.target}, then confirm it here.</p>
+                      <button onClick={signOff} disabled={signing} className="mt-1 px-2.5 py-1 text-[11px] rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                        {signing ? 'Saving…' : 'I tested this on ' + rec.target}
+                      </button>
+                    </>
+                  )}
+                {rec.userSummary && (
+                  <div className="pt-1 space-y-1">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">To send to users</p>
+                    <p className="text-[11px] text-muted-foreground">{rec.userSummary}</p>
+                    <button onClick={copySummary} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground" title="Copy the message to send users">
+                      <Copy size={9} /> Copy message
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

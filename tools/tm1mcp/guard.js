@@ -31,8 +31,8 @@ const READ_TOOLS = new Set([
     'get_transaction_log', 'list_error_logs', 'find_dimension_usage', 'find_cube_usage',
     'find_process_usage', 'search_ti_code',
     // governance (read side)
-    'list_assertions', 'run_assertions', 'list_baselines', 'get_change_set', 'diff_change_set',
-    'check_deploy_risk', 'check_target_drift',
+    'list_assertions', 'run_assertions', 'get_change_set',
+    'pre_deploy_check', 'show_release', 'show_review',
     // Lenses (read side)
     'list_lens_patterns', 'list_lenses', 'get_lens',
 ])
@@ -42,7 +42,7 @@ const WRITE_TOOLS = new Set([
     'build_dimension', 'add_elements', 'create_hierarchy', 'restructure_dimension', 'set_attribute_values',
     'build_cube', 'reprocess_feeders', 'build_process', 'build_period_dimension', 'write_cells', 'create_view', 'create_subset',
     'create_chore', 'set_chore_state', 'delete_object',
-    'seed_baseline', 'set_baseline_head', 'start_change_set', 'close_change_set', 'package_change_set',
+    'start_change_set', 'close_change_set',
     'update_cube_rules', 'update_process', 'run_process', 'copy_version', 'save_data_all',
     'save_lens', 'delete_lens',
 ])

@@ -24,6 +24,13 @@ app.post('/api/dimension/bulk-import', async (req, res) => {
         const client = makeClient(server, req.ideToken)
         const errors = []
 
+        // Snapshot the dimension first so the import can be recorded per element,
+        // with before/after and hierarchy, exactly like an IDE edit. Build Release
+        // replays those records against Live instead of carrying DEV's whole file.
+        const { snapshotDimension, recordDimensionDiff } = require('../core/process-capture')
+        let before = null
+        try { before = await snapshotDimension(client, dimension) } catch { /* fall back to a whole record */ }
+
         // Pass 1: create all elements in one bulk call
         const validRows = rows.filter(r => r.name?.trim())
         if (validRows.length) {
@@ -40,6 +47,20 @@ app.post('/api/dimension/bulk-import', async (req, res) => {
             try { await client.addEdge(dimension, row.parent.trim(), row.name.trim(), row.weight ?? 1, hierarchy) } catch (e) {
                 if (!e.message?.includes('already exists')) errors.push(`${row.parent}→${row.name}: ${e.message}`)
             }
+        }
+
+        let recorded = false
+        if (before) {
+            try {
+                const after = await snapshotDimension(client, dimension)
+                recordDimensionDiff(server, dimension, before, after, { user: req.user, attributes: false })
+                recorded = true
+            } catch { /* fall back below */ }
+        }
+        if (!recorded) {
+            // The dimension could not be read back; keep a whole record so the change
+            // is still tracked, and Build Release will refuse if the target moved.
+            cl.writeLog({ server, action: 'DIMENSION_UPDATED', objectType: 'dimension', objectName: dimension, detail: `bulk import of ${validRows.length} element(s)`, user: req.user })
         }
         res.json({ ok: true, errors })
     } catch (e) {
@@ -280,9 +301,12 @@ app.post('/api/dimension/element', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         const { name, type, parent, before } = req.body
+        const hier = hierarchy ?? dimension
         await client.addElementAt(dimension, name, type, hierarchy, { parent, before })
         const where = parent ? ` under ${parent}${before ? ` before ${before}` : ''}` : before ? ` before ${before}` : ''
-        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: dimension, detail: `${name}${where}`, user: req.user })
+        const tm1Type = type === 'C' ? 'Consolidated' : type === 'S' ? 'String' : 'Numeric'
+        cl.writeLog({ server, action: 'ELEMENT_ADDED', objectType: 'dimension', objectName: dimension, detail: `${name}${where}`, user: req.user,
+            afterState: { element: name, type: tm1Type, parent: parent ?? null, weight: 1, hierarchy: hier } })
         res.json({ ok: true })
     } catch (e) {
         console.error(`[dimension/element] ${req.query.dimension}: ${e.message}`)
@@ -295,8 +319,16 @@ app.delete('/api/dimension/element', async (req, res) => {
         const { server, dimension, name, hierarchy } = req.query
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
+        const [els, eds] = await Promise.all([
+            client.getElements(dimension, hierarchy).catch(() => []),
+            client.getEdges(dimension, hierarchy).catch(() => []),
+        ])
+        const el = (els ?? []).find(e => String(e.Name).toLowerCase() === String(name).toLowerCase())
+        const edge = (eds ?? []).find(e => String(e.ComponentName).toLowerCase() === String(name).toLowerCase())
+        const tm1Type = el?.Type === 'C' ? 'Consolidated' : el?.Type === 'S' ? 'String' : 'Numeric'
         await client.deleteElement(dimension, name, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: dimension, detail: name, user: req.user })
+        cl.writeLog({ server, action: 'ELEMENT_DELETED', objectType: 'dimension', objectName: dimension, detail: name, user: req.user,
+            beforeState: { element: name, type: tm1Type, parent: edge?.ParentName ?? null, weight: edge?.Weight ?? null, hierarchy: hierarchy ?? dimension } })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -306,8 +338,12 @@ app.patch('/api/dimension/element', async (req, res) => {
         const { server, dimension, name, hierarchy } = req.query
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
+        const els = await client.getElements(dimension, hierarchy).catch(() => [])
+        const el = (els ?? []).find(e => String(e.Name).toLowerCase() === String(name).toLowerCase())
+        const tm1Type = el?.Type === 'C' ? 'Consolidated' : el?.Type === 'S' ? 'String' : 'Numeric'
         await client.renameElement(dimension, name, req.body.newName, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: dimension, detail: `${name} → ${req.body.newName}`, user: req.user })
+        cl.writeLog({ server, action: 'ELEMENT_RENAMED', objectType: 'dimension', objectName: dimension, detail: `${name} → ${req.body.newName}`, user: req.user,
+            beforeState: { element: name, type: tm1Type, hierarchy: hierarchy ?? dimension }, afterState: { element: req.body.newName, type: tm1Type, hierarchy: hierarchy ?? dimension } })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -315,8 +351,12 @@ app.patch('/api/dimension/element', async (req, res) => {
 app.post('/api/dimension/edge', async (req, res) => {
     try {
         if (!gateWrite(res, req.query.server)) return
-        const client = makeClient(req.query.server, req.ideToken)
-        await client.addEdge(req.query.dimension, req.body.parent, req.body.child, req.body.weight ?? 1, req.query.hierarchy)
+        const { server, dimension, hierarchy } = req.query
+        const client = makeClient(server, req.ideToken)
+        const { parent, child, weight } = req.body
+        await client.addEdge(dimension, parent, child, weight ?? 1, hierarchy)
+        cl.writeLog({ server, action: 'ELEMENT_LINKED', objectType: 'dimension', objectName: dimension, detail: `${child} under ${parent}`, user: req.user,
+            afterState: { element: child, parent, weight: weight ?? 1, hierarchy: hierarchy ?? dimension } })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -327,8 +367,13 @@ app.post('/api/dimension/component', async (req, res) => {
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
         const { parent, child, before, weight } = req.body
+        const eds = await client.getEdges(dimension, hierarchy).catch(() => [])
+        const prior = (eds ?? []).find(e => String(e.ComponentName).toLowerCase() === String(child).toLowerCase())
         await client.setComponent(dimension, parent, child, before ?? null, weight ?? 1, hierarchy)
-        cl.writeLog({ server, action: 'ELEMENT_LINKED', objectType: 'dimension', objectName: dimension, detail: `${child} under ${parent}${before ? ` before ${before}` : ''}`, user: req.user })
+        const hier = hierarchy ?? dimension
+        cl.writeLog({ server, action: 'ELEMENT_LINKED', objectType: 'dimension', objectName: dimension, detail: `${child} under ${parent}${before ? ` before ${before}` : ''}`, user: req.user,
+            ...(prior ? { beforeState: { element: child, parent: prior.ParentName, weight: prior.Weight ?? 1, hierarchy: hier } } : {}),
+            afterState: { element: child, parent, weight: weight ?? 1, hierarchy: hier } })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -337,7 +382,13 @@ app.patch('/api/dimension/edge', async (req, res) => {
     try {
         if (!gateWrite(res, req.query.server)) return
         const client = makeClient(req.query.server, req.ideToken)
+        const eds = await client.getEdges(req.query.dimension, req.query.hierarchy).catch(() => [])
+        const prior = (eds ?? []).find(e => String(e.ParentName).toLowerCase() === String(req.query.parent).toLowerCase() && String(e.ComponentName).toLowerCase() === String(req.query.child).toLowerCase())
         await client.updateEdgeWeight(req.query.dimension, req.query.parent, req.query.child, req.body.weight, req.query.hierarchy)
+        cl.writeLog({ server: req.query.server, action: 'EDGE_WEIGHT_CHANGED', objectType: 'dimension', objectName: req.query.dimension,
+            detail: `${req.query.child} under ${req.query.parent}: ${prior?.Weight ?? '?'} → ${req.body.weight}`, user: req.user,
+            beforeState: { element: req.query.child, parent: req.query.parent, weight: prior?.Weight ?? null, hierarchy: req.query.hierarchy ?? req.query.dimension },
+            afterState: { element: req.query.child, parent: req.query.parent, weight: req.body.weight, hierarchy: req.query.hierarchy ?? req.query.dimension } })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -347,8 +398,11 @@ app.delete('/api/dimension/edge', async (req, res) => {
         const { server, dimension, parent, child, hierarchy } = req.query
         if (!gateWrite(res, server)) return
         const client = makeClient(server, req.ideToken)
+        const eds = await client.getEdges(dimension, hierarchy).catch(() => [])
+        const prior = (eds ?? []).find(e => String(e.ParentName).toLowerCase() === String(parent).toLowerCase() && String(e.ComponentName).toLowerCase() === String(child).toLowerCase())
         await client.deleteEdge(dimension, parent, child, hierarchy)
-        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: dimension, detail: `${parent} · removed ${child}`, user: req.user })
+        cl.writeLog({ server, action: 'EDGE_REMOVED', objectType: 'dimension', objectName: dimension, detail: `${parent} · removed ${child}`, user: req.user,
+            beforeState: { element: child, parent, weight: prior?.Weight ?? null, hierarchy: hierarchy ?? dimension } })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -379,7 +433,8 @@ app.post('/api/dimension/hierarchy', async (req, res) => {
         const { server, dimension, name } = req.body
         if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).createHierarchy(dimension, name)
-        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: name, detail: dimension, user: req.user })
+        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: dimension, detail: name, user: req.user,
+            afterState: { dimension, hierarchy: name } })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -404,7 +459,8 @@ app.post('/api/hierarchy/from-attribute', async (req, res) => {
         if (!gateWrite(res, server)) return
         const r = await makeClient(server, req.ideToken).buildHierarchyFromAttribute({ dimension, hierarchy, attribute, levelDimension, hookProcess })
         cl.writeLog({ server, action: 'PROCESS_SAVED', objectType: 'process', objectName: r.process, detail: `builds the "${hierarchy}" Alternate Hierarchy on ${dimension} from ${attribute}`, user: req.user })
-        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: hierarchy, detail: dimension, user: req.user })
+        cl.writeLog({ server, action: 'HIERARCHY_CREATED', objectType: 'dimension', objectName: dimension, detail: hierarchy, user: req.user,
+            afterState: { dimension, hierarchy } })
         if (r.hooked) cl.writeLog({ server, action: 'PROCESS_SAVED', objectType: 'process', objectName: r.hooked, detail: `now runs ${r.process}`, user: req.user })
         res.json({ ok: true, ...r })
     } catch (e) { res.status(500).json({ error: e.message }) }
@@ -415,7 +471,8 @@ app.delete('/api/dimension/hierarchy', async (req, res) => {
         const { server, dimension, name } = req.query
         if (!gateWrite(res, server)) return
         await makeClient(server, req.ideToken).deleteHierarchy(dimension, name)
-        cl.writeLog({ server, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: name, detail: dimension, user: req.user })
+        cl.writeLog({ server, action: 'HIERARCHY_DELETED', objectType: 'dimension', objectName: dimension, detail: name, user: req.user,
+            beforeState: { dimension, hierarchy: name } })
         res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
 })

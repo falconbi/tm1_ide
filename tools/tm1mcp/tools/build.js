@@ -3,6 +3,7 @@
 const { z } = require('zod')
 const guard = require('../guard')
 const { recordProcessRun } = require('../../../core/process-run')
+const { snapshotDimension, recordDimensionDiff } = require('../../../core/process-capture')
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODEL BUILD — WRITE (all require an open change set)
@@ -43,6 +44,13 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
         async ({ name, elements = [], edges = [], attributes = [], attribute_values = [], hierarchies = [] }) => {
             requireChangeSet()
             const c = client()
+
+            // Snapshot before the writes so an update can be recorded per element
+            // (with before/after and hierarchy), the same shape a TI capture writes.
+            // A "dimension changed" row alone forces Build Release to carry DEV's
+            // whole file, which stops whenever the target changed it too.
+            let before = null
+            try { before = await snapshotDimension(c, name) } catch { /* unreadable — fall back to a whole record */ }
 
             const tolerate = (e, re) => { if (!re.test(e.response?.data?.error?.message ?? e.message ?? '')) throw e }
             const addEl = async (dim, el, hier) => {
@@ -100,11 +108,36 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
                 catch (e) { tolerate(e, /already exists|409|duplicate/i) }
                 for (const el of (h.elements ?? [])) await addEl(name, el, h.name)
                 for (const ed of (h.edges ?? []))    await addEd(name, ed, h.name)
-                logChange('HIERARCHY_CREATED', 'dimension', name, { detail: `${h.name}: ${(h.elements ?? []).length} elements, ${(h.edges ?? []).length} edges` })
             }
 
-            logChange(created ? 'DIMENSION_CREATED' : 'ELEMENT_ADDED', 'dimension', name,
-                { detail: `${elements.length} elements, ${edges.length} edges` })
+            // Record the update per element from the before/after diff, exactly as a
+            // captured TI run does. Attributes are excluded: they are recorded above
+            // through logAttributeValue / ATTRIBUTE_CREATED, so a diff would double them.
+            let recorded = false
+            if (before) {
+                try {
+                    const after = await snapshotDimension(c, name)
+                    recordDimensionDiff(SERVER, name, before, after, {
+                        user: AGENT_USER,
+                        attributes: false,
+                        writeLog: ({ action, objectType, objectName, detail, beforeState, afterState }) =>
+                            logChange(action, objectType, objectName, { detail, before: beforeState, after: afterState }),
+                    })
+                    recorded = true
+                } catch { /* fall back below */ }
+            }
+            if (!recorded) {
+                // The dimension could not be read back: keep a whole record so the
+                // change is tracked, and Build Release will refuse if the target moved.
+                logChange(created ? 'DIMENSION_CREATED' : 'DIMENSION_UPDATED', 'dimension', name,
+                    { detail: `${elements.length} elements, ${edges.length} edges` })
+                for (const h of hierarchies) {
+                    logChange('HIERARCHY_CREATED', 'dimension', name, { detail: `${h.name}: ${(h.elements ?? []).length} elements, ${(h.edges ?? []).length} edges`, after: { dimension: name, hierarchy: h.name } })
+                }
+            } else if (created) {
+                // A new dimension with no elements still needs its creation recorded.
+                logChange('DIMENSION_CREATED', 'dimension', name, { detail: `${elements.length} elements, ${edges.length} edges` })
+            }
             for (const a of attributes) logChange('ATTRIBUTE_CREATED', 'attribute', a.name, { detail: name })
 
             return ok(`Dimension "${name}" ${created ? 'created' : 'updated'}: ${elements.length} elements, ${edges.length} edges, ${attributes.length} attributes, ${attribute_values.length} attribute values` +
@@ -145,14 +178,25 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
                     catch (e) { tol(e, /already exists|409|duplicate/i) }
                 }
             }
+            if (hierCreated) {
+                logChange('HIERARCHY_CREATED', 'dimension', dimension, { detail: hierarchy, after: { dimension, hierarchy } })
+            }
 
             for (const el of elements) {
                 try { await c.addElement(dimension, el.name, el.type ?? 'N', h) }
                 catch (e) { tol(e, /already exists|already in use|duplicate/i) }
+                logChange('ELEMENT_ADDED', 'dimension', dimension, {
+                    detail: `${el.name} in ${h}`,
+                    after: { element: el.name, type: el.type ?? 'N', hierarchy: h },
+                })
             }
             for (const ed of edges) {
                 try { await c.addEdge(dimension, ed.parent, ed.child, ed.weight ?? 1, h) }
                 catch (e) { tol(e, /already exists|duplicate/i) }
+                logChange('ELEMENT_LINKED', 'dimension', dimension, {
+                    detail: `${ed.child} under ${ed.parent} in ${h}`,
+                    after: { element: ed.child, parent: ed.parent, weight: ed.weight ?? 1, hierarchy: h },
+                })
             }
 
             // House rule, same as build_dimension: numeric elements in a measure dimension get a
@@ -175,8 +219,6 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
                 }
             }
 
-            logChange(hierCreated ? 'HIERARCHY_CREATED' : 'ELEMENT_ADDED', 'dimension', dimension,
-                { detail: `${elements.length} elements, ${edges.length} edges${hierarchy ? ` in ${hierarchy}` : ''}` })
             return ok(`Added ${elements.length} elements and ${edges.length} edges to "${dimension}"${hierarchy && hierarchy !== dimension ? ` hierarchy "${hierarchy}"${hierCreated ? ' (created)' : ''}` : ''}` +
                 (formatsApplied ? `; applied Format to ${formatsApplied} numeric measure element(s)` : '') + '.')
         }
@@ -196,7 +238,7 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
             const existing = await c.getHierarchies(dimension).catch(() => [])
             if (existing.includes(name)) return ok(`Hierarchy "${name}" already exists on "${dimension}".`)
             await c.createHierarchy(dimension, name)
-            logChange('HIERARCHY_CREATED', 'dimension', dimension, { detail: name })
+            logChange('HIERARCHY_CREATED', 'dimension', dimension, { detail: name, after: { dimension, hierarchy: name } })
             return ok(`Hierarchy "${name}" created on "${dimension}". Add its elements and edges with add_elements (hierarchy: "${name}").`)
         }
     )
@@ -231,7 +273,10 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
                     // renameElement verifies after the PATCH and throws a clear error
                     // when the rename didn't take (TM1 no-ops it on some versions).
                     await c.renameElement(dimension, r.from, r.to, h)
-                    logChange('ELEMENT_RENAMED', 'dimension', dimension, { detail: `${r.from} -> ${r.to}${hierarchy ? ` (${hierarchy})` : ''}` })
+                    logChange('ELEMENT_RENAMED', 'dimension', dimension, {
+                        detail: `${r.from} -> ${r.to}${hierarchy ? ` (${hierarchy})` : ''}`,
+                        before: { element: r.from, hierarchy: h }, after: { element: r.to, hierarchy: h },
+                    })
                     done.push(`renamed ${r.from} -> ${r.to}`)
                 } catch (e) {
                     failed.push(e.message)
@@ -239,18 +284,31 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
             }
             for (const m of reparent) {
                 await c.deleteEdge(dimension, m.from_parent, m.element, h).catch(() => {})
+                logChange('EDGE_REMOVED', 'dimension', dimension, {
+                    detail: `${m.from_parent} · removed ${m.element} in ${h}`,
+                    before: { element: m.element, parent: m.from_parent, hierarchy: h },
+                })
                 await c.addEdge(dimension, m.to_parent, m.element, m.weight ?? 1, h)
-                logChange('ELEMENT_ADDED', 'dimension', dimension, { detail: `re-parent ${m.element}: ${m.from_parent} → ${m.to_parent}` })
+                logChange('ELEMENT_LINKED', 'dimension', dimension, {
+                    detail: `${m.element} under ${m.to_parent} in ${h}`,
+                    after: { element: m.element, parent: m.to_parent, weight: m.weight ?? 1, hierarchy: h },
+                })
                 done.push(`moved ${m.element} under ${m.to_parent}`)
             }
             for (const e of remove_edges) {
                 await c.deleteEdge(dimension, e.parent, e.child, h)
-                logChange('EDGE_REMOVED', 'dimension', dimension, { detail: `${e.parent} -> ${e.child}` })
+                logChange('EDGE_REMOVED', 'dimension', dimension, {
+                    detail: `${e.parent} · removed ${e.child} in ${h}`,
+                    before: { element: e.child, parent: e.parent, hierarchy: h },
+                })
                 done.push(`removed edge ${e.parent} → ${e.child}`)
             }
             for (const w of set_weights) {
                 await c.updateEdgeWeight(dimension, w.parent, w.child, w.weight, h)
-                logChange('ELEMENT_ADDED', 'dimension', dimension, { detail: `weight ${w.parent} → ${w.child} = ${w.weight}` })
+                logChange('EDGE_WEIGHT_CHANGED', 'dimension', dimension, {
+                    detail: `${w.child} under ${w.parent}: → ${w.weight} in ${h}`,
+                    after: { element: w.child, parent: w.parent, weight: w.weight, hierarchy: h },
+                })
                 done.push(`weight ${w.parent} → ${w.child} = ${w.weight}`)
             }
 
@@ -634,8 +692,9 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
             name:      z.string().describe('Object name (for element/attribute/hierarchy: that name)'),
             dimension: z.string().optional().describe('Parent dimension — required for subset, element, attribute, hierarchy'),
             cube:      z.string().optional().describe('Parent cube — required for view'),
+            hierarchy: z.string().optional().describe('Hierarchy for element/hierarchy (defaults to the dimension name)'),
         },
-        async ({ type, name, dimension, cube }) => {
+        async ({ type, name, dimension, cube, hierarchy }) => {
             requireChangeSet()
             const c = client()
             switch (type) {
@@ -650,13 +709,14 @@ function register(server, { client, ok, esc: odataKey, logChange, logAttributeVa
                     await c.deleteSubset(dimension, name); logChange('SUBSET_DELETED', 'subset', name, { detail: dimension }); break
                 case 'element':
                     if (!dimension) return ok('`dimension` is required to delete an element.')
-                    await c.deleteElement(dimension, name); logChange('ELEMENT_DELETED', 'dimension', dimension, { detail: `element ${name}` }); break
+                    await c.deleteElement(dimension, name, hierarchy);
+                    logChange('ELEMENT_DELETED', 'dimension', dimension, { detail: name, before: { element: name, hierarchy: hierarchy ?? dimension } }); break
                 case 'attribute':
                     if (!dimension) return ok('`dimension` is required to delete an attribute.')
                     await c.deleteElementAttribute(dimension, name); logChange('ATTRIBUTE_DELETED', 'attribute', name, { detail: dimension }); break
                 case 'hierarchy':
                     if (!dimension) return ok('`dimension` is required to delete a hierarchy.')
-                    await c.deleteHierarchy(dimension, name); logChange('HIERARCHY_DELETED', 'dimension', dimension, { detail: `hierarchy ${name}` }); break
+                    await c.deleteHierarchy(dimension, name); logChange('HIERARCHY_DELETED', 'dimension', dimension, { detail: name, before: { dimension, hierarchy: name } }); break
                 case 'chore':
                     await c.delete(`Chores('${odataKey(name)}')`); logChange('CHORE_DELETED', 'chore', name); break
             }

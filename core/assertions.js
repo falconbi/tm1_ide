@@ -165,7 +165,7 @@ async function list(server, opts = {}) {
   return { source: 'config', assertions: entry ?? [] }
 }
 
-async function add(server, { description, mdx, expected, tolerance, tags, kind, severity, why, author, changeSet }, opts = {}) {
+async function add(server, { description, mdx, expected, tolerance, tags, kind, severity, scope, fixture, setup, why, author, changeSet }, opts = {}) {
   const expectedNumber = _finiteNumber(expected, 'expected')
   const toleranceNumber = tolerance == null ? 0.01 : _finiteNumber(tolerance, 'tolerance')
   if (toleranceNumber < 0) {
@@ -183,6 +183,9 @@ async function add(server, { description, mdx, expected, tolerance, tags, kind, 
     tags:        Array.isArray(tags) ? tags : [],
     kind:        kind === 'control' ? 'control' : 'behaviour',
     severity:    severity === 'warn' ? 'warn' : 'block',
+    scope:       scope === 'quality' ? 'quality' : 'logic',
+    fixture:     fixture === true || !!setup,
+    ...(setup ? { setup: typeof setup === 'string' ? { process: setup, params: {} } : setup } : {}),
     author:      author ? String(author).trim() : null,
     changeSet:   changeSet ?? null,
     created:     new Date().toISOString(),
@@ -282,21 +285,44 @@ async function migrate(server, { dryRun = false, force = false, ideToken, client
 // against `targetServer` (default: the same). Used for post-deploy verification —
 // the source Dev server's assertions run against the target after a deploy.
 // Reports which store the assertions came from (source: 'model' | 'config').
-async function run(sourceServer, { targetServer, tags, kind, severity, ideToken, client: injected } = {}) {
+// Which assertions this run should include. The rules that matter:
+//   · scope 'quality' is a data check for PROD/TEST — it never gates a close, and
+//     it is not run against a deploy target (the target's data is not the fixture).
+//   · a test with `fixture` (or a `setup` process) needs its own data, so it only
+//     runs where that data lives (the source), never on the target.
+// Everything else is logic: a relationship or a number valid on the source.
+function shouldRun(a, { sourceServer, targetServer, scope, tags, kind, severity } = {}) {
+    const s = a.scope ?? 'logic'
+    const onTarget = !!targetServer && targetServer !== sourceServer
+    if (scope && s !== scope) return false
+    if (onTarget && (s === 'quality' || a.fixture === true || !!a.setup)) return false
+    if (tags?.length && !(a.tags ?? []).some(t => tags.includes(t))) return false
+    if (kind && (a.kind ?? 'behaviour') !== kind) return false
+    if (severity && (a.severity ?? 'block') !== severity) return false
+    return true
+}
+
+async function run(sourceServer, { targetServer, tags, kind, severity, scope, ideToken, client: injected } = {}) {
     const { makeClient } = require('./adapter-registry')
     const target = targetServer ?? sourceServer
     const client = injected ?? makeClient(target, ideToken)
     const { source, assertions: stored } = await list(sourceServer, target === sourceServer ? { client, ideToken } : { ideToken })
-    const set = stored.filter(a =>
-        (!tags?.length || (a.tags ?? []).some(t => tags.includes(t))) &&
-        (!kind || (a.kind ?? 'behaviour') === kind) &&
-        (!severity || (a.severity ?? 'block') === severity)
-    )
+    const set = stored.filter(a => shouldRun(a, { sourceServer, targetServer, scope, tags, kind, severity }))
 
     const results = []
     for (const a of set) {
         let actual = null, error = null
         try {
+            // A fixture test owns its input: run its setup first. A setup failure is
+            // an error on the test, never a silent pass.
+            if (a.setup) {
+                const spec = typeof a.setup === 'string' ? { process: a.setup, params: {} } : a.setup
+                if (!spec?.process) throw new Error('setup must name a process')
+                const run = await client.executeProcess(spec.process, spec.params ?? {})
+                const st = run?.ProcessExecuteStatusCode
+                const ok = st === undefined || st === 0 || st === 'CompletedSuccessfully' || st === 'HasMinorErrors'
+                if (!ok) throw new Error(`setup ${spec.process} returned ${st}`)
+            }
             const r = await client.executeMDX(a.mdx, 5000)
             actual = (r.Cells ?? []).reduce((s, x) => s + (x.Value ?? 0), 0)
         } catch (e) {
@@ -304,7 +330,7 @@ async function run(sourceServer, { targetServer, tags, kind, severity, ideToken,
         }
         const tol  = a.tolerance ?? 0.01
         const pass = error == null && Math.abs(actual - a.expected) <= tol
-        results.push({ id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block', expected: a.expected, actual, diff: error ? null : actual - a.expected, pass, error })
+        results.push({ id: a.id, description: a.description, mdx: a.mdx, tags: a.tags ?? [], kind: a.kind ?? 'behaviour', severity: a.severity ?? 'block', scope: a.scope ?? 'logic', fixture: a.fixture === true || !!a.setup, expected: a.expected, actual, diff: error ? null : actual - a.expected, pass, error })
     }
     const result = {
         source_server: sourceServer,
@@ -323,7 +349,36 @@ async function run(sourceServer, { targetServer, tags, kind, severity, ideToken,
     return result
 }
 
-module.exports = { list, add, update, remove, run, runOne, load, save, migrate, isModelStored, FILE, GOVERNANCE_PATH, MODEL_DOC_NAME }
+async function updateMany(server, patches = [], opts = {}) {
+    const client = _clientFor(server, opts)
+    const apply = (arr) => {
+        let n = 0
+        for (const p of patches) {
+            const rec = _cleanPatch(p)
+            const idx = arr.findIndex(a => a.id === p.id)
+            if (idx === -1) continue
+            const hist = _noteExpectedChange(arr[idx], rec, opts.by)
+            arr[idx] = { ...arr[idx], ...rec }
+            if (hist) arr[idx].history = [...(arr[idx].history ?? []), hist]
+            n++
+        }
+        return n
+    }
+    const model = await _modelIfOwned(server, client)
+    if (model) {
+        const updated = apply(model)
+        await _writeModel(client, model)
+        return { updated, source: 'model' }
+    }
+    const data = load()
+    const arr = data[server] ?? []
+    const updated = apply(arr)
+    data[server] = arr
+    save(data)
+    return { updated, source: 'local' }
+}
+
+module.exports = { list, add, update, updateMany, remove, run, runOne, shouldRun, load, save, migrate, isModelStored, FILE, GOVERNANCE_PATH, MODEL_DOC_NAME }
 
 // Update an assertion's fields (description, mdx, expected, tolerance, tags) by id.
 // Model store on migrated servers, config file otherwise.
@@ -340,6 +395,9 @@ function _cleanPatch(patch = {}) {
     if (patch.tags !== undefined)       out.tags       = Array.isArray(patch.tags) ? patch.tags : []
     if (patch.kind !== undefined)       out.kind       = patch.kind === 'control' ? 'control' : 'behaviour'
     if (patch.severity !== undefined)   out.severity   = patch.severity === 'warn' ? 'warn' : 'block'
+    if (patch.scope !== undefined)      out.scope      = patch.scope === 'quality' ? 'quality' : 'logic'
+    if (patch.fixture !== undefined)    out.fixture    = patch.fixture === true
+    if (patch.setup !== undefined)      out.setup      = patch.setup ? (typeof patch.setup === 'string' ? { process: patch.setup, params: {} } : patch.setup) : null
     return out
 }
 

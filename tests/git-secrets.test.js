@@ -70,6 +70,19 @@ test('status reports tokenSource and never the token', async () => {
     assert.doesNotMatch(JSON.stringify(res.body), /super-secret-token/)
 })
 
+test('status reports the remote branches and this server attrs branch', async () => {
+    const client = {
+        post: async () => ({
+            URL: 'https://github.com/x/y.git', Deployment: 'DEV', Remote: { Connected: true, Branches: ['dev', 'attrs-D1'] },
+        }),
+    }
+    const { handlers } = routeHarness({ client })
+    const res = response()
+    await handlers['/api/git/setup/status']({ query: { server: 'D1' }, ideToken: 't' }, res)
+    assert.deepEqual(res.body.branches, ['dev', 'attrs-D1'])
+    assert.equal(res.body.attrsBranch, 'attrs-D1')
+})
+
 test('status failure carries TM1 message, token hint and tokenSource', async () => {
     const { handlers } = routeHarness({ client: { post: async () => { throw new Error('Authentication failed') } }, tokenSource: 'env' })
     const res = response()

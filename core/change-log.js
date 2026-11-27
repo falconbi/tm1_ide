@@ -37,6 +37,48 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_log_server    ON log_entries(server, timestamp);
   CREATE INDEX IF NOT EXISTS idx_sessions_srv  ON sessions(server, started_at);
   CREATE INDEX IF NOT EXISTS idx_log_object    ON log_entries(server, object_type, object_name);
+
+  -- One deploy record per (change set, target). A change set can reach several
+  -- servers (TEST, then PROD), and each server gets its own release and its own
+  -- outcome. The old single-value columns (deployed_target / deployed_at) are
+  -- kept as the "last target" for compatibility; nothing decides from them.
+  CREATE TABLE IF NOT EXISTS session_deploys (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id     TEXT NOT NULL,
+    target         TEXT NOT NULL,
+    release_commit TEXT,
+    base_commit    TEXT,
+    attrs_commit   TEXT,
+    backup_tag     TEXT,
+    deployed_at    TEXT NOT NULL,
+    by             TEXT,
+    status         TEXT NOT NULL,        -- complete | incomplete | reverted | superseded
+    status_reason  TEXT
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_session_deploys_target ON session_deploys(session_id, target);
+  CREATE INDEX IF NOT EXISTS idx_session_deploys_srv ON session_deploys(target, deployed_at);
+
+  -- One Build Release per (change set, target): building for PROD must never
+  -- overwrite the release already built for TEST.
+  CREATE TABLE IF NOT EXISTS session_releases (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id     TEXT NOT NULL,
+    target         TEXT NOT NULL,
+    release_commit TEXT NOT NULL,
+    built_at       TEXT NOT NULL,
+    by             TEXT
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_session_releases_target ON session_releases(session_id, target);
+
+  -- Part L — every "TEST was re-cloned from PROD" event. The open cycle is derived
+  -- from the latest event plus the TEST deploys after it (never an admin list).
+  CREATE TABLE IF NOT EXISTS test_cycles (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    server     TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    by         TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_test_cycles_srv ON test_cycles(server, started_at);
 `)
 
 // Lifecycle columns (added after the fact — ignore "duplicate column" on existing DBs).
@@ -61,6 +103,10 @@ for (const [col, type] of [
     ['covered_by',                  'TEXT'],
     ['covered_at',                  'TEXT'],
     ['release_target_only',         'TEXT'],
+    ['release_target_notes',        'TEXT'],
+    ['release_attrs',               'TEXT'],
+    ['release_live_commit',         'TEXT'],
+    ['release_attrs_live',          'TEXT'],
 ]) {
     try { db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`) } catch { /* already exists */ }
 }
@@ -104,16 +150,163 @@ function setSessionCommit(id, commit) {
 // Link a change set to its build release commit (branch release-<target>), and
 // record what the release carried beyond the change set: items the person added
 // from "Left on DEV", and files pulled in because a link needed them.
-function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency, excludedByUser, coveredSets, targetOnly } = {}) {
-    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ?, release_added_by_user = ?, release_added_as_dependency = ?, release_excluded_by_user = ?, covered_sets = ?, release_target_only = ? WHERE id = ?`)
+function setSessionRelease(id, commit, target, { addedByUser, addedAsDependency, excludedByUser, coveredSets, targetOnly, targetNotes, attrsPlan, liveCommit = null, attrsLiveCommit = null, by = null } = {}) {
+    db.prepare(`UPDATE sessions SET release_commit = ?, release_target = ?, release_added_by_user = ?, release_added_as_dependency = ?, release_excluded_by_user = ?, covered_sets = ?, release_target_only = ?, release_target_notes = ?, release_attrs = ?, release_live_commit = ?, release_attrs_live = ? WHERE id = ?`)
         .run(commit ?? null, target ?? null,
             addedByUser ? JSON.stringify(addedByUser) : null,
             addedAsDependency ? JSON.stringify(addedAsDependency) : null,
             excludedByUser ? JSON.stringify(excludedByUser) : null,
             coveredSets ? JSON.stringify(coveredSets) : null,
             targetOnly ? JSON.stringify(targetOnly) : null,
+            targetNotes ? JSON.stringify(targetNotes) : null,
+            attrsPlan ? JSON.stringify(attrsPlan) : null,
+            liveCommit ?? null,
+            attrsLiveCommit ?? null,
             id)
+    // Per-target release record (Part A.2): a PROD build never overwrites TEST's.
+    if (commit && target) recordSessionRelease(id, { target, release_commit: commit, by })
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
+}
+
+// ── Per-target deploy / release records (Part A) ─────────────────────────────
+
+const DEPLOY_STATUSES = new Set(['complete', 'incomplete', 'reverted', 'superseded'])
+
+function normaliseStatus(status) {
+    const s = String(status ?? 'complete').toLowerCase()
+    return DEPLOY_STATUSES.has(s) ? s : 'complete'
+}
+
+// Records (or replaces) this change set's deploy to one target. One row per
+// (change set, target): a revert then a redeploy updates the same row, which is
+// what "where has this change set been?" asks for. History across change sets is
+// the deploy reports (core/deploy-records), not this table.
+function recordSessionDeploy(sessionId, {
+    target, release_commit = null, base_commit = null, attrs_commit = null,
+    backup_tag = null, deployed_at = null, by = null, status = 'complete', status_reason = null,
+} = {}) {
+    if (!sessionId || !target) return null
+    const at = deployed_at ?? new Date().toISOString()
+    db.prepare(`
+        INSERT INTO session_deploys
+            (session_id, target, release_commit, base_commit, attrs_commit, backup_tag, deployed_at, by, status, status_reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id, target) DO UPDATE SET
+            release_commit = excluded.release_commit,
+            base_commit    = excluded.base_commit,
+            attrs_commit   = excluded.attrs_commit,
+            backup_tag     = excluded.backup_tag,
+            deployed_at    = excluded.deployed_at,
+            by             = excluded.by,
+            status         = excluded.status,
+            status_reason  = excluded.status_reason
+    `).run(sessionId, target, release_commit ?? null, base_commit ?? null, attrs_commit ?? null,
+        backup_tag ?? null, at, by ?? null, normaliseStatus(status), status_reason ?? null)
+
+    // Keep the old single-slot column alive for compatibility. It means "the
+    // last server this change set reached", never a decision input any more.
+    const st = normaliseStatus(status)
+    if (st === 'complete' || st === 'incomplete') {
+        db.prepare(`UPDATE sessions SET deployed_target = ?, deployed_at = ? WHERE id = ?`).run(target, at, sessionId)
+    } else if (st === 'reverted' || st === 'superseded') {
+        db.prepare(`UPDATE sessions SET deployed_target = NULL WHERE id = ? AND deployed_target = ?`).run(sessionId, target)
+    }
+    return getSessionDeploy(sessionId, target)
+}
+
+function getSessionDeploy(sessionId, target) {
+    return db.prepare(`SELECT * FROM session_deploys WHERE session_id = ? AND target = ?`).get(sessionId, target) ?? null
+}
+
+function getSessionDeploys(sessionId) {
+    return db.prepare(`SELECT * FROM session_deploys WHERE session_id = ? ORDER BY deployed_at DESC`).all(sessionId)
+}
+
+// Every deploy record for a set of change sets, keyed by session id. The change
+// set list uses this to say where each set has been, per target.
+function getDeploysForSessions(ids = []) {
+    const clean = (ids ?? []).filter(Boolean)
+    if (!clean.length) return {}
+    const placeholders = clean.map(() => '?').join(',')
+    const rows = db.prepare(`SELECT * FROM session_deploys WHERE session_id IN (${placeholders}) ORDER BY deployed_at DESC`).all(...clean)
+    const out = {}
+    for (const r of rows) (out[r.session_id] ??= []).push(r)
+    return out
+}
+
+// The targets this change set has reached at all (complete or incomplete).
+// Reopening and retiring are refused once a set has reached any server.
+function deployTargets(sessionId) {
+    return db.prepare(`SELECT target FROM session_deploys WHERE session_id = ? AND status IN ('complete','incomplete')`).all(sessionId).map(r => r.target)
+}
+
+function hasAnyDeploy(sessionId) {
+    return !!db.prepare(`SELECT 1 FROM session_deploys WHERE session_id = ? AND status IN ('complete','incomplete') LIMIT 1`).get(sessionId)
+}
+
+// A complete deploy to THIS target. A build may not be made again for it.
+function hasCompleteDeploy(sessionId, target) {
+    return !!db.prepare(`SELECT 1 FROM session_deploys WHERE session_id = ? AND target = ? AND status = 'complete' LIMIT 1`).get(sessionId, target)
+}
+
+function setSessionDeployStatus(sessionId, target, status, reason = null) {
+    const st = normaliseStatus(status)
+    db.prepare(`UPDATE session_deploys SET status = ?, status_reason = ? WHERE session_id = ? AND target = ?`)
+        .run(st, reason ?? null, sessionId, target)
+    if (st === 'reverted' || st === 'superseded') {
+        db.prepare(`UPDATE sessions SET deployed_target = NULL WHERE id = ? AND deployed_target = ?`).run(sessionId, target)
+    }
+    return getSessionDeploy(sessionId, target)
+}
+
+// All deploys to a target whose status is 'complete' or 'incomplete' — used by
+// the restore-from-backup action to mark the bad deploy reverted.
+function latestDeployTo(target) {
+    return db.prepare(`SELECT * FROM session_deploys WHERE target = ? ORDER BY deployed_at DESC LIMIT 1`).get(target) ?? null
+}
+
+// Every deploy record on a target, newest first. Re-cloning TEST walks these to
+// supersede the deploys that never reached PROD (Part L.3).
+function getDeploysForTarget(target) {
+    return db.prepare(`SELECT * FROM session_deploys WHERE target = ? ORDER BY deployed_at DESC`).all(target)
+}
+
+// ── TEST cycle markers (Part L) ─────────────────────────────────────────────
+// A re-clone starts a new cycle. We store only the event; which change sets are
+// in the cycle is derived from the TEST deploy records after it, so there is no
+// admin-maintained list that can drift from what actually happened.
+function recordTestReclone(server, { by = null, at = null } = {}) {
+    if (!server) return null
+    const when = at ?? new Date().toISOString()
+    db.prepare(`INSERT INTO test_cycles (server, started_at, by) VALUES (?, ?, ?)`).run(server, when, by ?? null)
+    return latestTestReclone(server)
+}
+
+function latestTestReclone(server) {
+    const r = db.prepare(`SELECT started_at FROM test_cycles WHERE server = ? ORDER BY started_at DESC, id DESC LIMIT 1`).get(server)
+    return r?.started_at ?? null
+}
+
+function recordSessionRelease(sessionId, { target, release_commit, built_at = null, by = null } = {}) {
+    if (!sessionId || !target || !release_commit) return null
+    const at = built_at ?? new Date().toISOString()
+    db.prepare(`
+        INSERT INTO session_releases (session_id, target, release_commit, built_at, by)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(session_id, target) DO UPDATE SET
+            release_commit = excluded.release_commit,
+            built_at       = excluded.built_at,
+            by             = excluded.by
+    `).run(sessionId, target, release_commit, at, by ?? null)
+    return getSessionRelease(sessionId, target)
+}
+
+function getSessionRelease(sessionId, target) {
+    return db.prepare(`SELECT * FROM session_releases WHERE session_id = ? AND target = ?`).get(sessionId, target) ?? null
+}
+
+function getSessionReleases(sessionId) {
+    return db.prepare(`SELECT * FROM session_releases WHERE session_id = ? ORDER BY built_at DESC`).all(sessionId)
 }
 // A change set whose objects already match the target at release time: it has
 // nothing to deploy, so it is recorded as done with the reason. Without this it
@@ -125,8 +318,15 @@ function markSessionNoChange(id, { reason, at } = {}) {
     return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id)
 }
 
-function markSessionDeployed(id, target) {
-    db.prepare(`UPDATE sessions SET deployed_target = ?, deployed_at = ? WHERE id = ?`).run(target ?? null, new Date().toISOString(), id)
+function markSessionDeployed(id, target, { status = 'complete', status_reason = null, release_commit = null, base_commit = null, attrs_commit = null, backup_tag = null, by = null } = {}) {
+    const at = new Date().toISOString()
+    db.prepare(`UPDATE sessions SET deployed_target = ?, deployed_at = ? WHERE id = ?`).run(target ?? null, at, id)
+    if (target) {
+        recordSessionDeploy(id, {
+            target, release_commit, base_commit, attrs_commit, backup_tag,
+            deployed_at: at, by, status, status_reason,
+        })
+    }
 }
 
 // A change set that must never ship (a proof, lab work, a throwaway). It is
@@ -220,10 +420,28 @@ function getSessionManifest(sessionId) {
 }
 
 // A change set's size is the number of OBJECTS it touched, not the number of
-// log rows: saving the same rule twice leaves two rows but is one change, and
-// that is what getSessionLog (and therefore every release) sees. Counting raw
-// rows made the Change Sets list disagree with the header and the deploy.
-const COUNT_CHANGES = `COUNT(DISTINCT l.object_type || '|' || l.object_name || '|' || l.action || '|' || IFNULL(l.detail, ''))`
+// log rows: five element edits on one dimension are one change, and saving the
+// same rule twice is one change. A subset or view needs its parent in the key
+// (two `Default` subsets on different dimensions are two objects); a rule belongs
+// to its cube. Runs and refresh decisions are not objects and never count.
+const COUNT_CHANGES = `COUNT(DISTINCT CASE WHEN l.object_type IN ('process-run', 'decision') THEN NULL ELSE
+    (CASE WHEN l.object_type = 'rules' THEN 'cube' ELSE l.object_type END) || '|' ||
+    IFNULL(l.object_name, '') || '|' ||
+    (CASE WHEN l.object_type IN ('subset', 'view') THEN IFNULL(l.detail, '') ELSE '' END)
+END)`
+
+// The same rule in JS, for a session read one by one (the open set's header).
+// Keep the two in step: tests/change-set-object-count.test.js asserts they agree.
+function changeObjectCount(entries = []) {
+    const keys = new Set()
+    for (const e of entries ?? []) {
+        const type = String(e.object_type ?? '')
+        if (!type || type === 'process-run' || type === 'decision') continue
+        const object = `${type === 'rules' ? 'cube' : type}|${String(e.object_name ?? '')}|${(type === 'subset' || type === 'view') ? String(e.detail ?? '') : ''}`
+        keys.add(object)
+    }
+    return keys.size
+}
 
 function getSessions(server, limit = 50) {
     return db.prepare(`
@@ -366,6 +584,8 @@ function getObjectOrdering(server, sessionId, objects) {
     const stmt = db.prepare(`
         SELECT s.id AS session_id, s.name AS session_name, s.user,
                s.deployed_target, s.wont_deploy_at, s.covered_by, s.kind, s.closed_at, s.no_change_at,
+               (SELECT group_concat(d.target) FROM session_deploys d
+                 WHERE d.session_id = s.id AND d.status IN ('complete','incomplete')) AS deployed_targets,
                MAX(l.timestamp) AS at
         FROM log_entries l
         JOIN sessions s ON s.id = l.session_id
@@ -380,8 +600,26 @@ function getObjectOrdering(server, sessionId, objects) {
     return out
 }
 
-function getObjectHistory(server, objectType, objectName) {
-    // Fetch one extra row to detect truncation instead of silently hiding history.
+// The change set whose work is on this server for one object — the latest session
+// that logged a change to it. Used by a sync to tell the developer when PROD's
+// value replaces theirs. `anyDetail` matches every log row for the object (a
+// dimension logs its elements with a detail, but all belong to the dimension).
+function getObjectOwner(server, { objectType, objectName, detail = null, anyDetail = false } = {}) {
+    if (!server || !objectType || !objectName) return null
+    const r = db.prepare(`
+        SELECT s.id, s.name, s.user
+        FROM log_entries l
+        JOIN sessions s ON s.id = l.session_id
+        WHERE l.server = ? AND l.object_type = ? AND LOWER(l.object_name) = LOWER(?)
+          AND (? = 1 OR IFNULL(l.detail, '') = ?)
+          AND IFNULL(s.kind, '') <> 'sync'
+        ORDER BY l.timestamp DESC, l.id DESC
+        LIMIT 1
+    `).get(server, objectType, objectName, anyDetail ? 1 : 0, detail ?? '')
+    return r ? { id: r.id, name: r.name, user: r.user ?? null } : null
+}
+
+function getObjectHistory(server, objectType, objectName) {    // Fetch one extra row to detect truncation instead of silently hiding history.
     const rows = db.prepare(`
         SELECT l.*, s.name as session_name
         FROM log_entries l
@@ -506,4 +744,6 @@ try { db.exec(`ALTER TABLE log_entries ADD COLUMN user TEXT`) } catch { /* alrea
 // The TM1 login a change was made with (the MCP's builder identity), next to the developer in `user`.
 try { db.exec(`ALTER TABLE log_entries ADD COLUMN identity TEXT`) } catch { /* already migrated */ }
 
-module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionNoChange, markSessionWontDeploy, unmarkSessionWontDeploy, markSessionCovered, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getObjectOrdering, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries }
+module.exports = { startSession, getSession, getSessionManifest, closeSession, resumeSession, updateSessionDescription, setSessionCommit, setSessionRelease, markSessionDeployed, markSessionNoChange, markSessionWontDeploy, unmarkSessionWontDeploy, markSessionCovered, getActiveSession, getSessions, getAllSessions, getSessionLog, getCrossSessionTouches, getObjectOrdering, getObjectOwner, getEntriesSince, getMaxEntryId, getEntriesSinceId, getSessionLogVerbose, getRecentLog, getObjectHistory, getEntryById, writeLog, writeReadAudit, getReadAudit, pruneReadAudit, findArchivableEntries, pruneEntries, changeObjectCount,
+    recordSessionDeploy, getSessionDeploy, getSessionDeploys, getDeploysForSessions, deployTargets, hasAnyDeploy, hasCompleteDeploy, setSessionDeployStatus, latestDeployTo, getDeploysForTarget, recordSessionRelease, getSessionRelease, getSessionReleases,
+    recordTestReclone, latestTestReclone }

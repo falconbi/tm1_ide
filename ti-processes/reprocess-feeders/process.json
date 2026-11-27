@@ -1,0 +1,18 @@
+{
+  "name": "}IDE.ReprocessFeeders",
+  "description": "Re-run the feeders for one cube (CubeProcessFeeders). The IDE runs it on a target after a deploy for every cube whose rules the release changed, because TM1 v11 has no REST call for it and cross-cube feeders do not re-arm on their own.",
+  "parameters": [
+    {
+      "Name": "pCube",
+      "Type": "String",
+      "Value": "",
+      "Prompt": "The cube whose feeders are reprocessed."
+    }
+  ],
+  "variables": [],
+  "datasource": { "Type": "None" },
+  "prolog": "#Region }IDE.ReprocessFeeders\n# ====================================================================================================\n# }IDE.ReprocessFeeders -- reprocess one cube's feeders on the target server.\n#\n# WHO RUNS IT\n#   The IDE, after a deploy: for every cube whose rules the release changed.\n#   TM1 v11 has no REST ProcessFeeders action, so this is the TI fallback (the\n#   same function the MCP reprocess_feeders tool uses).\n#\n# WHAT IT DOES\n#   CubeProcessFeeders(pCube) -- rebuild the cube's feeder list from its rules.\n#   A failure or an empty cube name fails this process, so the deploy reports\n#   the cube as incomplete instead of pretending the feeders ran.\n#\n# SOURCE ti-processes/reprocess-feeders/process.json in the TM1 IDE repo. The\n#        server copy is the runtime copy; the IDE creates it on demand.\n# ====================================================================================================\n#EndRegion\ncThis = GetProcessName();\ncCube = pCube;\nIF(cCube @= '');\n  LogOutput('ERROR', cThis | ': no cube name was passed');\n  ProcessError;\nENDIF;\nnStart = NOW();\nCubeProcessFeeders(cCube);\nnSeconds = (NOW() - nStart) * 86400;\nLogOutput('INFO', cThis | ': feeders reprocessed for ' | cCube | ' in ' | NumberToString(nSeconds) | ' seconds');\n",
+  "metadata": "",
+  "data": "",
+  "epilog": ""
+}

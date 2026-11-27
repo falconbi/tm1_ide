@@ -42,7 +42,7 @@ export default function HelpPanel({ open, onClose, area }) {
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-popover border border-border rounded-lg shadow-xl w-[520px] max-w-[90vw] max-h-[80vh] flex flex-col"
+        className="bg-popover border border-border rounded-lg shadow-xl w-[640px] max-w-[94vw] max-h-[82vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -59,7 +59,29 @@ export default function HelpPanel({ open, onClose, area }) {
           {content.sections.map((s) => (
             <div key={s.heading}>
               <div className="text-xs font-semibold text-foreground mb-1">{s.heading}</div>
-              <p className="text-xs text-muted-foreground leading-relaxed">{renderBody(s.body)}</p>
+              {s.body && <p className="text-xs text-muted-foreground leading-relaxed">{renderBody(s.body)}</p>}
+              {s.table && (
+                <div className="mt-2 overflow-x-auto rounded border border-border">
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead>
+                      <tr>
+                        {s.table.columns.map((c) => (
+                          <th key={c} className="text-left font-semibold text-foreground bg-muted/40 px-2 py-1.5 border-b border-border whitespace-nowrap">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.table.rows.map((row, i) => (
+                        <tr key={i} className="align-top">
+                          {row.map((cell, j) => (
+                            <td key={j} className="px-2 py-1.5 text-muted-foreground border-b border-border/40 last:border-0">{renderBody(cell)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           ))}
 

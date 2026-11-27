@@ -15,7 +15,7 @@ const path = require('path')
 const FILE = path.join(require('./data-dir').DATA_DIR, 'deploy-settings.json')
 const AREA = 'lock'          // the Deployments folder, no fixed document name
 const DOC = 'settings.json'
-const EMPTY = { backupProcess: null, attributeValues: {} }
+const EMPTY = { backupProcess: null }
 
 function loadLocal() {
     try { return JSON.parse(fs.readFileSync(FILE, 'utf8')) } catch { return {} }
@@ -30,15 +30,10 @@ async function modelOwned(server, { ideToken } = {}) {
 }
 
 function normalise(doc) {
-    return {
-        backupProcess: doc?.backupProcess ? String(doc.backupProcess) : null,
-        // Per dimension: the attributes whose VALUES PROD's load maintains, and
-        // therefore the only ones a refresh may copy. Confirmed by an admin, never
-        // inferred at copy time.
-        attributeValues: doc?.attributeValues && typeof doc.attributeValues === 'object' && !Array.isArray(doc.attributeValues)
-            ? Object.fromEntries(Object.entries(doc.attributeValues).map(([d, list]) => [d, Array.isArray(list) ? list.map(String) : []]))
-            : {},
-    }
+    // Part N.5: the Protection attribute list is retired. Attributes are handled by
+    // the release's own recorded plan (Part G.7); an old attributeValues field is
+    // ignored rather than consulted.
+    return { backupProcess: doc?.backupProcess ? String(doc.backupProcess) : null }
 }
 
 async function get(server, { ideToken } = {}) {
@@ -58,7 +53,6 @@ async function set(server, patch = {}, { ideToken } = {}) {
     // another (clearing attributeValues once nulled the backup process this way).
     const doc = normalise({
         backupProcess: patch.backupProcess === undefined ? current.backupProcess : patch.backupProcess,
-        attributeValues: patch.attributeValues === undefined ? current.attributeValues : patch.attributeValues,
     })
     const d = loadLocal()
     d[server] = { ...(d[server] ?? {}), ...doc }

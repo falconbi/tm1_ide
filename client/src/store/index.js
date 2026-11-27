@@ -499,19 +499,17 @@ export const useStore = create((set, get) => ({
   // bar, every open editor) is hidden while this is set. Closing it restores
   // the IDE exactly as it was; tab/group state is untouched by this.
 
-  // The one deploy surface. `{ release: true }` opens the latest closed change
-  // set; `{ session }` opens a specific change set. This is the detailed,
-  // step-by-step view; the normal path is `ship` below.
-  deployWizard: null,
-  openDeployWizard:  (config = {}) => set({ deployWizard: config }),
-  closeDeployWizard: () => set({ deployWizard: null }),
-
   // The normal path: one action that ships a change set. Everything the stepped
   // wizard exposes (commit, release, approval, deploy) happens automatically.
   // { session } — the change set to send.
   ship: null,
-  openShip:  (session) => set({ ship: { session } }),
+  // `ship`/`openShip`/`closeShip` are the old names; `deploy` is the word the
+  // brief uses now. Both point at the same state, so no caller has to change at
+  // once (Part N.3).
+  openShip:  (session, target = null) => set({ ship: { session, target } }),
   closeShip: () => set({ ship: null }),
+  openDeploy: (session, target = null) => set({ ship: { session, target } }),
+  closeDeploy: () => set({ ship: null }),
 
   // The report of one deployment: what shipped, who approved it, what the checks
   // said. Opened from anywhere that knows (target, commit) — the change set row,
@@ -519,4 +517,9 @@ export const useStore = create((set, get) => ({
   deployReport: null,
   openDeployReport: (config = {}) => set({ deployReport: config }),
   closeDeployReport: () => set({ deployReport: null }),
+
+  // Which Deploy tab view to show when another screen sends the person there
+  // (e.g. the pre-deploy check's "Sync DEV from PROD"). Consumed by DeployTab.
+  deployView: null,
+  setDeployView: (view) => set({ deployView: view }),
 }))

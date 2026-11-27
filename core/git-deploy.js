@@ -14,7 +14,7 @@ const gitIdentity = require('./git-identity')
 const approvals = require('./git-approvals')
 const { driftCheck } = require('./git-drift')
 
-// Refresh the target's live snapshot (pushes prod-live) and compare it against
+// Refresh the target's live snapshot (pushes live-<target>) and compare it against
 // what the target last RECEIVED. Any difference is drift — deploys onto a drifted
 // target get refused at Review AND at Deploy.
 async function targetDrift(target, { token, gitUser = gitIdentity.user(), ideToken } = {}) {
@@ -26,35 +26,123 @@ async function targetDrift(target, { token, gitUser = gitIdentity.user(), ideTok
         // blocked. Everything else is blocking: a pull would replace it.
         const entries = all.filter(e => e.blocking !== false)
         const nonBlocking = all.filter(e => e.blocking === false)
-        return { clean: entries.length === 0, entries, nonBlocking, all, deployed: d?.deployed ?? null }
+        return { clean: entries.length === 0, entries, nonBlocking, all, deployed: d?.deployed ?? null, liveCommit: d?.liveCommit ?? null }
     } catch (e) {
         return { clean: false, entries: [], nonBlocking: [], error: e.message }
     }
+}
+
+// What a drifted Git file belongs to, in the words a person reads. Drift entries
+// carry a file path, not an object, so this is the one place that turns one into
+// the other — the refusal text, the "ignored" filter and the next step all use it.
+function driftObject(file) {
+    const f = String(file ?? '')
+    let m
+    if ((m = f.match(/^dimensions\/(.+?)\.hierarchies\/.+?\.subsets\/(.+?)\.json$/i))) {
+        return { type: 'subset', name: m[2], label: `Subset ${m[2]} on ${m[1]}` }
+    }
+    if ((m = f.match(/^dimensions\/(.+?)\.hierarchies\/.+?\.json$/i))) {
+        return { type: 'dimension', name: m[1], label: `Dimension ${m[1]}` }
+    }
+    if ((m = f.match(/^dimensions\/(.+?)\.json$/i))) {
+        return { type: 'dimension', name: m[1], label: `Dimension ${m[1]}` }
+    }
+    if ((m = f.match(/^cubes\/(.+?)\.rules$/i))) {
+        return { type: 'rule', name: m[1], label: `Rules for cube ${m[1]}` }
+    }
+    if ((m = f.match(/^cubes\/(.+?)\.views\/.+?\.json$/i))) {
+        return { type: 'view', name: m[1], label: `View on cube ${m[1]}` }
+    }
+    if ((m = f.match(/^cubes\/(.+?)\.json$/i))) {
+        return { type: 'cube', name: m[1], label: `Cube ${m[1]}` }
+    }
+    if ((m = f.match(/^processes\/(.+?)\.(?:json|ti)$/i))) {
+        return { type: 'process', name: m[1], label: `Process ${m[1]}` }
+    }
+    if ((m = f.match(/^chores\/(.+?)\.(?:json|ti)$/i))) {
+        return { type: 'chore', name: m[1], label: `Chore ${m[1]}` }
+    }
+    return { type: 'unknown', name: null, label: f || 'an object' }
 }
 
 // Policy: a drifted target is not reverted or promoted ad hoc. The fix is to
 // re-apply the change on DEV in a change set and release it; deploys stay paused
 // until drift is clean.
 const driftRefusal = (target, drift) => {
-    const objects = (drift.entries ?? []).map(e => `${e.status} ${e.file}`).join('; ')
-    // Views and subsets do not block, but they are never silent either.
-    const soft = (drift.nonBlocking ?? []).length
-        ? ` (${drift.nonBlocking.length} view/subset change${drift.nonBlocking.length === 1 ? '' : 's'} on ${target} are reported but not blocking: ${(drift.nonBlocking).map(e => e.file).join(', ')})`
-        : ''
-    if (objects) {
-        return `PROD has drifted: ${objects}. Re-apply the change on DEV in a change set, then release it. Deploys to this server are paused until drift is clean.${soft}`
+    const entries = drift.entries ?? []
+    const label = (e) => driftObject(e?.file).label
+    const what = (e) => {
+        const s = e?.summary
+        if (!s) return e?.status === 'A' ? 'new on the target' : e?.status === 'D' ? 'removed on the target' : 'changed on the target'
+        return s
+            .replace(/^\+(\d+) element(s?):/i, '$1 new element$2:')
+            .replace(/^-(\d+) element(s?):/i, '$1 element$2 no longer there:')
+            .replace(/^\+(\d+) edge(s?):/i, '$1 new link$2:')
+            .replace(/^-(\d+) edge(s?):/i, '$1 link$2 removed:')
     }
-    return `PROD drift could not be checked (${drift.error ?? 'unknown error'}). Deploys to this server are paused until drift is clean.${soft}`
+    const lines = entries.map(e => `— ${label(e)}: ${what(e)}`)
+    const soft = (drift.nonBlocking ?? []).length
+        ? `\nAlso reported, not blocking: ${(drift.nonBlocking).map(label).join(', ')}.`
+        : ''
+    if (!entries.length) {
+        return `${target} could not be compared with its last deploy (${drift.error ?? 'unknown error'}). The deploy is waiting.${soft}`
+    }
+    const types = new Set(entries.map(e => driftObject(e?.file).type))
+    const next = types.has('rule') || types.has('process')
+        ? `What to do: put ${target}'s version of it into DEV (carry-back), then deploy it.`
+        : types.has('cube')
+            ? `What to do: make the same cube change on DEV in a new change set, then deploy it.`
+            : `What to do: copy ${target}'s change to DEV with Sync DEV (only when no change set is open), or record it on DEV in a change set and deploy it.`
+    return `${target} changed after the last deploy:\n${lines.join('\n')}\n${next} The deploy is waiting until this is fixed.${soft}`
 }
 
-// A dimension that changed on the target no longer blocks if this release already
-// carries everything the target has for it — i.e. the element-loss check finds
-// nothing to lose. That is the refresh's payoff: PROD's own changes are in DEV and
-// therefore in the release, so deploying replaces them with themselves.
-//
-// Anything else still blocks: a non-dimension object, or a dimension with elements
-// the release does not have (which is also what a PROD change made *after* the
-// refresh looks like).
+// Drift entries for objects the pull plan does not write at all. A Skip op means
+// the target's copy is left exactly as it is, so a change there cannot be lost,
+// replaced or blocked by this deploy.
+function unshippedDrift(entries = [], ops = []) {
+    if (!(entries ?? []).length) return []
+    const touched = new Set()
+    let parsed = 0
+    for (const op of ops ?? []) {
+        const m = String(op ?? '').match(/^([A-Za-z]+)\s+[A-Za-z]+\(['"]?([^'")]*)['"]?/)
+        if (!m) continue
+        parsed++
+        // Skip is the only verb that writes nothing. Everything else writes the object.
+        if (m[1].toLowerCase() === 'skip') continue
+        touched.add(String(m[2]).toLowerCase())
+    }
+    // A plan we cannot read tells us nothing, and "nothing is written" is never a
+    // safe assumption to filter drift on. An all-Skip plan, by contrast, is exact.
+    if (!parsed) return []
+    return (entries ?? []).filter(e => {
+        if (e?.blocking === false) return false          // already reported, never blocking
+        const name = String(e?.object ?? driftObject(e?.file).name ?? '').toLowerCase()
+        if (!name) return false                          // unclassified: keep it visible
+        return !touched.has(name)
+    })
+}
+
+// Elements this change set deliberately deletes, per dimension. A deliberate
+// delete is not drift-loss: the target still has the element, and the release is
+// meant to remove it.
+function recordedElementDeletes(session) {
+    if (!session) return null
+    try {
+        const { recordedChanges } = require('./recorded-changes')
+        const cl = require('./change-log')
+        const rec = recordedChanges(cl.getSessionLogVerbose(session))
+        const byDim = new Map()
+        for (const [dim, r] of rec.dimensions ?? []) {
+            const names = new Set((r.elements ?? []).filter(o => o.action === 'delete').map(o => String(o.name).toLowerCase()))
+            if (names.size) byDim.set(String(dim).toLowerCase(), names)
+        }
+        if (!byDim.size) return null
+        return (dim, name) => byDim.get(String(dim).toLowerCase())?.has(String(name).toLowerCase()) ?? false
+    } catch { return null }
+}
+
+// A dimension the release already carries every element of does not block; one
+// whose elements it would remove does.
 function partitionCarriedDrift(entries = [], elementLoss) {
     // 'carried' is only knowable when the comparison actually ran. A failed
     // comparison must never be read as "nothing to lose".
@@ -74,7 +162,7 @@ function partitionCarriedDrift(entries = [], elementLoss) {
         if (String(e?.status ?? '').toUpperCase() === 'D') { blocking.push(e); continue }
         const dim = dimOf(e?.file)
         if (lossKnown && dim && !lostDimensions.has(dim.toLowerCase())) {
-            carried.push({ ...e, carried: true, reason: 'the release carries what PROD changed here' })
+            carried.push({ ...e, carried: true, reason: 'the release carries what the target changed here' })
         } else {
             blocking.push(e)
         }
@@ -133,7 +221,7 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
     try {
         const st = await c.post('GitStatus', { Username: gitUser, Password: token })
         // The IDE-recorded deploy commit is what the target actually last received;
-        // TM1's own DeployedCommit is the last git op's target (a prod-live push
+        // TM1's own DeployedCommit is the last git op's target (a live-<target> push
         // clobbers it). Prefer the record, fall back only if there is none.
         let recorded = null
         try { recorded = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null } catch { /* none */ }
@@ -217,8 +305,11 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
         if (out.plan.targetCommit && out.repoUrl) {
             try {
                 const { compareTargetWithRepo } = require('./git-readiness')
+                const rel = session ? require('./change-log').getSession(session) : null
+                const cmpCommit = rel?.release_commit ?? out.plan.targetCommit
                 const cmp = await compareTargetWithRepo(target, {
-                    commit: out.plan.targetCommit, repoUrl: out.repoUrl, token, gitUser, ideToken, client: c,
+                    commit: cmpCommit, repoUrl: out.repoUrl, token, gitUser, ideToken, client: c,
+                    ignoreElements: recordedElementDeletes(session),
                 })
                 out.elementLoss = cmp.elementLoss
                 out.loss = cmp.loss
@@ -226,6 +317,14 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
             } catch (e) {
                 out.elementLossError = e.message
             }
+        }
+
+        // Anything the target changed on an object this pull does not write is
+        // irrelevant here: the plan Skips it, so nothing can be overwritten.
+        const untouched = unshippedDrift(out.driftEntries, ops)
+        if (untouched.length) {
+            out.driftIgnored = untouched
+            out.driftEntries = (out.driftEntries ?? []).filter(e => !untouched.includes(e))
         }
 
         // Drift on a dimension the release already carries does not block here any
@@ -244,6 +343,11 @@ async function prepare(source, target, { branch = 'dev', token, gitUser = gitIde
                 out.blocked = true
                 out.error = driftRefusal(target, { entries: blocking, nonBlocking: out.driftNonBlocking })
             }
+        } else if (out.blocked) {
+            // Every change the target made sits in an object this deploy leaves
+            // alone, so nothing about it can block or be lost.
+            out.blocked = false
+            out.error = null
         }
     } catch (e) {
         out.error = `Pull plan failed: ${e.response?.data?.error?.message ?? e.message} (a stale view or name in the source breaks the pull — run the readiness check)`
@@ -282,7 +386,7 @@ async function execute(target, opts = {}) {
     return out
 }
 
-async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by, session: sessionId, backupAt = null } = {}) {
+async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.user(), ideToken, source, purpose = 'deploy', by, session: sessionId, backupAt: _backupAt = null } = {}) {
     const c = makeClient(target, ideToken)
     const out = { target, branch }
     const lockMod = require('./git-lock')
@@ -367,6 +471,28 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
     }
     out.source = source
 
+    // Part L.2/L.3 — TEST's cycle is derived, not listed. Once a set in it has
+    // reached PROD, a set outside the cycle cannot be deployed to TEST until the
+    // re-clone is recorded. The label is read from TM1 Git; an unreadable label
+    // does not invent a refusal.
+    const cycleSessionId = sessionId ?? approval.session
+    if (cycleSessionId) {
+        try {
+            const st = await c.post('GitStatus', { Username: gitUser, Password: token })
+            if (String(st?.Deployment ?? '').toUpperCase() === 'TEST') {
+                const { canDeployToTest } = require('./test-cycle')
+                const cyc = canDeployToTest(target, cycleSessionId)
+                if (!cyc.ok) {
+                    out.executed = false
+                    out.refused = true
+                    out.error = cyc.error
+                    out.testCycle = cyc.cycle
+                    return out
+                }
+            }
+        } catch { /* label unknown — do not block on a guess */ }
+    }
+
     // What this deployment is FOR, and a first approximation of what it ships —
     // the change set's own log. The release's object list (below) is authoritative
     // and replaces this when it can be read; this keeps a refused deploy's report
@@ -396,6 +522,13 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         return out
     }
 
+    // The release's recorded attribute plan (Part G.7), built at Build Release.
+    let attrsPlan
+    try {
+        const relSession = linkedSession?.id ? cl.getSession(linkedSession.id) : null
+        attrsPlan = relSession?.release_attrs ? JSON.parse(relSession.release_attrs) : null
+    } catch { attrsPlan = null }
+
     try {
         // Refresh the target's live snapshot and refuse if it has drifted from what
         // it last received — never deploy onto a drifted target. The lock is
@@ -407,6 +540,61 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         out.driftNonBlocking = drift.nonBlocking ?? []
         // Refusal waits until the release's own element-loss is known: a dimension
         // the release carries does not block.
+
+        // Part I.2 — the target must not have changed since Build Release. Build
+        // recorded the Live commit it started from; anything different now (an
+        // element, a value) means the release no longer describes this target, and
+        // it must be rebuilt and approved again.
+        const sessionLive = (session ?? linkedSession)?.release_live_commit ?? null
+        if (sessionLive && drift.liveCommit) {
+            const { sameCommit } = require('./git-approvals')
+            if (!sameCommit(sessionLive, drift.liveCommit)) {
+                try {
+                    const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+                    const { changedObjects } = require('./git-release')
+                    const changedSinceBuild = await changedObjects({ from: sessionLive, to: drift.liveCommit, repoUrl, token, gitUser })
+                    if (changedSinceBuild.length) {
+                        out.executed = false
+                        out.refused = true
+                        out.error = `Refused: ${target} changed after the release was built (${changedSinceBuild.slice(0, 5).map(o => `${o.type} ${o.name}`).join(', ')}${changedSinceBuild.length > 5 ? '…' : ''}). Run Build Release again and approve the new release.`
+                        return out
+                    }
+                } catch (e) {
+                    out.executed = false
+                    out.refused = true
+                    out.error = `Refused: could not check whether ${target} changed after Build Release (${e.message}). Run Build Release again.`
+                    return out
+                }
+            }
+        }
+
+        // Part I.2 — attribute values must not have moved either. Build recorded
+        // the attrs-<target> commit it used; writing the target's attributes now
+        // returns that same commit when nothing changed, or a new one when a value
+        // moved after the build — in which case the release no longer describes it.
+        const attrsLiveStored = (session ?? linkedSession)?.release_attrs_live ?? null
+        if (attrsLiveStored) {
+            try {
+                const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+                const { collectAttrsFiles, writeAttrsBranch } = require('./git-attrs')
+                const tm1Now = new TM1Client(target, makeClient(target, ideToken))
+                const files = await collectAttrsFiles(tm1Now)
+                const w = await writeAttrsBranch(target, { repoUrl, token, gitUser, files, message: `Pre-deploy attributes of ${target}` })
+                const { sameCommit } = require('./git-approvals')
+                if (w?.ok === false) throw new Error(w.error)
+                if (w?.commit && !sameCommit(attrsLiveStored, w.commit)) {
+                    out.executed = false
+                    out.refused = true
+                    out.error = `Refused: an attribute value on ${target} changed after the release was built. Run Build Release again and approve the new release.`
+                    return out
+                }
+            } catch (e) {
+                out.executed = false
+                out.refused = true
+                out.error = `Refused: could not check ${target}'s attributes for changes since Build Release (${e.message}). Run Build Release again.`
+                return out
+            }
+        }
 
         let plan
         try {
@@ -449,8 +637,19 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                 // REPLACES. So if one changed on the target AND this release ships
                 // it, the deploy would silently overwrite the target's version.
                 // Refuse and name it; Review resolves this by choosing a side.
-                const { viewSubsetConflicts } = require('./git-release')
-                const conflicts = viewSubsetConflicts(out.driftNonBlocking, expectedKeys)
+                const { viewSubsetConflicts, objectKey: okey } = require('./git-release')
+                // What the change set actually owns. A subset it does not own is in
+                // the release because Build carried the target's own copy, so the
+                // step applies the same content back: no conflict, nothing to ask.
+                let ownedKeys = null
+                try {
+                    const sid = approval.session ?? session
+                    const log = sid ? require('./change-log').getSessionLog(sid) : []
+                    ownedKeys = new Set((log ?? [])
+                        .filter(e => e.object_type === 'subset' || e.object_type === 'view')
+                        .map(e => okey(e.object_type, e.object_name, e.detail)))
+                } catch { ownedKeys = null }
+                const conflicts = viewSubsetConflicts(out.driftNonBlocking, expectedKeys, ownedKeys)
                 if (conflicts.length) {
                     out.executed = false
                     out.refused = true
@@ -489,7 +688,8 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
             const lossRepoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
             if (lossRepoUrl && out.targetCommit) {
                 const cmp = await compareTargetWithRepo(target, {
-                    commit: out.targetCommit, repoUrl: lossRepoUrl, token, gitUser, ideToken, client: c,
+                    commit: out.releaseCommit ?? out.targetCommit, repoUrl: lossRepoUrl, token, gitUser, ideToken, client: c,
+                    ignoreElements: recordedElementDeletes(session?.id ?? session),
                 })
                 out.elementLoss = cmp.elementLoss
                 out.loss = cmp.loss
@@ -509,6 +709,13 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                 out.error = `Refused: this release changes the type of ${out.typeChanges.length} element${out.typeChanges.length === 1 ? '' : 's'} (${out.typeChanges.slice(0, 5).map(t => `${t.dimension}.${t.element}: ${t.from} → ${t.to}`).join('; ')}${out.typeChanges.length > 5 ? '…' : ''}), and TM1 clears the values stored against them. Approve it again at Review, where the list is shown.`
                 return out
             }
+        }
+
+        // Objects this pull does not write cannot be affected by it.
+        const untouchedExec = unshippedDrift(out.driftEntries, plan?.Operations ?? [])
+        if (untouchedExec.length) {
+            out.driftIgnored = untouchedExec
+            out.driftEntries = (out.driftEntries ?? []).filter(e => !untouchedExec.includes(e))
         }
 
         // Now that this release's own loss is known: a dimension whose elements the
@@ -545,30 +752,33 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
             return out
         }
 
+        // A backup is REQUIRED, not stated (Part I.3). The IDE's own process is
+        // the default, so a target is never deployable without a backup because
+        // nobody configured one. The typed-in time is gone: it proved nothing.
         let protection = { backupProcess: null }
         try { protection = await require('./deploy-settings').get(target, { ideToken }) } catch { /* no setting */ }
-        if (protection.backupProcess) {
-            const at = new Date().toISOString()
-            try {
-                const r = await tm1.executeProcess(protection.backupProcess, [])
+        const { DEFAULT_BACKUP_PROCESS, backupFileName } = require('./deploy-backup')
+        const backupProcess = protection.backupProcess || DEFAULT_BACKUP_PROCESS
+        const backupName = backupFileName(target)
+        const at = new Date().toISOString()
+        try {
+            if (backupProcess === DEFAULT_BACKUP_PROCESS) {
+                // Installs }IDE.Backup on demand and passes the exact name this
+                // deploy records. The process fails when its archive is missing.
+                const r = await tm1.backupData({ fileName: backupName })
+                out.backup = { kind: 'process', process: backupProcess, fileName: backupName, ok: true, at, status: r?.status ?? null }
+            } else {
+                const r = await tm1.executeProcess(backupProcess, [])
                 const status = r?.ProcessExecuteStatusCode
                 const ok = status === undefined || status === 0 || status === 'CompletedSuccessfully' || status === 'HasMinorErrors'
                 if (!ok) throw new Error(`the process returned ${status}`)
-                out.backup = { kind: 'process', process: protection.backupProcess, ok: true, at }
-            } catch (e) {
-                out.executed = false
-                out.refused = true
-                out.error = `Refused: the backup process "${protection.backupProcess}" failed on ${target} (${e.message}). Nothing was sent.`
-                return out
+                out.backup = { kind: 'process', process: backupProcess, fileName: backupName, ok: true, at }
             }
-        } else {
-            if (!backupAt) {
-                out.executed = false
-                out.refused = true
-                out.error = `Refused: record when ${target} was last backed up before deploying — no backup process is set for it, and this deploy overwrites the model. Nothing was sent.`
-                return out
-            }
-            out.backup = { kind: 'stated', at: String(backupAt), by: approval.approver ?? null, ok: true }
+        } catch (e) {
+            out.executed = false
+            out.refused = true
+            out.error = `Refused: the backup process "${backupProcess}" failed on ${target} (${e.message}). Nothing was sent. Set a backup process on the target, or fix }IDE.Backup.`
+            return out
         }
 
         try {
@@ -578,7 +788,7 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
             // capture it before recordDeploy rewrites lastDeployed.
             const preDeployBase = require('./git-state').lastDeployed(target)?.lastDeployedCommit ?? null
             // Record what we actually deployed — TM1's DeployedCommit isn't reliable
-            // as "last received" (a prod-live push clobbers it). Loud: if the model
+            // as "last received" (a live-<target> push clobbers it). Loud: if the model
             // record cannot be written, that is reported, never best-effort.
             try {
                 const { recordDeploy } = require('./git-state')
@@ -587,6 +797,21 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                 out.executed = true
                 out.recorded = false
                 out.error = `Deploy applied, but the deploy record could not be written: ${e.message}. Investigate before the next deploy.`
+            }
+            // Restore point (Part I.4): tag the commit the target held BEFORE this
+            // deploy and the matching attributes commit with the backup's name.
+            // Best-effort: a tag that cannot be pushed is reported, and never
+            // undoes a pull that already landed.
+            try {
+                const tagRepo = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+                let attrsCommit = null
+                try { attrsCommit = require('./git-attrs').attrsHead(tagRepo, target, { token, gitUser }) } catch { attrsCommit = null }
+                out.restorePoint = await require('./deploy-backup').tagRestorePoint(tagRepo, {
+                    backupName, releaseCommit: preDeployBase, attrsCommit, token, gitUser,
+                })
+                if (out.backup) out.backup.tag = out.restorePoint?.release ?? null
+            } catch (e) {
+                out.restorePoint = { ok: false, error: e.message }
             }
             // Apply subsets/views over REST (TM1 Git's pull never applies them), then
             // verify every included object actually landed on the target — a skip must
@@ -597,11 +822,50 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
                     const repoUrl = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
                     const applied = await applyReleaseComplement(target, { base: preDeployBase, releaseCommit, repoUrl, token, gitUser, ideToken })
                     out.subsetsViews = applied
-                    out.incomplete = await verifyRelease(target, { base: preDeployBase, releaseCommit, repoUrl, token, gitUser, ideToken })
+
+                    // Part Q.1 — reprocess feeders for every cube whose rules this
+                    // release changed, after the pull and BEFORE verify. A failure
+                    // makes the deploy incomplete and names the cube.
+                    const { cubesWithChangedRules, reprocessFeeders } = require('./after-deploy')
+                    const feederCubes = cubesWithChangedRules(out.shippedObjects)
+                    const feeders = await reprocessFeeders(tm1, feederCubes)
+                    out.feeders = feeders
+                    out.incomplete = (feeders.failed ?? []).map(f => `feeders on ${f.cube}: ${f.error}`)
+                    if (feeders.failed?.length) out.feederFailures = feeders.failed
+
+                    out.incomplete = [
+                        ...(out.incomplete ?? []),
+                        ...(await verifyRelease(target, { base: preDeployBase, releaseCommit, repoUrl, token, gitUser, ideToken })),
+                    ]
                 } catch (e) {
                     out.incompleteCheckError = e.message
                     out.incomplete = []
                 }
+
+                // Part G.7 / I.6: the attribute definitions and values this change
+                // set recorded. Applied through REST after the pull, before verify.
+                if (attrsPlan && ((attrsPlan.defs?.length ?? 0) + (attrsPlan.values?.length ?? 0))) {
+                    try {
+                        const { applyAttributePlan } = require('./apply-attrs')
+                        out.attributePlan = await applyAttributePlan(tm1, attrsPlan)
+                        if (out.attributePlan.errors.length) {
+                            out.incomplete = [...(out.incomplete ?? []), ...out.attributePlan.errors.map(e => `${e.type} ${e.dim}.${e.name ?? `${e.element}.${e.attribute}`}`)]
+                        }
+                    } catch (e) { out.attributePlan = { applied: [], errors: [{ error: e.message }] } }
+                }
+
+                // Part I.7: Last Deployed attributes are the target's own attributes
+                // READ BACK from the server, never what the IDE meant to write.
+                try {
+                    const repoUrl2 = (await c.post('GitStatus', { Username: gitUser, Password: token }))?.URL
+                    if (repoUrl2) {
+                        const { collectAttrsFiles, writeAttrsBranch } = require('./git-attrs')
+                        const files = await collectAttrsFiles(tm1)
+                        const w = await writeAttrsBranch(target, { repoUrl: repoUrl2, token, gitUser, files, message: `Last Deployed attributes of ${target}` })
+                        if (w?.ok === false) out.attrsError = w.error
+                        else out.attrsCommit = w?.commit ?? null
+                    }
+                } catch (e) { out.attrsError = e.message }
 
                 // Every object this change set claims must be on the target when the
                 // deploy ends — including one the release inherited from its base and
@@ -629,9 +893,11 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         // request body; a missing session is reported, never silently skipped).
         let manifest = { deletes: [], dims: [], attrElements: [], wholesaleDims: [] }
         if (linkedSession?.kind === 'catch-up') {
-            // A catch-up has no change-set delete log. Its approved target-only
-            // delete list is the scope; nothing else is inferred from DEV.
-            manifest.deletes = Array.isArray(approval.deletes) ? approval.deletes : []
+            // Catch-up was removed; an old approval for one cannot be executed.
+            out.executed = false
+            out.refused = true
+            out.error = 'Refused: catch-up has been removed. Start a normal change set and deploy that.'
+            return out
         } else if (approval.session) {
             try { manifest = require('./change-log').getSessionManifest(approval.session) || manifest } catch { /* no manifest */ }
         } else {
@@ -640,7 +906,16 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         out.manifest = manifest
         try {
             const { reconcile } = require('./git-reconcile')
-            out.reconcile = await reconcile(source, target, { ideToken, deletes: manifest.deletes, dims: manifest.dims, attrElements: manifest.attrElements })
+            // A release carries its own recorded attribute plan (Part G.7). Where one
+            // exists the old manifest-driven value copy is NOT used: that path copied
+            // a whole dimension when only "attribute changed" was known, overwriting
+            // the target's own values (Sarah).
+            const hasPlan = !!attrsPlan && ((attrsPlan.defs?.length ?? 0) + (attrsPlan.values?.length ?? 0)) > 0
+            out.reconcile = await reconcile(source, target, {
+                ideToken, deletes: manifest.deletes,
+                dims: hasPlan ? [] : manifest.dims,
+                attrElements: hasPlan ? [] : manifest.attrElements,
+            })
         } catch (e) {
             out.reconcile = { error: e.message }
         }
@@ -677,6 +952,20 @@ async function runDeploy(target, { branch = 'dev', token, gitUser = gitIdentity.
         if ((out.subsetsViews?.errors?.length ?? 0) > 0 || (out.incomplete?.length ?? 0) > 0 || out.incompleteCheckError) {
             out.controlOk = false
         }
+
+        // Part Q.2 — DEV's tests run against the target, read-only, straight after
+        // the deploy. A failure never undoes anything; it marks the deploy "needs
+        // checking" and names the test.
+        try {
+            const { runDevTestsOnTarget } = require('./after-deploy')
+            out.devTests = await runDevTestsOnTarget(source, target, { ideToken })
+            if (!out.devTests.error && out.devTests.failed > 0) {
+                out.needsChecking = true
+                out.needsCheckingTests = (out.devTests.failures ?? []).map(f => f.description ?? f.id)
+            }
+        } catch (e) {
+            out.devTests = { error: e.message }
+        }
         return out
     } finally {
         try {
@@ -700,4 +989,4 @@ async function elementLossFor(target, commit, { token, gitUser = gitIdentity.use
     return { loss: cmp.loss, elementLoss: cmp.elementLoss, targetOnly: cmp.targetOnly }
 }
 
-module.exports = { prepare, execute, elementLossFor, partitionCarriedDrift, shippedTargetPaths }
+module.exports = { prepare, execute, elementLossFor, partitionCarriedDrift, shippedTargetPaths, driftRefusal, unshippedDrift, driftObject }

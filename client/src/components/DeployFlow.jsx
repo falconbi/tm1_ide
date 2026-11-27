@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Rocket, Loader2, CheckCircle2, AlertTriangle, X, FileText } from 'lucide-react'
 import { request, authHeader } from '@/lib/api'
 import { useStore } from '@/store'
@@ -13,10 +13,10 @@ import { cn } from '@/lib/utils'
 //               build the release · review the plan and the elements it removes
 //   DEPLOY      one screen: approve · check idle again · Save Data · backup · send · verify
 //
-// It replaces both the one-button Ship dialog and the eight-step wizard. The
-// wizard stays only for "Catch up a server", which is first-time setup, not a
-// deploy. Two entrances for one job is what made "which path is the product?" a
-// question; this is the answer.
+// It replaces both the one-button Ship dialog and the eight-step wizard. Two
+// entrances for one job is what made "which path is the product?" a question;
+// this is the answer. Catch-up was removed with the wizard: a server is brought
+// level by ordinary releases, built from its own copy.
 
 const POST = async (route, body) => {
   const r = await request(route, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify(body) })
@@ -32,22 +32,59 @@ const GET = async (url) => {
 }
 
 const fmt = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return iso } }
-const PRE_STEPS = ['Check PROD', 'Refresh from PROD', 'Tests & close', 'Build release', 'Review']
+const fmtDate = (iso) => {
+  if (!iso) return 'its last deploy'
+  try {
+    return new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  } catch { return 'its last deploy' }
+}
+// Pre-deploy is a CHECK (Part D: it writes nothing to PROD or DEV), so there is no
+// "refresh/copy" step here. Copying PROD's own changes onto DEV is Sync DEV (Part E),
+// a separate action that records into its own never-deployed set.
+const OPEN_STEPS = ['Check PROD', 'Tests & close', 'Build release', 'Review']
+// A set that is already closed has nothing to test or close: the flow is a
+// target check, a release, and a review. The numbers follow the real path.
+const CLOSED_STEPS = ['Check PROD', 'Build release', 'Review']
 // What the deploy does to an object, in a word a person reads. 'M' means the
 // target already has it; a dimension is REPLACED (the pull recreates it).
 const actionWord = (o) => o.action === 'D' ? 'deleted' : o.action === 'A' ? 'added' : (o.type === 'dimension' ? 'replaced' : 'changed')
+const kindLabel = (k) => k === 'rule-process' ? 'Rule/process' : `${String(k ?? '').charAt(0).toUpperCase()}${String(k ?? '').slice(1)}`
+// An attribute file and its dimension are one object to a reader: show one bullet,
+// not two. An attribute change on its own keeps its own row.
+const foldAttributeRows = (rows = []) => (rows ?? []).filter(r =>
+  r.kind !== 'attribute' || !(rows ?? []).some(o => o !== r && o.object === r.object && o.kind !== 'attribute')
+)
+// "PROD has this, DEV does not" — the gap a developer wants, not just the drift.
+const devMissingText = (m) => {
+  if (!m) return null
+  const list = (xs, max = 8) => `${xs.slice(0, max).join(', ')}${xs.length > max ? `, +${xs.length - max} more` : ''}`
+  if (m.kind === 'subset') {
+    if (m.missing) return { gap: true, text: 'This subset is not in DEV.' }
+    if ((m.members ?? []).length) return { gap: true, text: `These members are not in DEV: ${list(m.members)}.` }
+    return null
+  }
+  const bits = [...(m.elements ?? []), ...(m.edges ?? []).map(k => String(k).split('::').join(' → '))]
+  if (!bits.length) return null
+  return { gap: true, text: `These elements are not in DEV: ${list(bits)}.` }
+}
 // "Replace Dimensions('WFP Employee')" → "replace dimension WFP Employee".
 const planOpWords = (op) => {
   const m = String(op ?? '').match(/^(\w+)\s+(\w+)\('([^']+)'\)/)
   if (!m) return String(op ?? '')
   return `${m[1].toLowerCase()} ${m[2].toLowerCase().replace(/s$/, '')} ${m[3]}`
 }
-// One key per view/subset, matching the server's: type, name, and its parent.
-const coverKey = (c) => `${c.type}:${c.name}:${c.dimension ?? c.cube}`
+// "+1 element: X · -2 edges: P → C" in words a person reads.
+const friendlySummary = (s) => String(s ?? '').split(' · ').map(part =>
+  part
+    .replace(/^\+(\d+) element(s?):/i, '$1 new element$2:')
+    .replace(/^-(\d+) element(s?):/i, '$1 element$2 removed:')
+    .replace(/^\+(\d+) edge(s?):/i, '$1 new link$2:')
+    .replace(/^-(\d+) edge(s?):/i, '$1 link$2 removed:')
+).join(' · ')
 
-function StepHeader({ step, phase }) {
-  const label = phase === 'deploy' ? 'Deploy' : `Pre-deploy ${step} of ${PRE_STEPS.length}`
-  const title = phase === 'deploy' ? 'Send it' : PRE_STEPS[step - 1]
+function StepHeader({ step, phase, steps = OPEN_STEPS }) {
+  const label = phase === 'deploy' ? 'Deploy' : `Pre-deploy ${step} of ${steps.length}`
+  const title = phase === 'deploy' ? 'Deploy it' : steps[step - 1]
   return (
     <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
       <span className={cn('px-1.5 py-0.5 rounded', phase === 'deploy' ? 'bg-emerald-700/10 text-emerald-700' : 'bg-muted text-foreground')}>{phase === 'deploy' ? 'Deploy' : 'Pre-deploy'}</span>
@@ -61,9 +98,14 @@ function StepHeader({ step, phase }) {
 export default function DeployFlow() {
   const { ship, closeShip, server } = useStore()
   const session = ship?.session ?? null
+  // Fix the step model when the flow opens: a closed set skips Tests & close for
+  // the whole run, so the numbers and the header never change under the person.
+  const closedAtOpen = !!session?.closed_at
+  const STEPS = closedAtOpen ? CLOSED_STEPS : OPEN_STEPS
+  const STEP = closedAtOpen ? { check: 1, build: 2, review: 3 } : { check: 1, tests: 2, build: 3, review: 4 }
 
   const [servers, setServers] = useState([])
-  const [target, setTarget] = useState('')
+  const [target, setTarget] = useState(ship?.target ?? '')
   const [phase, setPhase] = useState('start')   // start | pre | deploy | done
   const [step, setStep] = useState(1)
   const [busy, setBusy] = useState('')
@@ -72,20 +114,17 @@ export default function DeployFlow() {
 
   const [idle, setIdle] = useState(null)
   const [idleConfirmed, setIdleConfirmed] = useState(false)
+  const [preCheck, setPreCheck] = useState(null)
+  const [preBusy, setPreBusy] = useState(false)
+  const [carryBusy, setCarryBusy] = useState(false)
+  const [carryResult, setCarryResult] = useState(null)
   // A chore due inside the deploy window: the person must say "deploy anyway".
   const [choreAck, setChoreAck] = useState(false)
-  const [refresh, setRefresh] = useState(null)      // { dimensions: [...] }
-  const [refreshBusy, setRefreshBusy] = useState('')
-  const [ticked, setTicked] = useState({})          // dimension → true
-  // dimension → { deletes: { element: 'delete'|'keep' }, moves: { child: 'take'|'keep' } }
-  // No default: an undecided delete or move blocks the refresh.
-  const [decisions, setDecisions] = useState({})
-  const [choreTicked, setChoreTicked] = useState({})   // chore → copy the target's schedule
-  // 'subset:name:dim' / 'view:name:cube' → 'take' | 'keep'. A view or subset on both
-  // sides with different content has NO default — a choice is required.
-  const [coverChoice, setCoverChoice] = useState({})
-  const [refreshed, setRefreshed] = useState(null)  // result of the apply
   const [tests, setTests] = useState(null)
+  const [closeInfo, setCloseInfo] = useState(null)
+  const [closeBlocking, setCloseBlocking] = useState(null)
+  const [closeCheck, setCloseCheck] = useState(null)
+  const [takeValues, setTakeValues] = useState({})
   const [closed, setClosed] = useState(false)
   const [release, setRelease] = useState(null)
   // 'left on DEV' rows the person chose to include in the release (key → true)
@@ -94,10 +133,8 @@ export default function DeployFlow() {
   const [loss, setLoss] = useState(null)        // computed loss for the release
   const [lossOk, setLossOk] = useState(false)
   const [typeOk, setTypeOk] = useState(false)      // "Yes, change these" for element types
-  const [typeAllow, setTypeAllow] = useState({})   // refresh: dimension → allow type changes
   const [approved, setApproved] = useState(false)
   const [settings, setSettings] = useState(null)
-  const [backupAt, setBackupAt] = useState('')
   const [res, setRes] = useState(null)
   const [drift, setDrift] = useState(null)
   const [diffEntry, setDiffEntry] = useState(null)
@@ -122,11 +159,52 @@ export default function DeployFlow() {
     return () => { live = false }
   }, [target])
 
+  // Part F.4 — read-only close check: values since the last close, type changes,
+  // and any deleted object a DEV process still uses.
+  useEffect(() => {
+    if (closedAtOpen || step !== 2 || closed || !session?.id || session?.closed_at) return
+    let live = true
+    GET(`/api/sessions/${encodeURIComponent(session.id)}/close-check`)
+      .then(d => { if (live) setCloseCheck(d) })
+      .catch(() => { if (live) setCloseCheck(null) })
+    return () => { live = false }
+  }, [step, closed, session?.id, session?.closed_at])
+
+  // Part D — the pre-deploy check runs first and Continue waits for it. It is
+  // read-only: the target writes its own live snapshot, the IDE writes attrs.
+  const loadPreCheck = async () => {
+    setPreBusy(true); setPreCheck(null); setError(null)
+    try {
+      const d = await POST('/api/deploy/pre-check', { target, source: server, session: session?.id ?? null })
+      setPreCheck(d)
+    } catch (e) { setPreCheck({ error: e.message }) }
+    finally { setPreBusy(false) }
+  }
+
   const checkIdle = async () => {
     setBusy('idle'); setError(null); setChoreAck(false); setIdleConfirmed(false)
-    try { setIdle(await GET(`/api/deploy/idle?server=${encodeURIComponent(target)}`)) }
+    try {
+      const d = await GET(`/api/deploy/idle?server=${encodeURIComponent(target)}`)
+      setIdle(d)
+      if (!(d.running ?? []).length) await loadPreCheck()
+    }
     catch (e) { setError(e.message); setIdle(null) }
     finally { setBusy('') }
+  }
+
+  // D.4.2 — copy PROD's own rule/process text onto DEV in a carry-back set.
+  const doCarryBack = async () => {
+    setCarryBusy('carry'); setError(null)
+    try {
+      const objects = (preCheck?.carryBack ?? []).map(r => ({
+        type: /\.rules$/i.test(String(r.file)) ? 'rules' : 'process',
+        name: r.object,
+      }))
+      const d = await POST('/api/deploy/carry-back', { source: server, target, objects })
+      setCarryResult(d)
+      await loadPreCheck()
+    } catch (e) { setError(e.message) }
+    finally { setCarryBusy('') }
   }
 
   const start = async () => {
@@ -135,66 +213,48 @@ export default function DeployFlow() {
     await checkIdle()
   }
 
-  // Refresh runs BEFORE tests and close: it writes to DEV and records each object
-  // in the open change set, which a closed set cannot do.
-  const loadRefresh = async () => {
-    setRefreshBusy('plan'); setError(null)
-    try {
-      const d = await GET(`/api/deploy/refresh/plan?source=${encodeURIComponent(server)}&target=${encodeURIComponent(target)}`)
-      setRefresh(d)
-      const all = {}
-      for (const it of d.dimensions ?? []) if (it.offered !== false) all[it.dimension] = true
-      setTicked(all)
-    } catch (e) { setError(e.message); setRefresh({ dimensions: [], error: e.message }) }
-    finally { setRefreshBusy('') }
-  }
-
-  const doRefresh = async () => {
-    setRefreshBusy('apply'); setError(null)
-    try {
-      const accept = (refresh?.dimensions ?? [])
-        .filter(d => d.offered !== false)
-        .filter(d => ticked[d.dimension])
-        .map(d => ({ dimension: d.dimension, allowTypeChanges: !!typeAllow[d.dimension], deletes: decisions[d.dimension]?.deletes ?? {}, moves: decisions[d.dimension]?.moves ?? {}, attributeTypes: decisions[d.dimension]?.attributes ?? {}, attributeCreates: decisions[d.dimension]?.attributeCreates ?? [] }))
-      const chores = (refresh?.chores ?? []).filter(c => choreTicked[c.name]).map(c => ({ name: c.name, takeSchedule: true }))
-      const covers = [...(refresh?.subsets ?? []), ...(refresh?.views ?? [])]
-        .map(c => ({
-          type: c.type, name: c.name, dimension: c.dimension, cube: c.cube, hierarchy: c.hierarchy,
-          // An object only PROD has arrives by default; a conflict must be chosen.
-          choice: coverChoice[coverKey(c)] ?? c.choice ?? null,
-        }))
-      const hierarchies = (refresh?.hierarchies ?? []).map(h => ({
-        dimension: h.dimension, name: h.name,
-        choice: coverChoice[`hierarchy:${h.name}:${h.dimension}`] ?? h.choice ?? null,
-      }))
-      const r = await POST('/api/deploy/refresh/apply', { source: server, target, session: session.id, accept, chores, covers, hierarchies })
-      setRefreshed(r)
-      await loadRefresh()
-    } catch (e) { setError(e.message) }
-    finally { setRefreshBusy('') }
-  }
-
-  const resumeChangeSet = async () => {
-    setBusy('resume'); setError(null)
-    try {
-      await POST('/api/sessions/resume', { id: session.id })
-      window.location.reload()
-    } catch (e) { setError(e.message) }
-    finally { setBusy('') }
+  // Open the assertion editor (App owns the overlay). The change set stays open,
+  // so after fixing the test the developer reopens Deploy for it and runs the
+  // close again.
+  const openTests = () => {
+    closeShip()
+    window.dispatchEvent(new CustomEvent('tm1-open-assertions'))
   }
 
   const doTestsAndClose = async () => {
-    setBusy('close'); setError(null); setProg('Running the model tests…')
+    setBusy('close'); setError(null); setCloseBlocking(null); setProg('Running the model tests…')
     try {
-      const d = await POST('/api/sessions/close', { id: session.id })
+      const acceptValues = (closeCheck?.attributeValues ?? [])
+        .filter(v => v.canTake && takeValues[`${v.dimension}::${v.element}::${v.attribute}`])
+        .map(v => ({ dimension: v.dimension, element: v.element, attribute: v.attribute }))
+      // A 409 lists the blocking tests, and the person needs their names to fix
+      // them (or to change severity). lib/api attaches the server's body to the
+      // thrown error as `data`, so the list survives the failure.
+      let d
+      try {
+        d = await POST('/api/sessions/close', { id: session.id, acceptValues })
+      } catch (e) {
+        if (Array.isArray(e.data?.blocking) && e.data.blocking.length) setCloseBlocking(e.data.blocking)
+        throw e
+      }
       // close_tests is stored as a JSON string on the session.
       let t = d.close_tests ?? null
       if (typeof t === 'string') { try { t = JSON.parse(t) } catch { t = null } }
-      setTests(t); setClosed(true)
-      setProg('Filing DEV in Git…')
-      await POST('/api/deploy/git/push', { source: server, message: `Deploy ${session?.name ?? 'change set'}`, session: session.id })
-      setStep(4)
-    } catch (e) { setError(e.message) }
+      setTests(t); setCloseInfo(d); setClosed(true)
+      // Stay on this step: the results and the "Continue to Build release" button
+      // are the visible outcome. Auto-advancing hid the tests entirely.
+    } catch (e) {
+      // "is closed" is not a failure: the set was already closed, by an earlier
+      // close or by another window. Treat it as closed and move on, rather than
+      // showing a red error on a set that is perfectly fine.
+      if (/is closed/i.test(e.message ?? '')) {
+        setClosed(true)
+        setError(null)
+        setProg('')
+      } else {
+        setError(e.message)
+      }
+    }
     finally { setBusy(''); setProg('') }
   }
 
@@ -208,7 +268,7 @@ export default function DeployFlow() {
     try {
       const rel = await POST('/api/deploy/git/release', { source: server, target, session: session.id, addObjects })
       // Already matches the target: recorded as done, nothing to approve.
-      if (rel?.noChange) { setRelease({ noChange: true, reason: rel.reason }); setStep(4); return }
+      if (rel?.noChange) { setRelease({ noChange: true, reason: rel.reason }); setStep(STEP.build); return }
       if (!rel?.releaseCommit) throw new Error('The release could not be built.')
       setRelease(rel)
       setIncludeLeft({})
@@ -217,7 +277,7 @@ export default function DeployFlow() {
       const p = await POST('/api/deploy/git/loss', { target, commit: rel.releaseCommit }).catch(() => null)
       setLoss(p)
       setPrep(await POST('/api/deploy/git/prepare', { source: server, target, session: session.id, branch: `release-${target}` }).catch(e => ({ error: e.message })))
-      setStep(4)
+      setStep(STEP.build)
     } catch (e) { setError(e.message) }
     finally { setBusy(''); setProg('') }
   }
@@ -244,7 +304,7 @@ export default function DeployFlow() {
 
       setProg(`Saving ${target}'s data…`)
       setProg('Saving data, then the backup…')
-      const d = await POST('/api/deploy/git/execute', { source: server, target, session: session.id, backupAt: backupAt || undefined })
+      const d = await POST('/api/deploy/git/execute', { source: server, target, session: session.id })
       setRes(d)
       if (d.executed) {
         setProg('Verifying…')
@@ -257,26 +317,14 @@ export default function DeployFlow() {
 
   if (!ship) return null
 
-  // Deletes and moves the target made must each be decided, with no default.
-  const undecided = (refresh?.dimensions ?? [])
-    .filter(d => ticked[d.dimension])
-    .flatMap(d => [
-      ...(d.removeElements ?? []).filter(el => !['delete','keep'].includes(decisions[d.dimension]?.deletes?.[el])).map(el => ({ dim: d.dimension, kind: 'delete', element: el })),
-      ...(d.moves ?? []).filter(m => !['take','keep'].includes(decisions[d.dimension]?.moves?.[m.child])).map(m => ({ dim: d.dimension, kind: 'move', element: m.child })),
-      ...(d.attributes?.typeChanges ?? []).filter(t => !['take','keep'].includes(decisions[d.dimension]?.attributes?.[t.name])).map(t => ({ dim: d.dimension, kind: 'attribute', element: t.name })),
-    ])
-  // A view or subset on both sides with different content is a conflict, not a gap:
-  // no default, exactly like a delete or a move.
-  const undecidedCovers = [...(refresh?.subsets ?? []), ...(refresh?.views ?? []), ...(refresh?.hierarchies ?? [])]
-    .filter(c => !c.adding && !['take','keep'].includes(coverChoice[c.type === 'hierarchy' ? `hierarchy:${c.name}:${c.dimension}` : coverKey(c)] ?? c.choice))
-    .map(c => ({ dim: c.dimension ?? c.cube, kind: c.type, element: c.name }))
-  const setDecision = (dim, kind, element, choice) => setDecisions(prev => {
-    const cur = prev[dim] ?? { deletes: {}, moves: {} }
-    const next = kind === 'delete' ? { ...cur, deletes: { ...cur.deletes, [element]: choice } }
-      : kind === 'move' ? { ...cur, moves: { ...cur.moves, [element]: choice } }
-      : { ...cur, attributes: { ...(cur.attributes ?? {}), [element]: choice } }
-    return { ...prev, [dim]: next }
-  })
+  // A set that was already closed before this flow (the normal "Ready to deploy"
+  // entry) has its commit and its close tests. Re-closing it would re-run the tests
+  // and push DEV again for nothing, so the Tests & close step only confirms.
+  const sessionTests = (() => {
+    try { return session?.close_tests ? JSON.parse(session.close_tests) : null } catch { return null }
+  })()
+  const shownTests = tests ?? sessionTests
+  const alreadyClosed = !!session?.closed_at || closed
 
   const outcome = res ? classifyDeployOutcome(res) : null
   const doneOk = res?.executed && res?.controlOk !== false && (drift?.entries ?? []).length === 0
@@ -284,12 +332,54 @@ export default function DeployFlow() {
   // Our own deployment connection is always signed in; it is reported, not confirmed.
   const needIdleConfirm = idle?.needsConfirm !== false && (idle?.sessions ?? []).length > 0 && !idleConfirmed
   const lossNeedsConfirm = decideLossGate({ loss: loss?.loss }) === 'confirm' && !lossOk
-  const canDeploy = approved && settings && (settings.backupProcess || backupAt) && !busy
+  // The backup is required and taken by the IDE (Part I.3): a configured process,
+  // or }IDE.Backup which Save Data + zips the folder beside the data. There is no
+  // typed-in time — it proved nothing and the server ignores it.
+  const canDeploy = approved && !!settings && !busy
+
+  // The window can be dragged by its title bar. It used to close instead: a drag
+  // that started on the panel and ended on the backdrop produced a click on the
+  // backdrop, which is the close gesture. The backdrop now closes only when the
+  // press AND the release are both on the backdrop itself.
+  const [drag, setDrag] = useState({ x: 0, y: 0 })
+  const dragFrom = useRef(null)
+  const downOnBackdrop = useRef(false)
+  const startDrag = (e) => {
+    if (busy || e.button !== 0 || e.target.closest('button')) return
+    e.preventDefault()
+    dragFrom.current = { x: e.clientX - drag.x, y: e.clientY - drag.y }
+    const move = (ev) => {
+      if (!dragFrom.current) return
+      setDrag({ x: ev.clientX - dragFrom.current.x, y: ev.clientY - dragFrom.current.y })
+    }
+    const up = () => {
+      dragFrom.current = null
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center" onClick={busy ? undefined : closeShip}>
-      <div className="w-[620px] max-w-[calc(100vw-32px)] max-h-[88vh] bg-background border border-border rounded-lg shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border shrink-0">
+    <div
+      className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center"
+      onMouseDown={e => { downOnBackdrop.current = e.target === e.currentTarget }}
+      onMouseUp={e => {
+        const both = downOnBackdrop.current && e.target === e.currentTarget
+        downOnBackdrop.current = false
+        if (both && !busy) closeShip()
+      }}
+    >
+      <div
+        className="w-[620px] max-w-[calc(100vw-32px)] max-h-[88vh] bg-background border border-border rounded-lg shadow-xl flex flex-col"
+        style={{ transform: `translate(${drag.x}px, ${drag.y}px)` }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div
+          className={cn('flex items-center gap-2 px-4 py-2.5 border-b border-border shrink-0', !busy && 'cursor-move select-none')}
+          onMouseDown={startDrag}
+        >
           <Rocket size={14} className="text-emerald-600" />
           <span className="text-sm font-semibold">Deploy <span className="font-mono text-xs">{session?.name}</span></span>
           <div className="flex-1" />
@@ -310,16 +400,35 @@ export default function DeployFlow() {
                 Pre-deploy checks the target, runs the tests, builds a release of just this change and shows you the plan.
                 Deploy then sends it. Nothing reaches {target || 'the target'} until you approve it on the Deploy screen.
               </p>
+              {closedAtOpen && (
+                <p className="text-[11px] text-muted-foreground">
+                  This change set is already closed{session?.commit_ref ? <> at <span className="font-mono">{String(session.commit_ref).slice(0, 10)}</span></> : null}.
+                  Pre-deploy will only check the target and rebuild the release for it — the set is not closed again.
+                </p>
+              )}
               <button onClick={start} disabled={!target} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Start pre-deploy</button>
             </>
           )}
 
           {phase === 'pre' && (
             <>
-              <StepHeader step={step} phase="pre" />
+              <StepHeader step={step} phase="pre" steps={STEPS} />
+
+              {closedAtOpen && (
+                <div className="rounded-md border border-border bg-muted/20 p-2 text-[11px] text-muted-foreground">
+                  <span className="text-foreground font-medium">Change set closed</span>
+                  {session?.commit_ref ? <> at <span className="font-mono">{String(session.commit_ref).slice(0, 10)}</span></> : null}
+                  {' '}— before deploying, the IDE checks {target || 'the target'}: is it busy, has anything changed there since its last deploy, and what is different.
+                  The change set itself is not run again.
+                </div>
+              )}
 
               {step === 1 && (
                 <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    This check is read-only. It looks at three things: whether {target} is busy, whether it has changed since its last deploy, and what it has that {server} does not.
+                    It builds nothing, runs no tests, and writes nothing to {target} or {server}. It decides whether the deploy can go ahead, and what you should know first.
+                  </p>
                   {busy === 'idle' && <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> Reading {target}…</p>}
                   {idle && (
                     <div className={cn('border rounded-md p-3 space-y-1.5', blockIdle ? 'border-red-600/40 bg-red-500/5' : 'border-emerald-600/30 bg-emerald-600/5')}>
@@ -367,297 +476,184 @@ export default function DeployFlow() {
                       <span>I know {idle.sessions.length} {idle.sessions.length === 1 ? 'person is' : 'people are'} signed in to {target} ({idle.sessions.join(', ')}).</span>
                     </label>
                   )}
+                  {preBusy && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> Checking {target} against what it last received…</p>}
+                  {preCheck?.error && <p className="text-[11px] text-red-600">The pre-deploy check could not run: {preCheck.error}</p>}
+                  {preCheck && !preCheck.error && (
+                    <div className={cn('border rounded-md p-3 space-y-1.5', preCheck.stops?.length ? 'border-red-600/40 bg-red-500/5' : 'border-emerald-600/30 bg-emerald-600/5')}>
+                      <p className={cn('text-xs font-semibold flex items-center gap-1.5', preCheck.stops?.length ? 'text-red-600' : 'text-emerald-700')}>
+                        {preCheck.stops?.length ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
+                        Pre-deploy check {preCheck.stops?.length ? 'stopped' : 'passed'}
+                      </p>
+                      {(preCheck.stops ?? []).map((s, i) => (
+                        <p key={`s-${i}`} className="text-[11px] text-red-600"><span className="font-medium">{s.object ?? s.kind}</span> — {s.reason}</p>
+                      ))}
+                      {(preCheck.carryBack ?? []).length > 0 && (
+                        <div className="text-[11px]">
+                          <p className="font-medium">A rule or process changed on {target}:</p>
+                          {preCheck.carryBack.map((r, i) => <p key={`c-${i}`} className="text-muted-foreground">— {r.kind === 'rule-process' ? 'rule/process' : r.kind} {r.object}</p>)}
+                          <button onClick={doCarryBack} disabled={!!carryBusy} className="mt-1 px-2.5 py-1 text-[11px] rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                            {carryBusy === 'carry' ? 'Bringing…' : `Bring ${target}'s version onto ${server}`}
+                          </button>
+                          {carryResult?.ok && <p className="text-emerald-700 mt-1">{carryResult.note}</p>}
+                          {carryResult?.refused && <p className="text-red-600 mt-1">{carryResult.error}</p>}
+                        </div>
+                      )}
+                      {(preCheck.kept ?? []).length > 0 && (
+                        <div className="border border-border rounded-md p-2 space-y-1">
+                          <p className="text-[11px] font-medium text-foreground">
+                            {target} changed since the deploy on {fmtDate(preCheck.live?.deployedAt)}
+                            {preCheck.live?.deployed ? <> (<span className="font-mono">{String(preCheck.live.deployed).slice(0, 8)}</span>)</> : null}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            These changes stay on {target}. Where the release includes the object, it is built from {target}'s own copy, so the changes travel with it. Where it does not, the deploy leaves the object alone. Nothing is copied to {server}.
+                          </p>
+                          {foldAttributeRows(preCheck.kept ?? []).map((k, i) => {
+                            const gap = devMissingText(k.devMissing)
+                            return (
+                              <div key={`k-${i}`}>
+                                <p className="text-[11px] text-muted-foreground">
+                                  • {kindLabel(k.kind)} <span className="font-mono text-foreground">{k.object}</span>
+                                  {k.summary ? <span className="text-muted-foreground/80"> — {friendlySummary(k.summary)}</span> : null}
+                                </p>
+                                {gap && <p className={`pl-3 text-[10px] ${gap.gap ? 'text-amber-700' : 'text-muted-foreground/70'}`}>{gap.text}</p>}
+                              </div>
+                            )
+                          })}
+                          {(preCheck.sync ?? []).length > 0 && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Nothing is copied to {server}. If {server} needs any of it, copy it from {target} with
+                              Sync DEV — a separate action.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 pt-1">
-                    <button onClick={() => { setStep(2); loadRefresh() }} disabled={!idle || blockIdle || needIdleConfirm || ((idle?.choresDue ?? []).length > 0 && !choreAck)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue</button>
+                    <button onClick={() => setStep(2)} disabled={!idle || blockIdle || !preCheck || !!preCheck.error || (preCheck.stops?.length ?? 0) > 0 || needIdleConfirm || ((idle?.choresDue ?? []).length > 0 && !choreAck)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue</button>
                     <button onClick={checkIdle} disabled={busy === 'idle'} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Check again</button>
                   </div>
                 </div>
               )}
 
-              {step === 2 && (
+
+              {!closedAtOpen && step === 2 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Bring what PROD changed into {server}, recorded in this change set. It must happen
-                    before the tests and close: a closed change set cannot record it.
-                  </p>
-                  {session?.closed_at ? (
-                    <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-2">
-                      <p className="text-xs font-semibold text-amber-700">This change set is closed</p>
-                      <p className="text-[11px]">Reopen <span className="font-semibold">{session.name}</span> to bring PROD's changes into {server} — then run the tests and close it again.</p>
-                      <button onClick={resumeChangeSet} disabled={busy === 'resume'} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
-                        {busy === 'resume' ? 'Reopening…' : 'Reopen the change set'}
-                      </button>
+                  <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2 text-[11px] text-muted-foreground leading-relaxed">
+                    <p>
+                      <span className="text-foreground font-medium">What runs:</span> the model's tests (assertions) on {server} —
+                      <span className="text-foreground"> behaviour</span> tests check the numbers still produce the approved result,
+                      and <span className="text-foreground">control</span> tests check the model is internally sound.
+                    </p>
+                    <p>
+                      <span className="text-foreground font-medium">If a block-severity test fails:</span> the close stops here.
+                      Nothing is committed and the change set stays open. Fix the issue on {server} — or set that test's severity to
+                      <span className="text-foreground"> warn</span> if it is advisory — then press <span className="text-foreground">Run tests and close</span> again.
+                      A failed test is never skipped silently.
+                    </p>
+                    <p>
+                      <span className="text-foreground font-medium">If they pass:</span> the change set is closed and TM1 writes {server}'s
+                      objects into the <span className="font-mono text-foreground">dev</span> branch (the
+                      <span className="text-foreground"> DEV After Close</span> commit); the IDE writes its attributes to
+                      <span className="font-mono text-foreground"> attrs-{server}</span>. Build Release uses that commit, not the live DEV files.
+                    </p>
+                    <p className="text-muted-foreground/70">This runs once per change set; an already-closed set shows its commit and tests instead.</p>
+                  </div>
+                  {session?.closed_at && !closed && (
+                    <div className="border border-border rounded-md p-2 space-y-1">
+                      <p className="text-[11px] font-semibold">This change set is already closed</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Closed {new Date(session.closed_at).toLocaleString()}
+                        {session.commit_ref ? ` · DEV After Close ${String(session.commit_ref).slice(0, 10)}` : ''}.
+                        Its tests ran at close; Build release can continue from that commit.
+                      </p>
                     </div>
-                  ) : (
-                    <>
-                      {refreshBusy === 'plan' && <p className="text-[11px] text-muted-foreground">Comparing {target} with {server}…</p>}
-                      {refresh && !refreshBusy && (
-                        (refresh.dimensions ?? []).length === 0 && (refresh.subsets ?? []).length === 0 && (refresh.views ?? []).length === 0 && (refresh.hierarchies ?? []).length === 0 && (refresh.chores ?? []).length === 0 ? (
-                          <p className="text-[11px] text-emerald-700">Nothing to refresh — {server} already has what {target} has.</p>
-                        ) : (
-                          <div className="border border-border rounded-md overflow-hidden">
-                            <div className="grid grid-cols-[1fr_90px_120px] text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/30 px-3 py-1 border-b border-border gap-2">
-                              <span>Dimension</span><span>Bring across</span><span>Deletes</span>
-                            </div>
-                            {refresh.base && !refresh.base.ok && (
-                              <div className="px-3 py-2 border-b border-border/40">
-                                <p className="text-[11px] text-amber-700 font-semibold">No baseline</p>
-                                <p className="text-[10px] text-muted-foreground">{refresh.base.reason} Nothing is selected, and the refresh cannot be applied.</p>
-                              </div>
-                            )}
-                            {refresh.base?.ok && refresh.base.override && (
-                              <div className="px-3 py-2 border-b border-border/40">
-                                <p className="text-[11px] text-amber-700">Comparing against <span className="font-mono">{String(refresh.base.commit).slice(0, 10)}</span> (not the last deploy) — this is a what-if; it cannot be applied.</p>
-                              </div>
-                            )}
-                            {(refresh.dimensions ?? []).map((d, i) => (
-                              <div key={i} className="grid grid-cols-[1fr_90px_120px] px-3 py-1 text-[11px] border-b border-border/40 last:border-0 gap-2 items-center">
-                                <label className="flex items-center gap-2">
-                                  {d.offered === false
-                                    ? <span className="w-[13px]" />
-                                    : <input type="checkbox" checked={!!ticked[d.dimension]} onChange={e => setTicked(t => ({ ...t, [d.dimension]: e.target.checked }))} />}
-                                  <span>{d.dimension}</span>
-                                  {d.offered === false && <span className="text-[10px] text-muted-foreground/70">nothing to bring across</span>}
-                                </label>
-                                <span className="text-muted-foreground">
-                                  {[d.addElements.length ? `+${d.addElements.length} el` : '', d.addEdges.length || d.moves.length ? `+${d.addEdges.length + d.moves.length} edge` : ''].filter(Boolean).join(' · ') || '—'}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  {d.removeElements.length ? `${d.removeElements.length} to decide` : '—'}
-                                </span>
-                                {(d.summary ?? []).length > 0 && (
-                                  <div className="col-span-3 text-[10px] text-muted-foreground/80 space-y-0.5 pb-1">
-                                    {d.summary.map((r, k) => (
-                                      <details key={k}>
-                                        <summary className="cursor-pointer">
-                                          {r.origin === 'target-added' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} added on ${target} since the last deploy — bring across`
-                                            : r.origin === 'target-removed' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} removed on ${target} since the last deploy — to decide`
-                                            : r.origin === 'target-changed' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} changed on ${target} since the last deploy`
-                                            : r.origin === 'dev-removed' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} removed on ${server} — not offered (Review reports the removal)`
-                                            : r.origin === 'dev-added' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} added on ${server} — ships with this change set`
-                                            : r.origin === 'dev-changed' ? `${r.count} ${r.what}${r.count === 1 ? '' : 's'} changed on ${server} — ships with this change set`
-                                            : `${r.count} ${r.what}${r.count === 1 ? '' : 's'} changed differently on both sides`}
-                                        </summary>
-                                        <div className="pl-3">
-                                          {(r.origin === 'target-removed' ? d.removeElements
-                                              : r.origin === 'dev-removed' ? d.devRemoved
-                                              : r.origin === 'dev-added' ? d.devAdded
-                                              : r.origin === 'dev-changed' ? d.devMoved
-                                              : r.origin === 'target-added' ? d.addElements
-                                              : r.origin === 'target-changed' ? (r.what === 'move' ? d.moves : d.typeChanges)
-                                              : [...(d.moveConflicts ?? []), ...(d.typeConflicts ?? [])])
-                                            .slice(0, 50).map((e, j) => (
-                                              <div key={j} className="font-mono">
-                                                {e.name ? e.name : e.toParent ? `move ${e.child}: DEV ${e.fromParent} · ${target} ${e.toParent}` : `${e.parent} → ${e.child}`}
-                                              </div>
-                                            ))}
-                                        </div>
-                                      </details>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                            {(refresh.chores ?? []).length > 0 && (
-                              <div className="px-3 py-2 border-t border-border/40 space-y-1">
-                                <p className="text-[11px] font-semibold text-foreground">Chore schedules on {target} that differ from {server}</p>
-                                {(refresh.chores ?? []).map(c => (
-                                  <label key={c.name} className="flex items-start gap-2 text-[11px]">
-                                    <input type="checkbox" checked={!!choreTicked[c.name]} onChange={e => setChoreTicked(t => ({ ...t, [c.name]: e.target.checked }))} className="mt-0.5" />
-                                    <span>{c.name} <span className="text-muted-foreground">— {c.fields.length ? `differs: ${c.fields.join(', ')}` : 'schedule matches'}</span>
-                                    {c.devActive && <span className="text-amber-600"> · DEV has it ON (the refresh leaves it off)</span>}</span>
-                                  </label>
-                                ))}
-                                <p className="text-[10px] text-muted-foreground">Ticked chores take {target}'s schedule; DEV is always left off. The on/off flag itself is the deploy's job — the target's own flag is restored around the pull.</p>
-                              </div>
-                            )}
-
-                            {(refresh.hierarchies ?? []).length > 0 && (
-                              <div className="px-3 py-2 border-t border-border/40 space-y-2">
-                                <p className="text-[11px] font-semibold text-foreground">Alternate hierarchies that differ on {target}</p>
-                                {(refresh.hierarchies ?? []).map(h => {
-                                  const key = `hierarchy:${h.name}:${h.dimension}`
-                                  const choice = coverChoice[key] ?? h.choice
-                                  return (
-                                    <div key={key} className="flex items-center gap-2 text-[11px] flex-wrap">
-                                      <span className="text-foreground">Hierarchy {h.name}</span>
-                                      <span className="text-muted-foreground/60">({h.dimension}) · {(h.parts ?? []).join(', ')}{h.elements != null ? ` · ${h.elements} members, ${h.edges} edges` : ''}</span>
-                                      {h.adding ? (
-                                        <span className="text-emerald-700">new on {target} since the last deploy — created</span>
-                                      ) : h.removing ? (
-                                        <>
-                                          <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'delete' }))} className={choice === 'delete' ? 'px-2 py-0.5 rounded bg-red-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Delete on {server} too</button>
-                                          <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'keep' }))} className={choice === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep — it comes back on {target}</button>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'take' }))} className={choice === 'take' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take {target}'s</button>
-                                          <button onClick={() => setCoverChoice(p => ({ ...p, [key]: 'keep' }))} className={choice === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep {server}'s</button>
-                                        </>
-                                      )}
-                                      {h.onlyDev > 0 && <span className="text-amber-600">{h.onlyDev} element(s) only on {server} — kept</span>}
-                                    </div>
-                                  )
-                                })}
-                                <p className="text-[10px] text-muted-foreground">A hierarchy only {target} has is created here with its members and edges. One on both sides with a different shape has no default. Elements are never deleted: they are dimension-wide, so removing one takes its values too.</p>
-                              </div>
-                            )}
-                            {((refresh.subsets ?? []).length > 0 || (refresh.views ?? []).length > 0) && (
-                              <div className="px-3 py-2 border-t border-border/40 space-y-2">
-                                <p className="text-[11px] font-semibold text-foreground">Views and subsets that differ on {target}</p>
-                                {[...(refresh.subsets ?? []), ...(refresh.views ?? [])].map(c => (
-                                  <div key={coverKey(c)} className="flex items-center gap-2 text-[11px] flex-wrap">
-                                    <span className="text-foreground">{c.type === 'subset' ? 'Subset' : 'View'} {c.name}</span>
-                                    <span className="text-muted-foreground/60">({c.dimension ?? c.cube}{c.hierarchy && c.hierarchy !== c.dimension ? `/${c.hierarchy}` : ''}) · {c.mode}{c.n != null ? ` · ${c.n} members` : ''} · {(c.parts ?? []).join(', ')}</span>
-                                    {c.adding ? (
-                                      <span className="text-emerald-700">new on {target} since the last deploy — brought across</span>
-                                    ) : c.removing ? (
-                                      <>
-                                        <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'delete' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'delete' ? 'px-2 py-0.5 rounded bg-red-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Delete on {server} too</button>
-                                        <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'keep' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep — it comes back on {target}</button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'take' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'take' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take {target}'s</button>
-                                        <button onClick={() => setCoverChoice(p => ({ ...p, [coverKey(c)]: 'keep' }))} className={(coverChoice[coverKey(c)] ?? c.choice) === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep {server}'s</button>
-                                      </>
-                                    )}
-                                    {(c.unreadable ?? []).length > 0 && <span className="text-red-600">can't read {c.unreadable.join(', ')} on {target} — taking it is refused, not guessed</span>}
-                                    {(c.usesSubsets ?? []).length > 0 && <span className="text-muted-foreground/60">uses: {c.usesSubsets.join(', ')}</span>}
-                                  </div>
-                                ))}
-                                <p className="text-[10px] text-muted-foreground">A view or subset on both sides with different content has no default: taking the target's writes it here; keeping {server}'s means the next deploy carries it to {target}. Subsets are applied before views.</p>
-                              </div>
-                            )}
-
-                            {(refresh.dimensions ?? []).some(d => (d.attributes?.add ?? []).length || (d.attributes?.typeChanges ?? []).length) && (
-                              <div className="px-3 py-2 border-t border-border/40 space-y-1">
-                                <p className="text-[11px] font-semibold text-foreground">Attributes PROD has that {server} does not</p>
-                                {(refresh.dimensions ?? []).filter(d => (d.attributes?.add ?? []).length || (d.attributes?.typeChanges ?? []).length).map(d => (
-                                  <div key={d.dimension} className="text-[11px]">
-                                    <span className="text-muted-foreground">{d.dimension}: </span>
-                                    {(d.attributes.add ?? []).map(a => (
-                                      <label key={a.name} className="mr-3 inline-flex items-center gap-1">
-                                        <input type="checkbox"
-                                          checked={(decisions[d.dimension]?.attributeCreates ?? []).includes(a.name)}
-                                          onChange={e => setDecisions(prev => {
-                                            const cur = prev[d.dimension] ?? {}
-                                            const list = new Set(cur.attributeCreates ?? [])
-                                            if (e.target.checked) list.add(a.name); else list.delete(a.name)
-                                            return { ...prev, [d.dimension]: { ...cur, attributeCreates: [...list] } }
-                                          })} />
-                                        <span>{a.name} <span className="text-muted-foreground/60">({a.type})</span></span>
-                                      </label>
-                                    ))}
-                                    {(d.attributes.typeChanges ?? []).map(t => (
-                                      <span key={t.name} className="mr-2 text-amber-600">{t.name}: {t.from} → {t.to} <span className="text-muted-foreground/60">(type differs — decided separately)</span></span>
-                                    ))}
-                                    {d.attributes.warning && (d.attributes.add ?? []).length > 0 && <div className="text-[10px] text-amber-700">{d.attributes.warning}</div>}
-                                  </div>
-                                ))}
-                                <p className="text-[10px] text-muted-foreground">Only a ticked attribute definition is created. Values are copied only for the attributes an admin confirmed {target}'s load maintains.</p>
-                              </div>
-                            )}
-
-                            {(refresh.dimensions ?? []).some(d => (d.removeElements ?? []).length || (d.moves ?? []).length || (d.attributes?.typeChanges ?? []).length) && (
-                              <div className="px-3 py-2 border-t border-border/40 space-y-2">
-                                <p className="text-[11px] font-semibold text-foreground">PROD deleted or moved these — decide each one</p>
-                                {(refresh.dimensions ?? []).filter(d => (d.removeElements ?? []).length || (d.moves ?? []).length || (d.attributes?.typeChanges ?? []).length).map(d => (
-                                  <div key={d.dimension} className="space-y-1">
-                                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{d.dimension}</p>
-                                    {(d.removeElements ?? []).map(el => (
-                                      <div key={`del-${el}`} className="flex items-center gap-2 text-[11px] flex-wrap">
-                                        <span className="text-foreground">Delete {el}</span>
-                                        <button onClick={() => setDecision(d.dimension, 'delete', el, 'delete')} className={decisions[d.dimension]?.deletes?.[el] === 'delete' ? 'px-2 py-0.5 rounded bg-red-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Delete on DEV too</button>
-                                        <span className="text-muted-foreground/60">its DEV values are cleared</span>
-                                        <button onClick={() => setDecision(d.dimension, 'delete', el, 'keep')} className={decisions[d.dimension]?.deletes?.[el] === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep — restore on PROD</button>
-                                        <span className="text-muted-foreground/60">next deploy puts it back on PROD, no data</span>
-                                      </div>
-                                    ))}
-                                    {(d.attributes?.typeChanges ?? []).map(t => (
-                                      <div key={`attr-${t.name}`} className="flex items-center gap-2 text-[11px] flex-wrap">
-                                        <span className="text-foreground">Attribute {t.name}</span>
-                                        <span className="text-muted-foreground/60">{server} {t.from} · PROD {t.to} — taking PROD's clears its values</span>
-                                        <button onClick={() => setDecision(d.dimension, 'attribute', t.name, 'take')} className={decisions[d.dimension]?.attributes?.[t.name] === 'take' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take PROD's type</button>
-                                        <button onClick={() => setDecision(d.dimension, 'attribute', t.name, 'keep')} className={decisions[d.dimension]?.attributes?.[t.name] === 'keep' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep DEV's</button>
-                                      </div>
-                                    ))}
-                                    {(d.moves ?? []).map(m => (
-                                      <div key={`mv-${m.child}`} className="flex items-center gap-2 text-[11px] flex-wrap">
-                                        <span className="text-foreground">Move {m.child}</span>
-                                        <span className="text-muted-foreground/60">DEV under {m.fromParent ?? '(none)'} · PROD under {m.toParent}</span>
-                                        <button onClick={() => setDecision(d.dimension, 'move', m.child, 'take')} className={decisions[d.dimension]?.moves?.[m.child] === 'take' ? 'px-2 py-0.5 rounded bg-emerald-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Take PROD's</button>
-                                        <button onClick={() => setDecision(d.dimension, 'move', m.child, 'keep')} className={decisions[d.dimension]?.moves?.[m.child] === 'keep' ? 'px-2 py-0.5 rounded bg-amber-700 text-white' : 'px-2 py-0.5 rounded border border-border hover:bg-muted'}>Keep DEV's</button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ))}
-                                {undecided.length + undecidedCovers.length > 0 && (
-                                  <p className="text-[11px] text-red-600">Still to decide: {[...undecided, ...undecidedCovers].map(u => `${u.kind} ${u.element} (${u.dim})`).join(', ')}</p>
-                                )}
-                              </div>
-                            )}
-                            {(refresh.dimensions ?? []).some(d => (d.typeRisk ?? []).length) && (
-                              <div className="px-3 py-2 border-t border-border/40 space-y-1">
-                                <p className="text-[11px] text-red-600">Bringing these across changes element types — their values on {server} are cleared:</p>
-                                {(refresh.dimensions ?? []).filter(d => (d.typeRisk ?? []).length).map((d, i) => (
-                                  <label key={i} className="flex items-center gap-2 text-[11px]">
-                                    <input type="checkbox" checked={!!typeAllow[d.dimension]} onChange={e => setTypeAllow(t => ({ ...t, [d.dimension]: e.target.checked }))} />
-                                    <span>{d.dimension}: {d.typeRisk.map(t => t.element).join(', ')} → consolidation</span>
-                                  </label>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      )}
-                      {refreshed && (
-                        <div className="border border-emerald-600/30 bg-emerald-600/5 rounded-md p-3 space-y-1">
-                          <p className="text-[11px] text-emerald-700">Refreshed: {(refreshed.applied ?? []).map(a => a.dimension).join(', ') || 'nothing'}</p>
-                          {(refreshed.skipped ?? []).map((k, i) => (
-                            <p key={i} className="text-[10px] text-amber-600">{k.dimension}: {k.what} — {k.why}</p>
-                          ))}
-                          {(refreshed.errors ?? []).map((k, i) => (
-                            <p key={`e-${i}`} className="text-[10px] text-red-600">FAILED {k.dimension}: {k.why}</p>
-                          ))}
-                        </div>
-                      )}
-                      {error && <p className="text-[11px] text-red-600">{error}</p>}
-                    </>
                   )}
+                  {closeCheck && closeCheck.ok === false && (
+                    <div className="border border-red-600/40 bg-red-500/5 rounded-md p-2 space-y-1">
+                      <p className="text-[11px] font-semibold text-red-600">The close will stop</p>
+                      {(closeCheck.stops ?? []).map((s, i) => <p key={i} className="text-[10px] text-red-600">{s}</p>)}
+                    </div>
+                  )}
+                  {(closeCheck?.attributeValues ?? []).some(v => v.canTake || !v.take) && (
+                    <div className="border border-border rounded-md p-2 space-y-1">
+                      <p className="text-[11px] font-semibold">Attribute values changed on {server} since the last close</p>
+                      {(closeCheck.attributeValues ?? []).filter(v => v.canTake || !v.take).map((v, i) => {
+                        const key = `${v.dimension}::${v.element}::${v.attribute}`
+                        return (
+                          <label key={i} className="flex items-center gap-2 text-[10px]">
+                            <input type="checkbox" disabled={!v.canTake} checked={!!takeValues[key]} onChange={e => setTakeValues(p => ({ ...p, [key]: e.target.checked }))} />
+                            <span>{v.dimension}.{v.element}.{v.attribute}: {String(v.before ?? '')} → {String(v.after)}</span>
+                            <span className="text-muted-foreground">· {v.owned}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {shownTests && (
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <p className="text-[11px]">Tests: <span className={shownTests.blocking ? 'text-red-600' : 'text-emerald-700'}>{shownTests.passed}/{shownTests.total} passed</span>{shownTests.blocking ? ` · ${shownTests.blocking} blocking` : ''}</p>
+                      {shownTests.total > shownTests.passed && (
+                        <button
+                          onClick={() => { closeShip(); useStore.getState().setDeployView('health') }}
+                          className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                          title="Open Model health to see which tests did not pass"
+                        >
+                          See the {shownTests.total - shownTests.passed} that did not pass
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {(closeBlocking ?? []).length > 0 && (
+                    <div className="border border-red-600/40 bg-red-500/5 rounded-md p-2 space-y-1">
+                      <p className="text-[11px] font-semibold text-red-600">
+                        {closeBlocking.length} block-severity test{closeBlocking.length === 1 ? '' : 's'} failed — the close stopped
+                      </p>
+                      {closeBlocking.map((b, i) => (
+                        <p key={i} className="text-[10px]">
+                          <span className="font-medium">{b.description}</span>
+                          {b.expected != null && <span className="text-muted-foreground"> · expected {String(b.expected)}</span>}
+                          {b.actual != null && <span className="text-muted-foreground"> · got {String(b.actual)}</span>}
+                          {b.error && <span className="text-red-600"> · {b.error}</span>}
+                        </p>
+                      ))}
+                      <button onClick={openTests} className="mt-1 px-2.5 py-1 text-[11px] rounded bg-red-700 text-white hover:bg-red-600">Open tests</button>
+                      <p className="text-[10px] text-muted-foreground">
+                        Fix it on {server}, or set this test's severity to warn in the test editor. Nothing was committed;
+                        the change set stays open. Reopen its deploy and run Tests &amp; close again.
+                      </p>
+                    </div>
+                  )}
+                  {closeInfo?.finalized?.commit && <p className="text-[11px] text-emerald-700">DEV After Close: <span className="font-mono">{String(closeInfo.finalized.commit).slice(0, 10)}</span>{closeInfo.finalized.attrsError ? ` · attributes: ${closeInfo.finalized.attrsError}` : ''}</p>}
+                  {closeInfo?.finalized?.error && <p className="text-[11px] text-red-600">DEV After Close failed: {closeInfo.finalized.error}</p>}
+                  {(closeInfo?.closeCheck?.attributeValues ?? []).filter(v => !v.take).length > 0 && (
+                    <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-2 space-y-1">
+                      <p className="text-[11px] font-semibold text-amber-700">Attribute values changed on {server} since the last close</p>
+                      {closeInfo.closeCheck.attributeValues.filter(v => !v.take).slice(0, 12).map((v, i) => (
+                        <p key={i} className="text-[10px]">{v.dimension}.{v.element}.{v.attribute}: {String(v.before ?? '')} → {String(v.after)} · {v.owned}</p>
+                      ))}
+                    </div>
+                  )}
+                  {error && !(closeBlocking ?? []).length && <p className="text-[11px] text-red-600">{error}</p>}
+                  {busy && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> {prog}</p>}
                   <div className="flex items-center gap-2 pt-1">
-                    {!session?.closed_at && (
-                      <button onClick={doRefresh} disabled={refreshBusy || (!(refresh?.dimensions ?? []).some(d => ticked[d.dimension]) && (refresh?.subsets ?? []).length === 0 && (refresh?.views ?? []).length === 0 && (refresh?.hierarchies ?? []).length === 0) || undecided.length + undecidedCovers.length > 0} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
-                        {refreshBusy === 'apply' ? 'Refreshing…' : 'Refresh into ' + server}
+                    {alreadyClosed ? (
+                      <button onClick={() => setStep(STEP.build)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600">Continue to Build release</button>
+                    ) : (
+                      <button onClick={doTestsAndClose} disabled={!!busy} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
+                        Run tests and close
                       </button>
                     )}
-                    <button onClick={() => setStep(3)} disabled={session?.closed_at} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue</button>
                     <button onClick={() => setStep(1)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>
                 </div>
               )}
 
-              {step === 3 && (
+              {step === STEP.build && (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">The model's tests run first; a block-severity failure stops here. Then DEV is filed in Git so a release can be built from it.</p>
-                  {tests && <p className="text-[11px]">Tests: <span className={tests.blocking ? 'text-red-600' : 'text-emerald-700'}>{tests.passed}/{tests.total} passed</span>{tests.blocking ? ` · ${tests.blocking} blocking` : ''}</p>}
-                  {error && <p className="text-[11px] text-red-600">{error}</p>}
-                  {busy && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> {prog}</p>}
-                  <div className="flex items-center gap-2 pt-1">
-                    <button onClick={doTestsAndClose} disabled={!!busy || closed} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
-                      {closed ? 'Closed' : 'Run tests and close'}
-                    </button>
-                    {closed && <button onClick={() => setStep(4)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue</button>}
-                    <button onClick={() => setStep(2)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
-                  </div>
-                </div>
-              )}
-
-              {step === 4 && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">A release is the target's last deployed state plus only this change set's objects. Everything else stays on {server}.</p>
+                  <p className="text-xs text-muted-foreground">The release starts from {target} as it is now and adds this change set. Nothing else from {server} is included.</p>
                   {release?.noChange && leftRows.length > 0 && (
-                    <p className="text-[11px] text-muted-foreground">Nothing this change set owns has to deploy — but {leftRows.length} object{leftRows.length === 1 ? '' : 's'} differ on {server}. Include them below if they should ship.</p>
+                    <p className="text-[11px] text-muted-foreground">This change set has nothing to send. {leftRows.length} other object{leftRows.length === 1 ? '' : 's'} differ on {server} — tick any you want to send too</p>
                   )}
                   {release?.noChange && leftRows.length === 0 && (
                     <div className="border border-border rounded-md p-3 space-y-1">
@@ -668,7 +664,7 @@ export default function DeployFlow() {
                   )}
                   {release && !release.noChange && (
                     <div className="border border-border rounded-md p-3 space-y-1">
-                      <p className="text-[11px]">Release <span className="font-mono">{String(release.releaseCommit).slice(0, 10)}</span> · included <span className="font-semibold">{release.included?.length ?? 0}</span></p>
+                      <p className="text-[11px]">Release <span className="font-mono">{String(release.releaseCommit).slice(0, 10)}</span> · ships <span className="font-semibold">{release.included?.length ?? 0}</span></p>
                       {(release.included ?? []).map((o, i) => (
                         <p key={i} className="text-[11px] text-muted-foreground">{actionWord(o)} · {o.type} <span className="font-mono text-foreground">{o.name}</span></p>
                       ))}
@@ -677,8 +673,8 @@ export default function DeployFlow() {
                   )}
                   {release && leftRows.length > 0 && (
                     <div className="border border-amber-600/40 bg-amber-600/5 rounded-md p-3 space-y-2">
-                      <p className="text-[11px] font-semibold text-amber-700">Changed on {server}, NOT in this release</p>
-                      <p className="text-[10px] text-muted-foreground">A release ships only this change set's objects. These differ on {server} and will stay as they are on {target} — so a loss of 0 does not mean "no change".</p>
+                      <p className="text-[11px] font-semibold text-amber-700">On {server}, but not sent</p>
+                      <p className="text-[10px] text-muted-foreground">This change set did not change these, so they are not sent. {target} keeps what it already has. Tick any you want to send too.</p>
                       {leftRows.map(r => (
                         <label key={r.key} className="flex items-center gap-2 text-[11px]">
                           <input type="checkbox" checked={!!includeLeft[r.key]} onChange={e => setIncludeLeft(p => ({ ...p, [r.key]: e.target.checked }))} />
@@ -688,24 +684,54 @@ export default function DeployFlow() {
                         </label>
                       ))}
                       <button onClick={rebuildWithIncludes} disabled={!!busy || !leftRows.some(r => includeLeft[r.key])} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">
-                        {busy === 'release' ? 'Rebuilding…' : 'Rebuild including these'}
+                        {busy === 'release' ? 'Rebuilding…' : 'Rebuild with the ticked ones'}
                       </button>
                     </div>
                   )}
+                  {(release?.targetNotes ?? []).length > 0 && (
+                    <div className="border border-border rounded-md p-3 space-y-1">
+                      <p className="text-[11px] font-semibold">From {target}</p>
+                      {(release.targetNotes ?? []).map((n, i) => <p key={i} className="text-[11px] text-muted-foreground">{n}</p>)}
+                    </div>
+                  )}
+                  {(release?.indexNotes ?? []).length > 0 && (
+                    <div className="border border-amber-600/40 bg-amber-600/5 rounded-md p-3 space-y-1">
+                      <p className="text-[11px] font-semibold text-amber-700">Index changes</p>
+                      {(release.indexNotes ?? []).map((n, i) => <p key={i} className="text-[11px]">{n}</p>)}
+                    </div>
+                  )}
+                  {(release?.attributePlan?.values ?? []).length > 0 && (
+                    <div className="border border-border rounded-md p-3 space-y-1">
+                      <p className="text-[11px] font-semibold">Attribute values this release writes</p>
+                      {(release.attributePlan.values ?? []).slice(0, 12).map((v, i) => (
+                        <p key={i} className="text-[11px] text-muted-foreground">{v.dim}.{v.element}.{v.attribute} = {String(v.value)}</p>
+                      ))}
+                      {(release.attributePlan.values ?? []).length > 12 && <p className="text-[10px] text-muted-foreground">…and {release.attributePlan.values.length - 12} more</p>}
+                    </div>
+                  )}
+                  {(release?.attributePlan?.notes ?? []).map((n, i) => (
+                    <p key={`an-${i}`} className="text-[11px] text-muted-foreground">{n}</p>
+                  ))}
                   {(release?.warnings ?? []).map((w, i) => (
                     <p key={i} className="text-[11px] text-amber-700">{w}</p>
                   ))}
                   {error && <p className="text-[11px] text-red-600">{error}</p>}
                   {busy && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> {prog}</p>}
                   <div className="flex items-center gap-2 pt-1">
-                    <button onClick={doBuild} disabled={!!busy} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">{release ? 'Rebuild release' : 'Build release'}</button>
-                    {release && !release.noChange && <button onClick={() => setStep(5)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Continue to Review</button>}
-                    <button onClick={() => setStep(3)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
+                    {release && !release.noChange ? (
+                      <>
+                        <button onClick={() => setStep(STEP.review)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600">Continue to Review</button>
+                        <button onClick={doBuild} disabled={!!busy} className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40">Rebuild release</button>
+                      </>
+                    ) : (
+                      <button onClick={doBuild} disabled={!!busy} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">{release ? 'Rebuild release' : 'Build release'}</button>
+                    )}
+                    <button onClick={() => setStep(closedAtOpen ? 1 : 2)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>
                 </div>
               )}
 
-              {step === 5 && (
+              {step === STEP.review && (
                 <div className="space-y-2">
                   {prep?.error && <p className="text-[11px] text-red-600">{prep.error}</p>}
                   {(() => {
@@ -756,6 +782,24 @@ export default function DeployFlow() {
                         : <p className="text-[11px] text-emerald-700">Confirmed — recorded with your approval.</p>}
                     </div>
                   )}
+                  {prep && !prep.error && prep.loss && prep.loss.elements === 0 && (() => {
+                    const ships = release?.included ?? []
+                    const kinds = [...new Set(ships.map(o => o.type))]
+                    return (
+                      <div className="text-[11px] space-y-0.5">
+                        <p><span className="text-muted-foreground">Deletes:</span> nothing. {target} keeps everything it has.</p>
+                        <p>
+                          <span className="text-muted-foreground">Changes:</span>{' '}
+                          {ships.length === 0 ? 'nothing in the model.' : `${ships.length} object${ships.length === 1 ? '' : 's'} — ${kinds.join(', ')}`}
+                        </p>
+                      </div>
+                    )
+                  })()}
+                  {prep?.elementLossError && (
+                    <p className="text-[11px] text-amber-700">
+                      Could not check what this deploy removes from {target}: {prep.elementLossError}
+                    </p>
+                  )}
                   {prep?.loss?.elements > 0 && (
                     <div className="border border-amber-600/40 bg-amber-500/5 rounded-md p-3 space-y-1">
                       <p className="text-xs font-semibold text-amber-700">This deploy removes {prep.loss.elements} element{prep.loss.elements === 1 ? '' : 's'} in {prep.loss.dimensions} dimension{prep.loss.dimensions === 1 ? '' : 's'}</p>
@@ -770,7 +814,7 @@ export default function DeployFlow() {
                   )}
                   <div className="flex items-center gap-2 pt-1">
                     <button onClick={() => setPhase('deploy')} disabled={!prep || !!prep.error || lossNeedsConfirm || ((prep?.typeChanges ?? []).length > 0 && !typeOk)} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40">Continue to Deploy</button>
-                    <button onClick={() => setStep(4)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
+                    <button onClick={() => setStep(STEP.build)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">Back</button>
                   </div>
                 </div>
               )}
@@ -782,20 +826,16 @@ export default function DeployFlow() {
               <StepHeader phase="deploy" />
               <p className="text-xs">Ships <span className="font-semibold">{release?.included?.length ?? 0}</span> object{(release?.included?.length ?? 0) === 1 ? '' : 's'} · release <span className="font-mono">{String(release?.releaseCommit ?? '').slice(0, 10)}</span>.</p>
               <p className="text-[11px] text-muted-foreground">
-                <span className="text-foreground font-medium">If it goes wrong:</span> <em>Return to last release</em> (Deploy → Drift, admin only) puts
-                {' '}{target} back to the release it last received — model objects only; it does not restore data that was cleared or values written since.
+                <span className="text-foreground font-medium">If it goes wrong:</span> restore {target}'s data folder from the backup
+                this deploy takes, then use <em>{target} restored from a backup</em> (Deploy → Drift, admin only) to move its pointers back to that backup's tag.
               </p>
               <label className="flex items-start gap-2 text-xs">
                 <input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)} className="mt-0.5" />
                 <span>I approve sending <span className="font-semibold">{session?.name}</span> to <span className="font-semibold">{target}</span>.</span>
               </label>
-              {settings?.backupProcess && <p className="text-[11px] text-muted-foreground">Backup process <span className="font-mono text-foreground">{settings.backupProcess}</span> runs first; if it fails, nothing is sent.</p>}
-              {settings && !settings.backupProcess && (
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">When was <span className="text-foreground">{target}</span> last backed up?</label>
-                  <input type="datetime-local" value={backupAt} onChange={e => setBackupAt(e.target.value)} className="w-full bg-muted border border-border rounded px-2 py-1 text-xs" />
-                </div>
-              )}
+              {settings?.backupProcess
+                ? <p className="text-[11px] text-muted-foreground">Backup process <span className="font-mono text-foreground">{settings.backupProcess}</span> runs after Save Data; if it fails, nothing is sent.</p>
+                : <p className="text-[11px] text-muted-foreground">Save Data, then <span className="font-mono text-foreground">{'}'}IDE.Backup</span> zips {target}'s data folder beside it. If the archive fails, nothing is sent.</p>}
               {prog && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> {prog}</p>}
               {error && <p className="text-[11px] text-red-600 border border-red-600/40 rounded px-2 py-1">{error}</p>}
               <div className="flex items-center gap-2 pt-1">
@@ -820,8 +860,21 @@ export default function DeployFlow() {
                   {res.verification ? `Checks ${res.verification.passed}/${res.verification.total} · ` : ''}
                   {res.saveData?.at ? `data saved ${fmt(res.saveData.at)} · ` : ''}
                   {res.backup?.kind === 'process' ? `backup ${res.backup.process} ran ${fmt(res.backup.at)}` : res.backup?.at ? `last backup ${fmt(res.backup.at)}` : ''}
-                  {drift ? (drift.entries?.length ? ` · ${drift.entries.length} drift` : ' · no drift') : ''}
+                  {drift ? (drift.entries?.length ? ` · ${drift.entries.length} change${drift.entries.length === 1 ? '' : 's'} found on the target` : ' · target unchanged') : ''}
+                  {res.feeders?.cubes?.length ? ` · feeders ${res.feeders.cubes.length}` : ''}
                 </p>
+                {res.devTests && !res.devTests.error && (
+                  <p className={cn('text-[11px]', res.devTests.failed ? 'text-red-600' : 'opacity-90')}>
+                    Logic checks on {target}: {res.devTests.passed} of {res.devTests.total} passed
+                    {res.devTests.failed ? ` — failed: ${(res.devTests.failures ?? []).map(f => f.description).join(', ')}` : ''}
+                  </p>
+                )}
+                {!res.signoff && (
+                  <p className="text-[11px] font-medium">
+                    Awaiting sign-off. Everything the tool can check has passed; this part is yours. Test it by hand on {target},
+                    then confirm it: <span className="text-foreground">Change Sets → this change set → ⋯ → “I tested this on….”</span>.
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={closeShip} className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-600">Done</button>
